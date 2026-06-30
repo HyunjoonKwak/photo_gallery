@@ -1,0 +1,21 @@
+services:
+  nas-photo:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: nas-photo-organizer:latest
+    container_name: nas-photo
+    restart: unless-stopped
+    ports:
+      - "9800:9800"
+    env_file:
+      - .env
+    environment:
+      # Persisted inside the named volume (overrides .env for container path).
+      SQLITE_PATH: /data/app.db
+      FRONTEND_DIST: /app/static
+    volumes:
+      - nas-photo-data:/data
+
+volumes:
+  nas-photo-data:
