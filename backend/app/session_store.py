@@ -20,6 +20,7 @@ class Session:
     sid: str
     account: str
     role: str
+    can_browse_homes: bool
 
 
 def _now() -> datetime:
@@ -27,26 +28,48 @@ def _now() -> datetime:
 
 
 def create_session(
-    sqlite_path: str, *, sid: str, account: str, role: str, ttl_seconds: int
+    sqlite_path: str,
+    *,
+    sid: str,
+    account: str,
+    role: str,
+    can_browse_homes: bool,
+    ttl_seconds: int,
 ) -> Session:
     token = secrets.token_urlsafe(32)
     now = _now()
     expires = now + timedelta(seconds=ttl_seconds)
     with connect(sqlite_path) as conn:
         conn.execute(
-            "INSERT INTO session (token, sid, account, role, created_at, expires_at) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (token, sid, account, role, now.isoformat(), expires.isoformat()),
+            "INSERT INTO session "
+            "(token, sid, account, role, can_browse_homes, created_at, expires_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                token,
+                sid,
+                account,
+                role,
+                int(can_browse_homes),
+                now.isoformat(),
+                expires.isoformat(),
+            ),
         )
         conn.commit()
-    return Session(token=token, sid=sid, account=account, role=role)
+    return Session(
+        token=token,
+        sid=sid,
+        account=account,
+        role=role,
+        can_browse_homes=can_browse_homes,
+    )
 
 
 def get_session(sqlite_path: str, token: str) -> Session | None:
     """Return a live session, or None if missing/expired (expired rows pruned)."""
     with connect(sqlite_path) as conn:
         row = conn.execute(
-            "SELECT token, sid, account, role, expires_at FROM session WHERE token = ?",
+            "SELECT token, sid, account, role, can_browse_homes, expires_at "
+            "FROM session WHERE token = ?",
             (token,),
         ).fetchone()
         if row is None:
@@ -56,7 +79,11 @@ def get_session(sqlite_path: str, token: str) -> Session | None:
             conn.commit()
             return None
     return Session(
-        token=row["token"], sid=row["sid"], account=row["account"], role=row["role"]
+        token=row["token"],
+        sid=row["sid"],
+        account=row["account"],
+        role=row["role"],
+        can_browse_homes=bool(row["can_browse_homes"]),
     )
 
 

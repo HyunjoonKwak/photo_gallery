@@ -3,6 +3,7 @@ export type Role = "admin" | "member";
 export interface UserInfo {
   account: string;
   role: Role;
+  can_browse_homes: boolean;
 }
 
 export interface EndpointInfo {

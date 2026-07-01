@@ -11,34 +11,34 @@
 ## A. 백엔드 수정 — 1단계 기능 개발 전 선행
 
 ### A-1. [HIGH] 로그인 자격증명이 GET 쿼리스트링으로 전송됨
-- [ ] 수정
+- [x] 수정 (2026-07-02) — `_send`에 POST 지원 추가, `login()`을 POST 폼으로 전환
 - 위치: `backend/app/dsm/client.py` — `_send()`가 항상 `http.get(url, params=...)` → 로그인 시 비밀번호가 URL에 실려 DSM 웹서버·리버스 프록시 로그에 남을 수 있음.
 - 수정: `_send`에 POST(form body) 지원 추가, 최소한 `login()`은 POST로 전환. DSM 7 `SYNO.API.Auth`는 POST 지원.
 
 ### A-2. [HIGH] DSM sid 만료 처리 부재 (앱 세션과 수명 불일치)
-- [ ] 수정
+- [x] 수정 (2026-07-02) — `main.py`에 `DsmError` 예외 핸들러 추가. 세션 무효 코드 → 401 + 세션/쿠키 삭제, 그 외 → 502. `system.py`는 핸들러에 위임.
 - 앱 세션 TTL 8h(`config.py`) vs DSM sid는 DSM 보안 설정에 따라 **15분 만에 만료 가능**(기본 최대 7일 — [DSM Login Web API Guide](https://kb.synology.com/en-global/DG/DSM_Login_Web_API_Guide/2)).
 - 현재 `api/system.py`는 DSM 오류를 502로 반환 → 프론트가 재로그인 유도 불가.
-- 수정: `DsmError` code **105/106/107/119**를 공용 처리(deps 래퍼 또는 예외 핸들러)로 잡아 **앱 세션 삭제 + 401 반환**. 이후 모든 엔드포인트가 자동 혜택.
+- 수정: `DsmError` 세션 무효 코드 **106(timeout)/107(중복 로그인)/119(sid 무효)**를 공용 예외 핸들러로 잡아 **앱 세션 삭제 + 401 반환**. (당초 105도 포함했으나 105는 "권한 부족"이라 재로그인으로 풀리지 않아 제외 — `errors.SESSION_INVALID_CODES` 참조.) 이후 모든 엔드포인트가 자동 혜택.
 
 ### A-3. [MED] 역할 판별을 `is_manager` 기반으로 교체
-- [ ] 수정
+- [x] 수정 (2026-07-02) — `detect_role`을 `SYNO.FileStation.Info`의 `is_manager` 기반으로 교체, `/homes` 접근은 `detect_can_browse_homes`로 분리. 세션·`UserInfo`·프론트 타입에 `can_browse_homes` 추가(스키마 마이그레이션 포함).
 - 현재 `api/auth.py detect_role()` — `/homes` 목록 성공 여부로 admin 판별. **user home 서비스가 꺼져 있으면 진짜 관리자도 member로 오판**.
 - 수정: `SYNO.FileStation.Info`(get)의 **`is_manager`** 필드로 role 판별. `/homes` 접근 가능 여부는 별도 capability(`can_browse_homes`)로 분리 — 관리자 UI 활성화 조건과 역할을 분리(명세 4.5의 "사유 안내"와 연결).
 
 ### A-4. [MED] 로그인 시도 제한 + DSM Auto Block 대응
-- [ ] 수정
+- [x] 수정 (2026-07-02) — `rate_limit.py`(SQLite `login_attempt`) + `config` 설정(기본 10분/5회), login 라우터에 429 적용. README에 DSM 허용 IP 안내 추가.
 - 앱이 로그인 프록시라서 가족 누군가 비밀번호를 반복해 틀리면 **DSM Auto Block이 도커 컨테이너/게이트웨이 IP를 차단 → 전 가족 로그인 불가** ([DSM Auto Block](https://kb.synology.com/en-global/DSM/help/DSM/AdminCenter/connection_security_account?version=6)).
 - 수정: ① 앱 레벨 로그인 시도 제한(예: 계정당 5회/10분, SQLite로 충분) ② README에 "DSM 허용 IP 목록에 도커 게이트웨이 IP 추가" 안내 ③ sid 재사용 철저(매 요청 로그인 금지 — 현 구조는 이미 준수).
 
 ### A-5. [LOW] 인프라/품질 묶음
-- [ ] `config.py` `session_secret` — 미사용 설정. 제거하거나 용도 주석 명시.
-- [ ] `docker/Dockerfile` — `npm install` → **`npm ci`**(재현성), **non-root USER** 추가.
-- [ ] `docker-compose.yml` — `/api/health` 기반 **healthcheck** 추가.
-- [ ] `db.py` — `PRAGMA journal_mode=WAL` 설정. (2단계 해시 저장 시 sync SQLite → 스레드풀 오프로딩 재검토)
-- [ ] `session_store.purge_expired` — 시작 시 1회 → 주기 실행.
-- [ ] `errors.py` — `SYNO.Foto.*`/`SYNO.FotoTeam.*` 에러코드 테이블 추가(2단계 전 필수).
-- [ ] 단위 테스트 추가 — `session_store`, `errors.message_for`, `DsmClient._send`(httpx `MockTransport`) 등 순수 로직부터.
+- [x] `config.py` `session_secret` — 미사용이라 제거(쿠키가 무작위 토큰이라 서명 불필요). `.env.example`도 정리.
+- [x] `docker/Dockerfile` — `npm install` → **`npm ci`**, **non-root USER**(appuser) 추가.
+- [x] `docker-compose.yml` — `/api/health` 기반 **healthcheck** 추가(python urllib).
+- [x] `db.py` — `PRAGMA journal_mode=WAL` 설정. (2단계 해시 저장 시 sync SQLite → 스레드풀 오프로딩 재검토)
+- [x] `session_store.purge_expired` — 시작 시 1회 + **로그인마다 정리**(별도 백그라운드 스위퍼 없이 주기화).
+- [x] `errors.py` — `SYNO.Foto.*`/`SYNO.FotoTeam.*` 에러코드 테이블 추가(실 NAS로 검증 필요).
+- [x] 단위 테스트 추가 — `errors.message_for`, `session_store`, `rate_limit`, `DsmClient`(httpx `MockTransport`). **26개 통과**. `requirements-dev.txt`/`pytest.ini` 추가.
 
 ---
 
@@ -137,6 +137,6 @@
 - [x] 명세서(`NAS_사진정리앱_개발명세서.md`) 6·9·11·13장에 위 결정 반영 (2026-07-02)
 - [x] README에 이 문서 링크 추가
 - [x] 프로젝트 `CLAUDE.md`에 강제 참조 규칙 명시
-- [ ] A절 백엔드 수정 구현
+- [x] A절 백엔드 수정 구현 (2026-07-02) — A-1~A-5 완료, 단위 테스트 26개 통과
 - [ ] B·C절 기반 1단계 화면 구현
 - [ ] D절 기반 2단계 구현

@@ -4,7 +4,8 @@
 FROM node:20-alpine AS frontend
 WORKDIR /frontend
 COPY frontend/package.json frontend/package-lock.json* ./
-RUN npm install
+# npm ci for reproducible installs from the lockfile.
+RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
@@ -22,6 +23,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend/app ./app
 COPY --from=frontend /frontend/dist ./static
+
+# Run as a non-root user; give it ownership of the SQLite volume mount point.
+RUN useradd --system --uid 10001 appuser \
+    && mkdir -p /data \
+    && chown -R appuser:appuser /app /data
+USER appuser
 
 EXPOSE 9800
 VOLUME ["/data"]

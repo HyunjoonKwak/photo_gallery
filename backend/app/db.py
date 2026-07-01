@@ -12,12 +12,13 @@ from pathlib import Path
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS session (
-  token        TEXT PRIMARY KEY,   -- opaque cookie value (never the DSM sid)
-  sid          TEXT NOT NULL,      -- DSM session id (server-side only)
-  account      TEXT NOT NULL,
-  role         TEXT NOT NULL,      -- admin | member
-  created_at   TEXT NOT NULL,
-  expires_at   TEXT NOT NULL
+  token            TEXT PRIMARY KEY,   -- opaque cookie value (never the DSM sid)
+  sid              TEXT NOT NULL,      -- DSM session id (server-side only)
+  account          TEXT NOT NULL,
+  role             TEXT NOT NULL,      -- admin | member
+  can_browse_homes INTEGER NOT NULL DEFAULT 0,  -- may list /homes (admin feature gate)
+  created_at       TEXT NOT NULL,
+  expires_at       TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS operation (
@@ -44,6 +45,16 @@ CREATE TABLE IF NOT EXISTS photo_cache (
   size      INTEGER,
   camera    TEXT
 );
+
+-- Failed login attempts, used to throttle brute-force tries at the app layer
+-- before DSM's own Auto Block can lock out our whole container IP.
+CREATE TABLE IF NOT EXISTS login_attempt (
+  account      TEXT NOT NULL,
+  attempted_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_login_attempt_account
+  ON login_attempt (account, attempted_at);
 """
 
 
@@ -53,11 +64,30 @@ def init_db(sqlite_path: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with connect(sqlite_path) as conn:
         conn.executescript(SCHEMA)
+        _migrate(conn)
         conn.commit()
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Additive migrations for databases created by an earlier schema.
+
+    SQLite cannot ``ADD COLUMN IF NOT EXISTS``, so we probe ``PRAGMA table_info``
+    and add only what is missing. Kept additive (never drops/renames) so an
+    older DB upgrades in place without data loss.
+    """
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(session)")}
+    if "can_browse_homes" not in columns:
+        conn.execute(
+            "ALTER TABLE session ADD COLUMN can_browse_homes INTEGER NOT NULL DEFAULT 0"
+        )
 
 
 def connect(sqlite_path: str) -> sqlite3.Connection:
     conn = sqlite3.connect(sqlite_path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    # WAL lets readers and a writer proceed concurrently — a better fit for the
+    # async server (and the coming background scan/hash jobs) than the default
+    # rollback journal, which serializes everything.
+    conn.execute("PRAGMA journal_mode = WAL")
     return conn

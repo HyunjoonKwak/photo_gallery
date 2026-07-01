@@ -28,12 +28,16 @@ class Settings(BaseSettings):
     dsm_timeout_seconds: float = Field(default=30.0)
 
     # --- App session ---
-    # Used to sign/identify the HttpOnly session cookie. MUST be overridden in prod.
-    session_secret: str = Field(default="change-me-in-production")
+    # Cookies carry an opaque random token (secrets.token_urlsafe), so no signing
+    # secret is needed — the token is looked up server-side in the session table.
     session_cookie_name: str = Field(default="nasphoto_session")
     session_ttl_seconds: int = Field(default=60 * 60 * 8)  # 8h
     # Set True when served over HTTPS (DSM reverse proxy). Cookie -> Secure flag.
     cookie_secure: bool = Field(default=False)
+
+    # --- Login throttling (app-level, protects against DSM Auto Block lockout) ---
+    login_max_attempts: int = Field(default=5)
+    login_window_seconds: int = Field(default=600)  # 10 minutes
 
     # --- Storage ---
     sqlite_path: str = Field(default="./data/app.db")

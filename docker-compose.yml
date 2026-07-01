@@ -16,6 +16,17 @@ services:
       FRONTEND_DIST: /app/static
     volumes:
       - nas-photo-data:/data
+    healthcheck:
+      # python is already in the image; avoids depending on curl/wget being present.
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:9800/api/health', timeout=3).status==200 else 1)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
 volumes:
   nas-photo-data:

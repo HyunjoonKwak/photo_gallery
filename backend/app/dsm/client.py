@@ -154,7 +154,9 @@ class DsmClient:
         if otp_code:
             params["otp_code"] = otp_code
         url = f"{self._base}/{endpoint.path}"
-        data = await self._send(url, params, api="SYNO.API.Auth")
+        # POST so credentials travel in the form body, never in the URL/query
+        # string (which DSM and any reverse proxy in front of it would log).
+        data = await self._send(url, params, api="SYNO.API.Auth", method="POST")
         sid = data.get("sid")
         if not sid:
             raise DsmError(100, "로그인 응답에 세션 정보가 없습니다.", api="SYNO.API.Auth")
@@ -177,10 +179,20 @@ class DsmClient:
             pass
 
     # --------------------------------------------------------------- transport
-    async def _send(self, url: str, params: dict[str, Any], *, api: str) -> Any:
-        """Perform the HTTP GET and unwrap DSM's success/error envelope."""
+    async def _send(
+        self, url: str, params: dict[str, Any], *, api: str, method: str = "GET"
+    ) -> Any:
+        """Perform the HTTP request and unwrap DSM's success/error envelope.
+
+        ``GET`` puts parameters in the query string (fine for reads); ``POST``
+        sends them as a form body so sensitive values (e.g. login credentials)
+        never appear in URLs, access logs, or proxy logs.
+        """
         try:
-            resp = await self._http.get(url, params=params)
+            if method == "POST":
+                resp = await self._http.post(url, data=params)
+            else:
+                resp = await self._http.get(url, params=params)
             resp.raise_for_status()
         except httpx.HTTPError as exc:
             raise DsmError(

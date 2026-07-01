@@ -15,6 +15,13 @@ class DsmError(Exception):
         super().__init__(message)
 
 
+# DSM error codes that mean the session id (sid) is no longer usable and the
+# user must re-authenticate: 106 session timeout, 107 interrupted by a login
+# elsewhere, 119 invalid sid. (105 is "insufficient permission" — a 403, not a
+# re-login case — so it is deliberately excluded.)
+SESSION_INVALID_CODES: frozenset[int] = frozenset({106, 107, 119})
+
+
 # Generic / common API error codes (Synology File Station API Guide).
 COMMON_ERRORS: dict[int, str] = {
     100: "알 수 없는 오류가 발생했습니다.",
@@ -42,6 +49,16 @@ AUTH_ERRORS: dict[int, str] = {
     410: "비밀번호를 변경해야 합니다.",
 }
 
+# SYNO.Foto.* / SYNO.FotoTeam.* specific error codes.
+# Synology Photos has no official API docs; these are the codes observed in the
+# community-documented API. Refine against a real NAS as the photo features land.
+FOTO_ERRORS: dict[int, str] = {
+    800: "사진 작업 요청이 올바르지 않습니다.",
+    801: "요청한 사진 또는 앨범을 찾을 수 없습니다.",
+    802: "이 사진 작업을 수행할 권한이 없습니다.",
+    803: "Synology Photos가 아직 인덱싱 중입니다. 잠시 후 다시 시도하세요.",
+}
+
 # SYNO.FileStation.* specific error codes.
 FILESTATION_ERRORS: dict[int, str] = {
     400: "잘못된 파일 작업 파라미터입니다.",
@@ -67,6 +84,8 @@ def message_for(api: str, code: int) -> str:
         table = {**COMMON_ERRORS, **AUTH_ERRORS}
     elif api.startswith("SYNO.FileStation"):
         table = {**COMMON_ERRORS, **FILESTATION_ERRORS}
+    elif api.startswith(("SYNO.Foto", "SYNO.FotoTeam")):
+        table = {**COMMON_ERRORS, **FOTO_ERRORS}
     else:
         table = COMMON_ERRORS
     return table.get(code, f"DSM 오류가 발생했습니다 (code={code}).")

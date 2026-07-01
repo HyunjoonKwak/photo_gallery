@@ -12,15 +12,17 @@ import os
 from collections.abc import AsyncIterator
 
 import httpx
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .api import auth, system
-from .config import get_settings
+from .config import Settings, get_settings
 from .db import init_db
 from .dsm.client import DsmClient
-from .session_store import purge_expired
+from .dsm.errors import SESSION_INVALID_CODES, DsmError
+from .session_store import delete_session, purge_expired
 
 
 @contextlib.asynccontextmanager
@@ -53,6 +55,31 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.exception_handler(DsmError)
+    async def dsm_error_handler(request: Request, exc: DsmError) -> JSONResponse:
+        """Turn uncaught DSM failures into HTTP responses.
+
+        A dead sid (session timeout / interrupted / invalid) must surface as
+        401 so the browser re-authenticates — and we drop the now-useless app
+        session on the way out. Every other DSM failure is an upstream/gateway
+        problem (502). Routers that need bespoke handling (e.g. login mapping
+        bad-credential codes to 401) catch DsmError themselves before it reaches
+        here.
+        """
+        current: Settings = get_settings()
+        if exc.code in SESSION_INVALID_CODES:
+            token = request.cookies.get(current.session_cookie_name)
+            if token:
+                delete_session(current.sqlite_path, token)
+            response = JSONResponse(
+                status_code=status.HTTP_401_UNAUTHORIZED, content={"detail": str(exc)}
+            )
+            response.delete_cookie(current.session_cookie_name, path="/")
+            return response
+        return JSONResponse(
+            status_code=status.HTTP_502_BAD_GATEWAY, content={"detail": str(exc)}
+        )
 
     app.include_router(auth.router)
     app.include_router(system.router)

@@ -14,6 +14,7 @@ class LoginRequest(BaseModel):
 class UserInfo(BaseModel):
     account: str
     role: str  # admin | member
+    can_browse_homes: bool  # may list /homes → gates the admin cross-user UI
 
 
 class EndpointInfo(BaseModel):

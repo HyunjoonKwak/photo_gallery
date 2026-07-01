@@ -4,11 +4,10 @@ the real NAS, which DSM APIs/paths/versions are actually available.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 
 from ..config import Settings, get_settings
 from ..dsm.client import DsmClient
-from ..dsm.errors import DsmError
 from ..schemas import ApiInfoResponse, EndpointInfo
 from ..session_store import Session
 from .deps import get_current_session, get_dsm_client
@@ -22,13 +21,12 @@ async def api_info(
     dsm: DsmClient = Depends(get_dsm_client),
     _session: Session = Depends(get_current_session),
 ) -> ApiInfoResponse:
-    """Resolve the core APIs via SYNO.API.Info and report availability."""
-    try:
-        resolved = await dsm.query_api_info(refresh=True)
-    except DsmError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)
-        ) from exc
+    """Resolve the core APIs via SYNO.API.Info and report availability.
+
+    DSM failures propagate to the app-wide ``DsmError`` handler (session-invalid
+    codes → 401, everything else → 502).
+    """
+    resolved = await dsm.query_api_info(refresh=True)
 
     endpoints = [
         EndpointInfo(
