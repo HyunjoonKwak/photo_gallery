@@ -295,9 +295,10 @@ class DsmPhotoSource:
         "focal_length",
     )
 
-    async def item_detail(self, space: str, item_id: str) -> ItemDetail:
-        # Browse.Item "get" with the heavy additionals — called only when the
-        # lightbox info panel opens, so list responses stay light.
+    async def _item_folder_name(self, space: str, item_id: str) -> str | None:
+        # Requested ALONE on purpose: 실 NAS 확인(2026-07-02) — "folder"를
+        # exif/address와 조합하면 DSM이 folder를 응답에서 빼버린다. 단독 요청
+        # (_item_meta와 동일 형태)은 파일 작업 검증에서 실동작 확인됨.
         data = await self._dsm.call(
             _ns(space, "SYNO.Foto.Browse.Item"),
             "get",
@@ -305,16 +306,40 @@ class DsmPhotoSource:
             sid=self._sid,
             extra={
                 "id": json.dumps([int(item_id)]),
-                "additional": json.dumps(["exif", "folder", "address", "gps"]),
+                "additional": json.dumps(["folder"]),
             },
         )
         items = data.get("list", [])
+        folder = (items[0].get("additional") or {}).get("folder") if items else None
+        return folder.get("name") if isinstance(folder, dict) else None
+
+    async def item_detail(self, space: str, item_id: str) -> ItemDetail:
+        # Two parallel "get" calls — folder must ride alone (see above), the
+        # heavy exif/address additionals go together. Panel-open only, so the
+        # extra round-trip is fine; either half failing degrades gracefully.
+        folder_task = self._item_folder_name(space, item_id)
+        detail_task = self._dsm.call(
+            _ns(space, "SYNO.Foto.Browse.Item"),
+            "get",
+            version=1,
+            sid=self._sid,
+            extra={
+                "id": json.dumps([int(item_id)]),
+                "additional": json.dumps(["exif", "address", "gps"]),
+            },
+        )
+        folder_res, data_res = await asyncio.gather(
+            folder_task, detail_task, return_exceptions=True
+        )
+        folder_name = folder_res if isinstance(folder_res, str) else None
+        if isinstance(data_res, BaseException):
+            raise data_res if isinstance(data_res, Exception) else DsmError(
+                100, "사진 정보를 불러오지 못했습니다."
+            )
+        items = data_res.get("list", [])
         if not items:
             raise DsmError(100, "사진을 찾을 수 없습니다.")
         additional = items[0].get("additional") or {}
-
-        folder = additional.get("folder") or {}
-        folder_name = folder.get("name") if isinstance(folder, dict) else None
 
         raw_exif = additional.get("exif") or {}
         exif = {
