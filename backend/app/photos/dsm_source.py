@@ -31,6 +31,7 @@ from ..dsm.client import DsmClient
 from ..dsm.errors import DsmError
 from ..progress import ProgressFn
 from ..schemas import (
+    ItemDetail,
     PersonInfo,
     PhotoBucket,
     PhotoFolder,
@@ -283,6 +284,59 @@ class DsmPhotoSource:
         # 탐색 중 채움); 미스면 최상위를 한 번 로드해 시도.
         space = self._folder_space(folder_id)
         return await self._filtered_items(space, {"folder_id": int(folder_id)})
+
+    # EXIF keys worth showing, normalized to fixed names the frontend labels.
+    _EXIF_KEYS = (
+        "camera",
+        "lens",
+        "aperture",
+        "exposure_time",
+        "iso",
+        "focal_length",
+    )
+
+    async def item_detail(self, space: str, item_id: str) -> ItemDetail:
+        # Browse.Item "get" with the heavy additionals — called only when the
+        # lightbox info panel opens, so list responses stay light.
+        data = await self._dsm.call(
+            _ns(space, "SYNO.Foto.Browse.Item"),
+            "get",
+            version=1,
+            sid=self._sid,
+            extra={
+                "id": json.dumps([int(item_id)]),
+                "additional": json.dumps(["exif", "folder", "address", "gps"]),
+            },
+        )
+        items = data.get("list", [])
+        if not items:
+            raise DsmError(100, "사진을 찾을 수 없습니다.")
+        additional = items[0].get("additional") or {}
+
+        folder = additional.get("folder") or {}
+        folder_name = folder.get("name") if isinstance(folder, dict) else None
+
+        raw_exif = additional.get("exif") or {}
+        exif = {
+            k: str(raw_exif[k])
+            for k in self._EXIF_KEYS
+            if raw_exif.get(k) not in (None, "", 0)
+        }
+
+        # Address arrives as granular fields (country/city/…): join what's
+        # there, most-significant first, skipping duplicates.
+        raw_addr = additional.get("address") or {}
+        parts: list[str] = []
+        for key in ("country", "state", "county", "city", "town", "district",
+                    "village", "route", "landmark"):
+            v = raw_addr.get(key)
+            if v and v not in parts:
+                parts.append(str(v))
+        address = " ".join(parts) or None
+
+        return ItemDetail(
+            id=item_id, folder=folder_name, exif=exif, address=address
+        )
 
     # ------------------------------------------- AI classification (3단계)
     # Synology Photos 내장 AI 결과 재활용 — SYNO.API.Info 프로브로 실 NAS 확인

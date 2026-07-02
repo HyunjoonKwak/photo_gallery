@@ -1,9 +1,20 @@
 import { useEffect, useState } from "react";
-import { thumbnailUrl } from "../api/client";
+import { useQuery } from "@tanstack/react-query";
+import { api, thumbnailUrl } from "../api/client";
 import { useTimelineStore } from "../store/timeline";
 import { useFileOps } from "../hooks/useFileOps";
 import { formatBytes } from "../lib/dates";
 import { FolderPickerDialog } from "./timeline/FolderPickerDialog";
+
+/** EXIF field order + Korean labels for the info panel. */
+const EXIF_LABELS: [string, string][] = [
+  ["camera", "카메라"],
+  ["lens", "렌즈"],
+  ["aperture", "조리개"],
+  ["exposure_time", "셔터 속도"],
+  ["iso", "ISO"],
+  ["focal_length", "초점 거리"],
+];
 
 const SHORTCUTS: [string, string][] = [
   ["← →", "이전 / 다음 사진"],
@@ -28,6 +39,16 @@ export function Lightbox() {
   const [showInfo, setShowInfo] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [showMove, setShowMove] = useState(false);
+
+  // Folder path / EXIF / location — fetched only while the panel is open
+  // (list APIs stay light; details ride on Browse.Item "get").
+  const detailQuery = useQuery({
+    queryKey: ["item-detail", space, item?.id],
+    queryFn: () => api.itemDetail(space, item!.id),
+    enabled: showInfo && item != null,
+    staleTime: 5 * 60_000,
+  });
+  const detail = detailQuery.data;
 
   const deleteAndAdvance = () => {
     const s = useTimelineStore.getState();
@@ -180,8 +201,57 @@ export function Lightbox() {
               <InfoRow label="용량" value={formatBytes(item.size)} />
             )}
             <InfoRow label="공간" value={space === "team" ? "공용" : "개인"} />
-            <InfoRow label="폴더" value={item.folder ?? "(폴더 미지정)"} />
+            <InfoRow
+              label="폴더"
+              value={
+                detail?.folder ??
+                item.folder ??
+                (detailQuery.isPending ? "불러오는 중…" : "(정보 없음)")
+              }
+            />
           </dl>
+
+          {/* EXIF + location (on-demand) */}
+          {detailQuery.isPending && (
+            <p className="mt-5 text-xs text-slate-500">상세 정보 불러오는 중…</p>
+          )}
+          {detailQuery.isError && (
+            <p className="mt-5 text-xs text-red-400">
+              상세 정보를 불러오지 못했습니다.
+            </p>
+          )}
+          {detail && (
+            <>
+              {Object.keys(detail.exif).length > 0 && (
+                <>
+                  <h4 className="mb-2 mt-6 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    촬영 정보
+                  </h4>
+                  <dl className="space-y-3">
+                    {EXIF_LABELS.map(
+                      ([key, label]) =>
+                        detail.exif[key] && (
+                          <InfoRow key={key} label={label} value={detail.exif[key]} />
+                        ),
+                    )}
+                  </dl>
+                </>
+              )}
+              {detail.address && (
+                <>
+                  <h4 className="mb-2 mt-6 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    위치
+                  </h4>
+                  <p className="text-sm text-slate-300">📍 {detail.address}</p>
+                </>
+              )}
+              {Object.keys(detail.exif).length === 0 && !detail.address && (
+                <p className="mt-5 text-xs text-slate-500">
+                  이 사진에는 EXIF/위치 정보가 없습니다.
+                </p>
+              )}
+            </>
+          )}
         </aside>
       )}
 

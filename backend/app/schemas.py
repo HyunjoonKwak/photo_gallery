@@ -118,6 +118,19 @@ class PlacesResponse(BaseModel):
     places: list[PlaceInfo]
 
 
+class ItemDetail(BaseModel):
+    """On-demand detail for the lightbox info panel — folder path, EXIF and
+    shooting location, fetched only when the panel opens (list responses stay
+    light)."""
+
+    id: str
+    folder: str | None = None  # full folder path within the space
+    # Known keys: camera, lens, aperture, exposure_time, iso, focal_length.
+    # Only fields DSM actually has are included.
+    exif: dict[str, str] = {}
+    address: str | None = None  # geocoded shooting location
+
+
 class ProgressResponse(BaseModel):
     """Bulk-operation progress snapshot (progress_key polling)."""
 

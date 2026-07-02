@@ -84,6 +84,15 @@ export interface PlacesResponse {
   places: PlaceInfo[];
 }
 
+/** 라이트박스 정보 패널용 온디맨드 상세 (폴더 경로/EXIF/촬영 위치). */
+export interface ItemDetail {
+  id: string;
+  folder: string | null;
+  /** keys: camera, lens, aperture, exposure_time, iso, focal_length */
+  exif: Record<string, string>;
+  address: string | null;
+}
+
 // --- file operations ---
 
 export interface MoveRequest {

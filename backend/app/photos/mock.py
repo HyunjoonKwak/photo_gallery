@@ -24,6 +24,7 @@ from zlib import crc32
 from fastapi import HTTPException, status
 
 from ..schemas import (
+    ItemDetail,
     PersonInfo,
     PhotoBucket,
     PhotoFolder,
@@ -295,6 +296,30 @@ class MockPhotoSource:
             out.append(item.model_copy(update={"folder": self._folder_name(fid)}))
         out.sort(key=lambda i: (i.taken_at, i.id))
         return out
+
+    async def item_detail(self, space: str, item_id: str) -> ItemDetail:
+        base_space, day, idx = _parse_id(item_id)
+        self._resolve_item(item_id)  # 404 for unknown items
+        r = _rng(f"{base_space}:{day}:{idx}:exif")
+        cameras = [
+            ("Samsung Galaxy S23 Ultra", "f/1.7", "1/120", "50", "6.3mm"),
+            ("Apple iPhone 15 Pro", "f/1.8", "1/250", "80", "6.9mm"),
+            ("SONY ILCE-7M4", "f/2.8", "1/500", "200", "35mm"),
+        ]
+        cam, ap, exp, iso, focal = r.choice(cameras)
+        _, folder_id = self._effective_loc(item_id)
+        return ItemDetail(
+            id=item_id,
+            folder=self._folder_name(folder_id),
+            exif={
+                "camera": cam,
+                "aperture": ap,
+                "exposure_time": exp,
+                "iso": iso,
+                "focal_length": focal,
+            },
+            address=r.choice(["대한민국 서울 강남구", "대한민국 제주 서귀포시", ""]) or None,
+        )
 
     # ------------------------------------------- AI classification (3단계)
     def _classify_pool(self, space: str) -> list[PhotoItem]:

@@ -9,6 +9,7 @@ import type {
   DeleteRequest,
   FolderCountsResponse,
   FoldersResponse,
+  ItemDetail,
   LoginRequest,
   MembersResponse,
   MoveRequest,
@@ -82,6 +83,10 @@ export const api = {
   folderCounts: (ids: string[]) =>
     request<FolderCountsResponse>(
       `/api/photos/folder-counts?ids=${encodeURIComponent(ids.join(","))}`,
+    ),
+  itemDetail: (space: Space, id: string) =>
+    request<ItemDetail>(
+      `/api/photos/item-detail?space=${space}&id=${encodeURIComponent(id)}`,
     ),
   persons: (space: Space) =>
     request<PersonsResponse>(`/api/photos/persons?space=${space}`),

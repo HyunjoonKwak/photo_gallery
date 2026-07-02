@@ -26,6 +26,7 @@ from ..schemas import (
     DeleteRequest,
     FolderCountsResponse,
     FoldersResponse,
+    ItemDetail,
     MembersResponse,
     MoveRequest,
     OperationResponse,
@@ -132,6 +133,16 @@ async def list_members(
             detail="관리자만 가족 구성원 목록을 볼 수 있습니다.",
         )
     return MembersResponse(members=await source.members())
+
+
+@router.get("/item-detail", response_model=ItemDetail)
+async def get_item_detail(
+    id: str,
+    space: Space = Query("team"),
+    source: PhotoSource = Depends(get_photo_source),
+) -> ItemDetail:
+    """Lightbox info panel: folder path + EXIF + location, fetched on open."""
+    return await source.item_detail(space, id)
 
 
 # --------------------------------------------- AI classification (3단계)

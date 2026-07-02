@@ -15,6 +15,7 @@ from typing import Protocol
 
 from ..progress import ProgressFn
 from ..schemas import (
+    ItemDetail,
     PersonInfo,
     PhotoBucket,
     PhotoFolder,
@@ -72,6 +73,10 @@ class PhotoSource(Protocol):
 
     async def folder_count(self, folder_id: str) -> int:
         """Number of items directly in a folder (folder view badges)."""
+        ...
+
+    async def item_detail(self, space: str, item_id: str) -> ItemDetail:
+        """Folder path + EXIF + location for one item (lightbox info panel)."""
         ...
 
     # ------------------------------------------- AI classification (3단계)

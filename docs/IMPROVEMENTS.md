@@ -78,6 +78,7 @@
 - [x] **삭제 시 닫지 않고 다음 사진으로 자동 전진** — 연속 정리(culling) 워크플로의 핵심
 - [x] 다음/이전 이미지 프리페치
 - [x] 라이트박스 내 "폴더로 이동" 버튼 — 삭제·이동(FolderPickerDialog) 버튼 구현됨
+- [x] **정보 패널 상세화** (2026-07-02) — 기존엔 목록 필드만 표시(DSM 목록은 `folder=None` 하드코딩이라 폴더가 항상 "미지정", EXIF는 요청 자체 안 함). `GET /api/photos/item-detail`(Browse.Item `get` + additional exif/folder/address/gps, **패널 열릴 때만 온디맨드** 조회 — 목록 API는 가볍게 유지) 추가로 폴더 전체 경로 + 촬영 정보(카메라/렌즈/조리개/셔터/ISO/초점거리) + 위치(지오코딩 주소) 표시. 실 NAS의 exif/address 필드명은 커뮤니티 문서 기준 — **배포 후 실측 확인 필요**
 
 ### B-6. Undo / 확인 / 진행률 (NN/g + Gmail)
 - [x] 가역 작업(이동/휴지통행 삭제)은 **확인 팝업 없이 Undo 토스트** ([NN/g Confirmation Dialogs](https://www.nngroup.com/articles/confirmation-dialog/)) — 이동/복사/삭제/폴더생성 전부 즉시 실행 + "되돌리기" 액션 토스트
