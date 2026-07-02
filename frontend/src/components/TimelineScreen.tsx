@@ -11,6 +11,7 @@ import {
 } from "@dnd-kit/core";
 import { useTimelineStore } from "../store/timeline";
 import { useFileOps } from "../hooks/useFileOps";
+import { ClassifyView } from "./ClassifyView";
 import { DedupView } from "./DedupView";
 import { FolderPanel } from "./FolderPanel";
 import { FolderView } from "./FolderView";
@@ -107,6 +108,16 @@ export function TimelineScreen() {
         )}
         {viewMode === "folders" && <FolderView />}
         {viewMode === "dedup" && <DedupView key={space} />}
+        {viewMode === "classify" && (
+          <div className="flex h-full">
+            {/* Same folder panel as the timeline: drop target + quick jump,
+             * so classified groups can be dragged straight into folders. */}
+            <FolderPanel />
+            <main className="relative min-w-0 flex-1">
+              <ClassifyView key={space} />
+            </main>
+          </div>
+        )}
         <DragOverlay dropAnimation={null}>
           {dragIds && <DragOverlayContent ids={dragIds} copyMode={altHeld} />}
         </DragOverlay>

@@ -14,7 +14,14 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 from ..progress import ProgressFn
-from ..schemas import PhotoBucket, PhotoFolder, PhotoItem, PlacedItem
+from ..schemas import (
+    PersonInfo,
+    PhotoBucket,
+    PhotoFolder,
+    PhotoItem,
+    PlaceInfo,
+    PlacedItem,
+)
 
 SPACES = ("personal", "team")
 THUMB_SIZES = ("sm", "xl")
@@ -65,6 +72,27 @@ class PhotoSource(Protocol):
 
     async def folder_count(self, folder_id: str) -> int:
         """Number of items directly in a folder (folder view badges)."""
+        ...
+
+    # ------------------------------------------- AI classification (3단계)
+    # Synology Photos' own AI has already indexed faces (인물) and GPS places
+    # (장소); we read those groups and reuse the move+undo pipeline to act on
+    # them — no external AI API, no extra NAS load (docs/IMPROVEMENTS.md 결정).
+
+    async def persons(self, space: str) -> list[PersonInfo]:
+        """Face groups of one space, biggest first."""
+        ...
+
+    async def person_items(self, space: str, person_id: str) -> list[PhotoItem]:
+        """All items containing a person."""
+        ...
+
+    async def places(self, space: str) -> list[PlaceInfo]:
+        """Geocoded place groups of one space."""
+        ...
+
+    async def place_items(self, space: str, place_id: str) -> list[PhotoItem]:
+        """All items taken at a place."""
         ...
 
     async def members(self) -> list[str]:

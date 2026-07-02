@@ -30,7 +30,14 @@ from datetime import date, datetime, timedelta
 from ..dsm.client import DsmClient
 from ..dsm.errors import DsmError
 from ..progress import ProgressFn
-from ..schemas import PhotoBucket, PhotoFolder, PhotoItem, PlacedItem
+from ..schemas import (
+    PersonInfo,
+    PhotoBucket,
+    PhotoFolder,
+    PhotoItem,
+    PlaceInfo,
+    PlacedItem,
+)
 from .hashing import compute_hashes
 from .source import Affected, DeleteOutcome, MoveOutcome
 
@@ -244,12 +251,9 @@ class DsmPhotoSource:
             offset += 1000
         return out
 
-    async def folder_items(self, folder_id: str) -> list[PhotoItem]:
-        # folder_id 필터는 실 NAS 동작 확인됨(2026-07): 해당 폴더의 "직속" 사진만
-        # 반환(하위 폴더 사진 미포함). 폴더 space는 메타 캐시에서 판정(UI가 트리
-        # 탐색 중 채움); 미스면 최상위를 한 번 로드해 시도.
-        # 대용량 리프 폴더(1000장 초과)는 전체 페이지네이션으로 순회(limit 잘림 방지).
-        space = self._folder_space(folder_id)
+    async def _filtered_items(self, space: str, filters: dict) -> list[PhotoItem]:
+        """All Browse.Item results matching a filter (folder/person/place),
+        fully paginated (limit-1000 truncation 방지)."""
         out: list[PhotoItem] = []
         offset = 0
         page_size = 1000
@@ -260,7 +264,7 @@ class DsmPhotoSource:
                 version=1,
                 sid=self._sid,
                 extra={
-                    "folder_id": int(folder_id),
+                    **filters,
                     "offset": offset,
                     "limit": page_size,
                     "additional": json.dumps(["thumbnail", "resolution"]),
@@ -272,6 +276,87 @@ class DsmPhotoSource:
                 break
             offset += page_size
         return out
+
+    async def folder_items(self, folder_id: str) -> list[PhotoItem]:
+        # folder_id 필터는 실 NAS 동작 확인됨(2026-07): 해당 폴더의 "직속" 사진만
+        # 반환(하위 폴더 사진 미포함). 폴더 space는 메타 캐시에서 판정(UI가 트리
+        # 탐색 중 채움); 미스면 최상위를 한 번 로드해 시도.
+        space = self._folder_space(folder_id)
+        return await self._filtered_items(space, {"folder_id": int(folder_id)})
+
+    # ------------------------------------------- AI classification (3단계)
+    # Synology Photos 내장 AI 결과 재활용 — SYNO.API.Info 프로브로 실 NAS 확인
+    # (2026-07-02): (Foto|FotoTeam).Browse.Person v1~3, Browse.Geocoding v1.
+
+    async def persons(self, space: str) -> list[PersonInfo]:
+        out: list[PersonInfo] = []
+        offset = 0
+        while True:
+            data = await self._dsm.call(
+                _ns(space, "SYNO.Foto.Browse.Person"),
+                "list",
+                version=1,
+                sid=self._sid,
+                extra={
+                    "offset": offset,
+                    "limit": 100,
+                    "additional": json.dumps(["thumbnail"]),
+                },
+            )
+            page = data.get("list", [])
+            for p in page:
+                if p.get("show") is False:
+                    continue  # user hid this face group in Synology Photos
+                thumb = (p.get("additional") or {}).get("thumbnail") or {}
+                unit = thumb.get("unit_id")
+                out.append(
+                    PersonInfo(
+                        id=str(p.get("id")),
+                        space=space,
+                        name=p.get("name") or "",
+                        item_count=p.get("item_count"),
+                        cover_item_id=str(unit) if unit else None,
+                        cover_cache_key=thumb.get("cache_key"),
+                    )
+                )
+            if len(page) < 100:
+                break
+            offset += 100
+        out.sort(key=lambda p: -(p.item_count or 0))
+        return out
+
+    async def person_items(self, space: str, person_id: str) -> list[PhotoItem]:
+        return await self._filtered_items(space, {"person_id": int(person_id)})
+
+    async def places(self, space: str) -> list[PlaceInfo]:
+        out: list[PlaceInfo] = []
+        offset = 0
+        while True:
+            data = await self._dsm.call(
+                _ns(space, "SYNO.Foto.Browse.Geocoding"),
+                "list",
+                version=1,
+                sid=self._sid,
+                extra={"offset": offset, "limit": 200},
+            )
+            page = data.get("list", [])
+            out.extend(
+                PlaceInfo(
+                    id=str(g.get("id")),
+                    space=space,
+                    name=g.get("name") or "",
+                    item_count=g.get("item_count"),
+                )
+                for g in page
+            )
+            if len(page) < 200:
+                break
+            offset += 200
+        out.sort(key=lambda g: -(g.item_count or 0))
+        return out
+
+    async def place_items(self, space: str, place_id: str) -> list[PhotoItem]:
+        return await self._filtered_items(space, {"geocoding_id": int(place_id)})
 
     async def folder_count(self, folder_id: str) -> int:
         # Browse.Item "count" takes the same filters as "list" — one cheap call

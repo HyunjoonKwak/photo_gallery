@@ -87,6 +87,37 @@ class FolderCountsResponse(BaseModel):
     counts: dict[str, int]
 
 
+class PersonInfo(BaseModel):
+    """A face group from Synology Photos' built-in AI (3단계 분류)."""
+
+    id: str
+    space: str
+    name: str = ""  # unnamed people come back as "" — UI shows a placeholder
+    item_count: int | None = None
+    # Cover face thumbnail — rides through the existing thumbnail proxy.
+    cover_item_id: str | None = None
+    cover_cache_key: str | None = None
+
+
+class PersonsResponse(BaseModel):
+    space: str
+    persons: list[PersonInfo]
+
+
+class PlaceInfo(BaseModel):
+    """A geocoded place group from Synology Photos (GPS 기반)."""
+
+    id: str
+    space: str
+    name: str
+    item_count: int | None = None
+
+
+class PlacesResponse(BaseModel):
+    space: str
+    places: list[PlaceInfo]
+
+
 class ProgressResponse(BaseModel):
     """Bulk-operation progress snapshot (progress_key polling)."""
 

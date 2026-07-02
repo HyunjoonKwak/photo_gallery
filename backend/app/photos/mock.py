@@ -23,7 +23,14 @@ from zlib import crc32
 
 from fastapi import HTTPException, status
 
-from ..schemas import PhotoBucket, PhotoFolder, PhotoItem, PlacedItem
+from ..schemas import (
+    PersonInfo,
+    PhotoBucket,
+    PhotoFolder,
+    PhotoItem,
+    PlaceInfo,
+    PlacedItem,
+)
 from .source import Affected, DeleteOutcome, MoveOutcome
 
 # (w, h) aspect seeds — mixed portrait/landscape so justified layout is exercised.
@@ -43,6 +50,20 @@ _DEFAULT_FOLDERS = [
 ]
 
 _MEMBERS = ["admin", "dad", "mom", "jimin"]
+
+# AI classification fakes (3단계): items are assigned deterministically by
+# index modulo, so groups stay stable across restarts. (name, modulo, remainder)
+_PERSONS = [
+    ("p-1", "지민", 3, 0),
+    ("p-2", "엄마", 4, 1),
+    ("p-3", "", 5, 2),  # unnamed face group — UI placeholder case
+]
+_PLACES = [
+    ("g-1", "대한민국 서울", 4, 0),
+    ("g-2", "대한민국 제주", 6, 1),
+]
+# Scanning every generated day is wasteful for a mock — cap the lookback.
+_CLASSIFY_DAYS_BACK = 60
 
 
 def _rng(seed: str) -> Random:
@@ -274,6 +295,81 @@ class MockPhotoSource:
             out.append(item.model_copy(update={"folder": self._folder_name(fid)}))
         out.sort(key=lambda i: (i.taken_at, i.id))
         return out
+
+    # ------------------------------------------- AI classification (3단계)
+    def _classify_pool(self, space: str) -> list[PhotoItem]:
+        """Recent items of a space (base ids, trash excluded) to group over."""
+        out: list[PhotoItem] = []
+        today = date.today()
+        for back in range(_CLASSIFY_DAYS_BACK):
+            day = (today - timedelta(days=back)).isoformat()
+            out.extend(
+                it
+                for it in _generate_day(space, day)
+                if it.id not in self._deleted
+            )
+        return out
+
+    @staticmethod
+    def _in_group(item_id: str, mod: int, rem: int) -> bool:
+        _, _, idx = _parse_id(item_id)
+        return idx % mod == rem
+
+    async def persons(self, space: str) -> list[PersonInfo]:
+        pool = self._classify_pool(space)
+        out: list[PersonInfo] = []
+        for pid, name, mod, rem in _PERSONS:
+            members = [it for it in pool if self._in_group(it.id, mod, rem)]
+            if not members:
+                continue
+            out.append(
+                PersonInfo(
+                    id=pid,
+                    space=space,
+                    name=name,
+                    item_count=len(members),
+                    cover_item_id=members[0].id,
+                    cover_cache_key="mock",
+                )
+            )
+        out.sort(key=lambda p: -(p.item_count or 0))
+        return out
+
+    async def person_items(self, space: str, person_id: str) -> list[PhotoItem]:
+        spec = next((p for p in _PERSONS if p[0] == person_id), None)
+        if spec is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="인물을 찾을 수 없습니다."
+            )
+        _, _, mod, rem = spec
+        return [
+            it for it in self._classify_pool(space) if self._in_group(it.id, mod, rem)
+        ]
+
+    async def places(self, space: str) -> list[PlaceInfo]:
+        pool = self._classify_pool(space)
+        out = [
+            PlaceInfo(
+                id=gid,
+                space=space,
+                name=name,
+                item_count=sum(1 for it in pool if self._in_group(it.id, mod, rem)),
+            )
+            for gid, name, mod, rem in _PLACES
+        ]
+        out.sort(key=lambda g: -(g.item_count or 0))
+        return [g for g in out if g.item_count]
+
+    async def place_items(self, space: str, place_id: str) -> list[PhotoItem]:
+        spec = next((g for g in _PLACES if g[0] == place_id), None)
+        if spec is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="장소를 찾을 수 없습니다."
+            )
+        _, _, mod, rem = spec
+        return [
+            it for it in self._classify_pool(space) if self._in_group(it.id, mod, rem)
+        ]
 
     async def purge_trash(self) -> None:
         # Trashed snapshots are gone for good; the op-log status flip (purged)

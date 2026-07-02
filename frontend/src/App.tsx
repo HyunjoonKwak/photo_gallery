@@ -21,6 +21,7 @@ const SCOPES: { space: Space; label: string }[] = [
 const VIEWS: { mode: ViewMode; label: string; icon: string }[] = [
   { mode: "timeline", label: "타임라인", icon: "📅" },
   { mode: "folders", label: "폴더", icon: "📁" },
+  { mode: "classify", label: "분류", icon: "✨" },
   { mode: "dedup", label: "중복 정리", icon: "🔁" },
 ];
 

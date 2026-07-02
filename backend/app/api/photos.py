@@ -29,6 +29,8 @@ from ..schemas import (
     MembersResponse,
     MoveRequest,
     OperationResponse,
+    PersonsResponse,
+    PlacesResponse,
 )
 from ..session_store import Session
 from .deps import get_current_session, get_photo_source
@@ -130,6 +132,47 @@ async def list_members(
             detail="관리자만 가족 구성원 목록을 볼 수 있습니다.",
         )
     return MembersResponse(members=await source.members())
+
+
+# --------------------------------------------- AI classification (3단계)
+# Synology Photos' built-in AI groups (faces, GPS places) — read-only here;
+# acting on them reuses the regular move/delete + undo pipeline.
+
+
+@router.get("/persons", response_model=PersonsResponse)
+async def list_persons(
+    space: Space = Query("team"),
+    source: PhotoSource = Depends(get_photo_source),
+) -> PersonsResponse:
+    return PersonsResponse(space=space, persons=await source.persons(space))
+
+
+@router.get("/person-items", response_model=BucketItemsResponse)
+async def list_person_items(
+    id: str,
+    space: Space = Query("team"),
+    source: PhotoSource = Depends(get_photo_source),
+) -> BucketItemsResponse:
+    items = await source.person_items(space, id)
+    return BucketItemsResponse(space=space, day="", items=items)
+
+
+@router.get("/places", response_model=PlacesResponse)
+async def list_places(
+    space: Space = Query("team"),
+    source: PhotoSource = Depends(get_photo_source),
+) -> PlacesResponse:
+    return PlacesResponse(space=space, places=await source.places(space))
+
+
+@router.get("/place-items", response_model=BucketItemsResponse)
+async def list_place_items(
+    id: str,
+    space: Space = Query("team"),
+    source: PhotoSource = Depends(get_photo_source),
+) -> BucketItemsResponse:
+    items = await source.place_items(space, id)
+    return BucketItemsResponse(space=space, day="", items=items)
 
 
 # ------------------------------------------------------------ file operations

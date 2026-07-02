@@ -14,6 +14,8 @@ import type {
   MoveRequest,
   OperationResponse,
   OperationsResponse,
+  PersonsResponse,
+  PlacesResponse,
   ProgressResponse,
   Space,
   TrashStatsResponse,
@@ -80,6 +82,18 @@ export const api = {
   folderCounts: (ids: string[]) =>
     request<FolderCountsResponse>(
       `/api/photos/folder-counts?ids=${encodeURIComponent(ids.join(","))}`,
+    ),
+  persons: (space: Space) =>
+    request<PersonsResponse>(`/api/photos/persons?space=${space}`),
+  personItems: (space: Space, id: string) =>
+    request<BucketItemsResponse>(
+      `/api/photos/person-items?space=${space}&id=${encodeURIComponent(id)}`,
+    ),
+  places: (space: Space) =>
+    request<PlacesResponse>(`/api/photos/places?space=${space}`),
+  placeItems: (space: Space, id: string) =>
+    request<BucketItemsResponse>(
+      `/api/photos/place-items?space=${space}&id=${encodeURIComponent(id)}`,
     ),
   members: () => request<MembersResponse>("/api/photos/members"),
   opMove: (body: MoveRequest) =>

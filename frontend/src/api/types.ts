@@ -56,6 +56,34 @@ export interface FolderCountsResponse {
   counts: Record<string, number>;
 }
 
+/** Synology Photos 내장 AI의 얼굴 그룹 (3단계 분류). */
+export interface PersonInfo {
+  id: string;
+  space: Space;
+  name: string; // "" = 이름 미지정 그룹
+  item_count: number | null;
+  cover_item_id: string | null;
+  cover_cache_key: string | null;
+}
+
+export interface PersonsResponse {
+  space: Space;
+  persons: PersonInfo[];
+}
+
+/** GPS 지오코딩 기반 장소 그룹. */
+export interface PlaceInfo {
+  id: string;
+  space: Space;
+  name: string;
+  item_count: number | null;
+}
+
+export interface PlacesResponse {
+  space: Space;
+  places: PlaceInfo[];
+}
+
 // --- file operations ---
 
 export interface MoveRequest {

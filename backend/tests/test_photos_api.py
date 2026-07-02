@@ -107,3 +107,33 @@ def test_system_info_mocked(logged_in):
 
 def test_logout_works_without_nas(logged_in):
     assert logged_in.post("/api/auth/logout").status_code == 204
+
+
+# --------------------------------------------- AI classification (3단계)
+
+
+def test_persons_and_person_items(logged_in):
+    persons = logged_in.get("/api/photos/persons?space=team").json()["persons"]
+    assert persons, "mock에는 항상 인물 그룹이 있어야 한다"
+    # Sorted biggest-first, cover thumbnail present, unnamed group included.
+    counts = [p["item_count"] for p in persons]
+    assert counts == sorted(counts, reverse=True)
+    assert persons[0]["cover_item_id"]
+    assert any(p["name"] == "" for p in persons)
+
+    items = logged_in.get(
+        f"/api/photos/person-items?space=team&id={persons[0]['id']}"
+    ).json()["items"]
+    assert len(items) == persons[0]["item_count"]
+
+    # Unknown person → 404.
+    assert logged_in.get("/api/photos/person-items?space=team&id=nope").status_code == 404
+
+
+def test_places_and_place_items(logged_in):
+    places = logged_in.get("/api/photos/places?space=team").json()["places"]
+    assert places
+    items = logged_in.get(
+        f"/api/photos/place-items?space=team&id={places[0]['id']}"
+    ).json()["items"]
+    assert len(items) == places[0]["item_count"]
