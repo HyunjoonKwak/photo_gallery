@@ -162,5 +162,6 @@
   - [x] **cross-space 이동(개인↔공용)** — `/photo` ↔ `/home/Photos` 양방향 CopyMove 실검증(에러 없음, 원상복구). 앱 `move`는 src/dest space별 프리픽스 계산으로 지원
   - [x] **폴더 트리 lazy 구현** — 실 NAS 폴더가 **1500+**, 전량 재귀는 40초라 비현실적. `SYNO.Foto.Browse.Folder`는 계층적(`id`로 직속 하위)이므로 **한 레벨씩 lazy 로드**(`folders(parent_id)`)로 재구현. 최상위(느림 11초)는 캐시+병렬, 하위는 즉시(0.03초). id→(space,path) 메타캐시로 파일작업 경로 해석. 프론트 `FolderTree` 재귀 컴포넌트(펼칠 때 하위 fetch, 드롭 대상). 실 NAS 이동→undo 통합 검증
   - **동작 노트**: 파일 이동/undo 후 Photos 재인덱싱으로 item id가 바뀜(예 1692→92388). 실사용은 작업마다 프론트가 buckets/items/folder-items 무효화·재조회하므로 새 id를 받아 정상. stale id 재사용만 주의
-  - [ ] 관리자 타인 폴더(/homes/<other>/Photos), 2단계 dedup 실스캔(대량 썸네일 해시)
+  - [x] **2단계 dedup 실스캔** — 개인 공간 29047장 스캔(28529 해시, ~518 broken 썸네일 skip, ~9분 @ 동시8·청크100). 결과 **8214 그룹, 24GB 절약가능**(exact 정확중복 + similar 유사). 연속촬영/버스트가 pHash로 정확히 묶임 — 자체 pHash 실데이터 검증 완료. **개선**: 스캔 병렬화(동시8)+청크(100)단위 진행률·저장, 개별 썸네일 실패는 skip(전체 실패 방지)
+  - [ ] 관리자 타인 폴더(/homes/<other>/Photos), 공용 공간(62636장) dedup 스캔
 - [ ] 3단계(AI 자동 분류) — 미착수

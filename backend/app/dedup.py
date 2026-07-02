@@ -26,7 +26,8 @@ from .schemas import DedupGroup, DedupItem, DedupJob
 logger = logging.getLogger(__name__)
 
 JOB_TYPE = "dedup_scan"
-_PROGRESS_EVERY = 25
+_HASH_CONCURRENCY = 8  # parallel thumbnail downloads per scan
+_CHUNK = 100  # items hashed + persisted + progress-updated per batch
 _BANDS = 8  # 8 bands × 8 bits — guarantees recall for hamming ≤ 7 ≥ threshold(≤10 UI cap? threshold ≤ 7 보장)
 
 # In-process handles to running scan tasks, keyed by space.
@@ -117,46 +118,52 @@ async def _run_scan(source: PhotoSource, sqlite_path: str, space: str, job_id: i
 
         processed = 0
         since_write = 0
+        skipped = 0
+        sem = asyncio.Semaphore(_HASH_CONCURRENCY)
+
+        async def hash_one(item):
+            # A single unhashable photo (broken thumbnail, transient 5xx) must
+            # not fail the whole scan — skip it and keep going.
+            async with sem:
+                try:
+                    sha, ph = await source.item_hashes(space, item)
+                except Exception:  # noqa: BLE001 - per-item boundary
+                    return None
+            return (
+                item.id, space, item.filename, item.taken_at, item.cache_key,
+                item.width, item.height, item.size, sha, ph,
+            )
+
         for bucket in buckets:
-            # Cancellation is checked per bucket — cheap and responsive enough.
             if _job_status(sqlite_path, job_id) == "cancelled":
                 return
             items = await source.items(space, bucket.day)
-            rows = []
-            for item in items:
-                processed += 1
-                if item.id in cached:
-                    continue
-                sha, ph = await source.item_hashes(space, item)
-                rows.append(
-                    (
-                        item.id,
-                        space,
-                        item.filename,
-                        item.taken_at,
-                        item.cache_key,
-                        item.width,
-                        item.height,
-                        item.size,
-                        sha,
-                        ph,
-                    )
-                )
-            if rows:
-                with connect(sqlite_path) as conn:
-                    conn.executemany(
-                        "INSERT OR REPLACE INTO photo_cache "
-                        "(file_id, space, path, taken_at, thumb_key, width, height, "
-                        " size, sha256, phash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                        rows,
-                    )
-                    conn.commit()
-            since_write += len(items)
-            if since_write >= _PROGRESS_EVERY:
+            to_hash = [it for it in items if it.id not in cached]
+            processed += len(items) - len(to_hash)  # already-hashed count now
+            # Process in chunks so a huge day (thousands of photos) still shows
+            # progress and persists incrementally (resume-friendly).
+            for start in range(0, len(to_hash), _CHUNK):
+                if _job_status(sqlite_path, job_id) == "cancelled":
+                    return
+                chunk = to_hash[start : start + _CHUNK]
+                results = await asyncio.gather(*(hash_one(it) for it in chunk))
+                rows = [r for r in results if r is not None]
+                skipped += len(chunk) - len(rows)
+                processed += len(chunk)
+                if rows:
+                    with connect(sqlite_path) as conn:
+                        conn.executemany(
+                            "INSERT OR REPLACE INTO photo_cache "
+                            "(file_id, space, path, taken_at, thumb_key, width, "
+                            " height, size, sha256, phash) "
+                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            rows,
+                        )
+                        conn.commit()
                 _update_job(sqlite_path, job_id, processed=processed)
-                since_write = 0
-                await asyncio.sleep(0)  # yield to the event loop
 
+        if skipped:
+            logger.warning("dedup scan skipped %d unhashable photos", skipped)
         _update_job(sqlite_path, job_id, processed=processed, status="done")
     except Exception as exc:  # noqa: BLE001 - job boundary: persist, don't crash the app
         logger.exception("dedup scan failed (space=%s)", space)
