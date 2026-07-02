@@ -51,16 +51,36 @@ export function Scrubber({
     onJump(offset);
   };
 
-  // Thin out labels so they never overlap (min ~44px apart on the rail).
-  const visibleLabels: ScrubberMarker[] = [];
-  let lastY = -Infinity;
+  // Label rule (Google Photos pattern): a YEAR label is pinned at the start
+  // of every year's region (its newest month) and always wins; MONTH labels
+  // fill the space between only where they don't collide with anything
+  // already placed. Years render bolder than months.
+  const GAP = 26; // min px between labels on the rail
+  const railYOf = (m: ScrubberMarker) => (m.offset / totalHeight) * railH;
+  type RailLabel = { key: string; y: number; text: string; kind: "year" | "month" };
+  const placed: RailLabel[] = [];
+  let lastYear = "";
   for (const m of markers) {
-    const y = (m.offset / totalHeight) * railH;
-    if (y - lastY >= 44) {
-      visibleLabels.push(m);
-      lastY = y;
+    const year = m.month.slice(0, 4);
+    if (year === lastYear) continue;
+    const y = railYOf(m);
+    if (!placed.length || y - placed[placed.length - 1].y >= GAP) {
+      placed.push({ key: `y-${m.month}`, y, text: year, kind: "year" });
+      lastYear = year;
     }
   }
+  for (const m of markers) {
+    const y = railYOf(m);
+    if (placed.every((p) => Math.abs(p.y - y) >= GAP)) {
+      placed.push({
+        key: `m-${m.month}`,
+        y,
+        text: `${Number(m.month.slice(5, 7))}월`,
+        kind: "month",
+      });
+    }
+  }
+  placed.sort((a, b) => a.y - b.y);
 
   return (
     <div
@@ -76,15 +96,17 @@ export function Scrubber({
       }}
       onPointerUp={() => setDragMonth(null)}
     >
-      {visibleLabels.map((m) => (
+      {placed.map((l) => (
         <div
-          key={m.month}
-          className="pointer-events-none absolute right-1 text-[10px] text-slate-400"
-          style={{ top: (m.offset / totalHeight) * railH }}
+          key={l.key}
+          className={`pointer-events-none absolute right-1 ${
+            l.kind === "year"
+              ? "text-[11px] font-semibold text-slate-500"
+              : "text-[10px] text-slate-400"
+          }`}
+          style={{ top: l.y }}
         >
-          {m.month.endsWith("-01") || m.month === visibleLabels[0]?.month
-            ? m.month.slice(0, 4)
-            : `${Number(m.month.slice(5, 7))}월`}
+          {l.text}
         </div>
       ))}
       <div
