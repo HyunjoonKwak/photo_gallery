@@ -10,7 +10,7 @@
  */
 
 import { create } from "zustand";
-import type { PhotoItem, Space } from "../api/types";
+import type { PhotoFolder, PhotoItem, Space } from "../api/types";
 
 const EMPTY_SET: ReadonlySet<string> = new Set<string>();
 
@@ -29,6 +29,11 @@ interface TimelineState {
   setSpace: (space: Space) => void;
   viewMode: ViewMode;
   setViewMode: (mode: ViewMode) => void;
+  /** Cross-view navigation: open the folder view at this breadcrumb path
+   * (set by e.g. the timeline's folder panel; consumed by FolderView). */
+  pendingFolderPath: PhotoFolder[] | null;
+  openFolderView: (path: PhotoFolder[]) => void;
+  consumePendingFolderPath: () => void;
   /** Admin only: the member whose photos are being organized (spec 4.5). */
   viewedOwner: string | null;
   setViewedOwner: (owner: string | null) => void;
@@ -84,6 +89,16 @@ export const useTimelineStore = create<TimelineState>()((set, get) => ({
   viewMode: "timeline",
   setViewMode: (viewMode) =>
     set({ viewMode, selected: EMPTY_SET, anchorId: null, lightboxId: null }),
+  pendingFolderPath: null,
+  openFolderView: (path) =>
+    set({
+      viewMode: "folders",
+      pendingFolderPath: path,
+      selected: EMPTY_SET,
+      anchorId: null,
+      lightboxId: null,
+    }),
+  consumePendingFolderPath: () => set({ pendingFolderPath: null }),
   viewedOwner: null,
   setViewedOwner: (viewedOwner) => set({ viewedOwner }),
 

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTimelineStore } from "../store/timeline";
 import { useFileOps } from "../hooks/useFileOps";
 import type { PhotoFolder } from "../api/types";
@@ -81,6 +81,17 @@ export function FolderView() {
   const [activePane, setActivePane] = useState<0 | 1>(0);
   const ops = useFileOps();
   const clearSelection = useTimelineStore((s) => s.clearSelection);
+
+  // Cross-view jump (e.g. timeline's folder panel): open the requested folder
+  // in pane A and make it the active pane.
+  const pendingPath = useTimelineStore((s) => s.pendingFolderPath);
+  useEffect(() => {
+    if (pendingPath) {
+      setPathA(pendingPath);
+      setActivePane(0);
+      useTimelineStore.getState().consumePendingFolderPath();
+    }
+  }, [pendingPath]);
 
   const currentA = pathA.length ? pathA[pathA.length - 1] : null;
   const currentB = pathB.length ? pathB[pathB.length - 1] : null;
