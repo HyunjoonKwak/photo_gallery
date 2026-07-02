@@ -8,8 +8,9 @@ import { useFileOps } from "../hooks/useFileOps";
 
 /** Duplicate cleanup view (D절):
  * scan → the groups list *is* the dry-run (what gets deleted + saved bytes) →
- * per-group reference (보관본) auto-suggested and flippable by clicking a
- * photo → cleanup reuses the standard delete flow (trash + undo toast).
+ * per-group KEEP SET (multi-select): the suggested reference starts kept, and
+ * each photo's badge toggles 보관↔삭제 — burst/similar groups can keep
+ * several shots. Cleanup reuses the standard delete flow (trash + undo).
  * The threshold slider re-groups near-duplicates live from persisted hashes.
  */
 export function DedupView() {
@@ -17,8 +18,10 @@ export function DedupView() {
   const queryClient = useQueryClient();
   const ops = useFileOps();
   const [threshold, setThreshold] = useState(5);
-  // Per-group user override of the suggested reference.
-  const [refOverride, setRefOverride] = useState<Map<string, string>>(new Map());
+  // Per-group keep set (default: the suggested reference only).
+  const [keepOverride, setKeepOverride] = useState<Map<string, Set<string>>>(
+    new Map(),
+  );
 
   const statusQuery = useQuery({
     queryKey: ["dedup-status", space],
@@ -54,19 +57,41 @@ export function DedupView() {
     if (jobDoneAt) queryClient.invalidateQueries({ queryKey: ["dedup-groups"] });
   }, [jobDoneAt, queryClient]);
 
-  const referenceOf = (g: DedupGroup) => refOverride.get(g.id) ?? g.reference_id;
+  // Effective keep set: user's toggles ∩ current items; never empty — falls
+  // back to the suggested reference (stale overrides can't nuke a group).
+  const keepSetOf = (g: DedupGroup): Set<string> => {
+    const override = keepOverride.get(g.id);
+    const valid = new Set(
+      [...(override ?? [g.reference_id])].filter((id) =>
+        g.items.some((i) => i.id === id),
+      ),
+    );
+    if (valid.size === 0) valid.add(g.reference_id);
+    return valid;
+  };
+
+  const toggleKeep = (g: DedupGroup, id: string) => {
+    const next = new Set(keepSetOf(g));
+    if (next.has(id)) {
+      if (next.size === 1) return; // always keep at least one photo
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    setKeepOverride((prev) => new Map(prev).set(g.id, next));
+  };
 
   const cleanupGroup = (g: DedupGroup) => {
-    const keep = referenceOf(g);
-    const victims = g.items.filter((i) => i.id !== keep).map((i) => i.id);
+    const keep = keepSetOf(g);
+    const victims = g.items.filter((i) => !keep.has(i.id)).map((i) => i.id);
     if (victims.length) ops.remove(victims);
   };
 
   const cleanupAll = () => {
     if (!data) return;
     const victims = data.groups.flatMap((g) => {
-      const keep = referenceOf(g);
-      return g.items.filter((i) => i.id !== keep).map((i) => i.id);
+      const keep = keepSetOf(g);
+      return g.items.filter((i) => !keep.has(i.id)).map((i) => i.id);
     });
     if (victims.length) ops.remove(victims);
   };
@@ -171,10 +196,8 @@ export function DedupView() {
             <GroupCard
               key={g.id}
               group={g}
-              referenceId={referenceOf(g)}
-              onPickReference={(id) =>
-                setRefOverride((prev) => new Map(prev).set(g.id, id))
-              }
+              keepSet={keepSetOf(g)}
+              onToggleKeep={(id) => toggleKeep(g, id)}
               onCleanup={() => cleanupGroup(g)}
               busy={ops.isBusy}
             />
@@ -187,18 +210,18 @@ export function DedupView() {
 
 function GroupCard({
   group,
-  referenceId,
-  onPickReference,
+  keepSet,
+  onToggleKeep,
   onCleanup,
   busy,
 }: {
   group: DedupGroup;
-  referenceId: string;
-  onPickReference: (id: string) => void;
+  keepSet: Set<string>;
+  onToggleKeep: (id: string) => void;
   onCleanup: () => void;
   busy: boolean;
 }) {
-  const victims = group.items.filter((i) => i.id !== referenceId);
+  const victims = group.items.filter((i) => !keepSet.has(i.id));
   const saved = victims.reduce((acc, i) => acc + (i.size ?? 0), 0);
 
   // 크게 보기: 그룹 사진들을 전역 ordered로 실어 라이트박스에서 ←/→ 로
@@ -222,7 +245,8 @@ function GroupCard({
           {group.kind === "exact" ? "정확 중복" : "유사 사진"}
         </span>
         <span className="text-xs text-slate-500">
-          {group.items.length}장 · 사진 클릭 = 크게 비교 · [보관] 클릭 = 보관본 변경
+          {group.items.length}장 중 <b>{keepSet.size}장 보관</b> · 사진 클릭 =
+          크게 비교 · 배지 클릭 = 보관↔삭제 전환
         </span>
         <button
           onClick={onCleanup}
@@ -237,9 +261,9 @@ function GroupCard({
           <DedupThumb
             key={item.id}
             item={item}
-            isReference={item.id === referenceId}
+            isKept={keepSet.has(item.id)}
             onView={() => openViewer(item.id)}
-            onPickReference={() => onPickReference(item.id)}
+            onToggleKeep={() => onToggleKeep(item.id)}
           />
         ))}
       </div>
@@ -255,14 +279,14 @@ function folderLabel(folder: string | null): string {
 
 function DedupThumb({
   item,
-  isReference,
+  isKept,
   onView,
-  onPickReference,
+  onToggleKeep,
 }: {
   item: DedupItem;
-  isReference: boolean;
+  isKept: boolean;
   onView: () => void;
-  onPickReference: () => void;
+  onToggleKeep: () => void;
 }) {
   return (
     <div className="w-40 text-left">
@@ -276,7 +300,7 @@ function DedupThumb({
           alt={item.filename}
           loading="lazy"
           className={`h-36 w-40 rounded-xl object-cover transition-all ${
-            isReference
+            isKept
               ? "ring-4 ring-green-500"
               : "opacity-70 grayscale-[25%] group-hover:opacity-100"
           }`}
@@ -285,17 +309,17 @@ function DedupThumb({
           🔍 크게 보기
         </span>
       </button>
-      {/* 보관본 선택은 사진 열기와 분리된 명시적 배지 클릭 */}
+      {/* 보관 여부는 사진 열기와 분리된 명시적 배지 토글 (멀티 보관 가능) */}
       <button
-        onClick={onPickReference}
-        title={isReference ? "현재 보관본" : "이 사진을 보관본으로"}
-        className={`absolute-none mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold transition-colors ${
-          isReference
-            ? "bg-green-600 text-white"
+        onClick={onToggleKeep}
+        title={isKept ? "클릭하면 삭제 예정으로" : "클릭하면 보관으로"}
+        className={`mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold transition-colors ${
+          isKept
+            ? "bg-green-600 text-white hover:bg-green-700"
             : "bg-slate-200 text-slate-500 hover:bg-green-100 hover:text-green-700"
         }`}
       >
-        {isReference ? "✓ 보관" : "삭제 예정 → 보관으로"}
+        {isKept ? "✓ 보관" : "삭제 예정"}
       </button>
       <p className="mt-1 truncate text-[11px] font-medium text-slate-600" title={item.filename}>
         {item.filename}
