@@ -51,6 +51,9 @@ IMAGE_TAG=latest ./deploy.sh update   # pull + 배포
 
 ## 4. 트러블슈팅
 
+- 컨테이너가 `Restarting`(exit 3) → `./data` 볼륨 쓰기 권한. 컨테이너는
+  비root(uid 10001)라 `chown -R 10001:10001 data`가 필요(`deploy.sh`가 자동
+  수행하지만, 수동은 `chown -R 10001:10001 data && ./deploy.sh restart`).
 - pull 403/denied → 패키지가 private이면 `deploy.sh login`(read:packages PAT).
 - 아키텍처 오류(exec format) → `manage.sh ghcr:push`가 amd64로 빌드했는지 확인
   (`BUILD_PLATFORMS` 기본 `linux/amd64`).
