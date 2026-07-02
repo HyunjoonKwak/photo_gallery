@@ -29,6 +29,7 @@ from datetime import date, datetime, timedelta
 
 from ..dsm.client import DsmClient
 from ..dsm.errors import DsmError
+from ..progress import ProgressFn
 from ..schemas import PhotoBucket, PhotoFolder, PhotoItem, PlacedItem
 from .hashing import compute_hashes
 from .source import Affected, DeleteOutcome, MoveOutcome
@@ -424,8 +425,35 @@ class DsmPhotoSource:
         prefix = self._share_prefix(space)
         return f"{prefix}{name}".replace("//", "/").rstrip("/") or prefix, space
 
+    # Bulk CopyMove is chunked so count-based progress can be reported between
+    # chunks (B-6 진행 바). Partial-failure semantics are unchanged: DSM's own
+    # task also processes files one by one server-side.
+    COPYMOVE_CHUNK = 25
+
+    async def _copymove_chunked(
+        self,
+        src_paths: list[str],
+        dest_dir: str,
+        *,
+        remove_src: bool,
+        on_progress: ProgressFn | None,
+    ) -> None:
+        total = len(src_paths)
+        if on_progress:
+            on_progress(0, total)
+        for start in range(0, total, self.COPYMOVE_CHUNK):
+            chunk = src_paths[start : start + self.COPYMOVE_CHUNK]
+            await self._copymove(chunk, dest_dir, remove_src=remove_src)
+            if on_progress:
+                on_progress(min(start + len(chunk), total), total)
+
     async def move(
-        self, space: str, item_ids: list[str], dest_folder_id: str, copy: bool
+        self,
+        space: str,
+        item_ids: list[str],
+        dest_folder_id: str,
+        copy: bool,
+        on_progress: ProgressFn | None = None,
     ) -> MoveOutcome:
         metas = await self._item_meta(space, item_ids)
         dest_dir, dest_space = await self._dest_dir(dest_folder_id)
@@ -434,7 +462,9 @@ class DsmPhotoSource:
         affected: set[tuple[str, str]] = set()
         src_paths = [metas[i]["path"] for i in item_ids if i in metas]
 
-        await self._copymove(src_paths, dest_dir, remove_src=not copy)
+        await self._copymove_chunked(
+            src_paths, dest_dir, remove_src=not copy, on_progress=on_progress
+        )
 
         for item_id in item_ids:
             m = metas.get(item_id)
@@ -457,7 +487,12 @@ class DsmPhotoSource:
         self._invalidate(affected)
         return outcome
 
-    async def delete(self, space: str, item_ids: list[str]) -> DeleteOutcome:
+    async def delete(
+        self,
+        space: str,
+        item_ids: list[str],
+        on_progress: ProgressFn | None = None,
+    ) -> DeleteOutcome:
         metas = await self._item_meta(space, item_ids)
         outcome = DeleteOutcome()
         affected: set[tuple[str, str]] = set()
@@ -466,7 +501,9 @@ class DsmPhotoSource:
         trash_dir = f"{self.TRASH_ROOT}/t{_time.time_ns()}"
         await self._ensure_dir(trash_dir)
         src_paths = [metas[i]["path"] for i in item_ids if i in metas]
-        await self._copymove(src_paths, trash_dir, remove_src=True)
+        await self._copymove_chunked(
+            src_paths, trash_dir, remove_src=True, on_progress=on_progress
+        )
 
         for item_id in item_ids:
             m = metas.get(item_id)
@@ -483,23 +520,38 @@ class DsmPhotoSource:
         self._invalidate(affected)
         return outcome
 
-    async def _reverse(self, placements: list[PlacedItem]) -> Affected:
-        """Move each item from its current (trash_path) location back to src."""
+    async def _reverse(
+        self, placements: list[PlacedItem], on_progress: ProgressFn | None = None
+    ) -> Affected:
+        """Move each item from its current (trash_path) location back to src.
+
+        Per-item CopyMove (items return to different folders), so undoing a
+        large operation is the slowest bulk path — progress is per item.
+        """
         affected: set[tuple[str, str]] = set()
-        for p in placements:
+        total = len(placements)
+        if on_progress:
+            on_progress(0, total)
+        for i, p in enumerate(placements):
             if not p.src_path or not p.trash_path:
                 continue
             dest_dir = p.src_path.rsplit("/", 1)[0]
             await self._copymove([p.trash_path], dest_dir, remove_src=True)
             affected.add((p.space, p.day))
+            if on_progress:
+                on_progress(i + 1, total)
         self._invalidate(affected)
         return sorted(affected)
 
-    async def place(self, placements: list[PlacedItem]) -> Affected:
-        return await self._reverse(placements)  # undo move
+    async def place(
+        self, placements: list[PlacedItem], on_progress: ProgressFn | None = None
+    ) -> Affected:
+        return await self._reverse(placements, on_progress)  # undo move
 
-    async def restore(self, placements: list[PlacedItem]) -> Affected:
-        return await self._reverse(placements)  # undo delete (from app trash)
+    async def restore(
+        self, placements: list[PlacedItem], on_progress: ProgressFn | None = None
+    ) -> Affected:
+        return await self._reverse(placements, on_progress)  # undo delete
 
     async def remove_items(self, item_ids: list[str]) -> Affected:
         # undo copy: item_ids are actually the created copies' absolute paths.

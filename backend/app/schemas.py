@@ -87,6 +87,15 @@ class FolderCountsResponse(BaseModel):
     counts: dict[str, int]
 
 
+class ProgressResponse(BaseModel):
+    """Bulk-operation progress snapshot (progress_key polling)."""
+
+    active: bool
+    done: int = 0
+    total: int = 0
+    label: str = ""
+
+
 # --- File operations (move/copy/delete + undo) ---
 
 
@@ -113,12 +122,15 @@ class MoveRequest(BaseModel):
     copy_mode: bool = False
     # Set when an admin organizes another member's photos (audit trail).
     target_user: str | None = Field(default=None, max_length=128)
+    # Client-generated key for count-based progress polling (B-6 진행 바).
+    progress_key: str | None = Field(default=None, max_length=64)
 
 
 class DeleteRequest(BaseModel):
     space: str = "team"
     item_ids: list[str] = Field(min_length=1, max_length=500)
     target_user: str | None = Field(default=None, max_length=128)
+    progress_key: str | None = Field(default=None, max_length=64)
 
 
 class CreateFolderRequest(BaseModel):

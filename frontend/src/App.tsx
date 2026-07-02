@@ -8,6 +8,7 @@ import { LoginForm } from "./components/LoginForm";
 import { ApiInfoPanel } from "./components/ApiInfoPanel";
 import { TimelineScreen } from "./components/TimelineScreen";
 import { OperationsPanel } from "./components/OperationsPanel";
+import { BulkProgress } from "./components/BulkProgress";
 import { Toasts } from "./components/Toasts";
 
 // 범위(어느 저장소) — '폴더'라는 단어와 충돌하지 않도록 스코프 이름만 사용.
@@ -233,6 +234,7 @@ export default function App() {
         <TimelineScreen />
       </div>
       {showOps && <OperationsPanel onClose={() => setShowOps(false)} />}
+      <BulkProgress />
       <Toasts />
     </div>
   );

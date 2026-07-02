@@ -15,6 +15,7 @@ across accounts — a mock artifact; real per-user data arrives with DSM.
 
 from __future__ import annotations
 
+import asyncio
 import re
 from datetime import date, timedelta
 from random import Random
@@ -304,15 +305,30 @@ class MockPhotoSource:
         return sha, f"{ph:016x}"
 
     # ------------------------------------------------------------ write side
+    @staticmethod
+    async def _tick(on_progress, done: int, total: int) -> None:
+        """Simulate bulk latency for the progress bar (every 10th item) — real
+        NAS bulk ops take seconds (CopyMove task per chunk), mock mimics that
+        so the B-6 progress bar is exercisable without a NAS."""
+        if on_progress and (done % 10 == 0 or done == total):
+            on_progress(done, total)
+            await asyncio.sleep(0.1)
+
     async def move(
-        self, space: str, item_ids: list[str], dest_folder_id: str, copy: bool
+        self,
+        space: str,
+        item_ids: list[str],
+        dest_folder_id: str,
+        copy: bool,
+        on_progress=None,
     ) -> MoveOutcome:
         # space is ignored: the mock encodes the space in each item id.
         dest = self._folder_by_id(dest_folder_id)
         outcome = MoveOutcome(dest_space=dest.space, dest_name=dest.name)
         affected: set[tuple[str, str]] = set()
 
-        for item_id in item_ids:
+        for done, item_id in enumerate(item_ids, start=1):
+            await self._tick(on_progress, done, len(item_ids))
             if item_id in self._deleted:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
@@ -340,10 +356,13 @@ class MockPhotoSource:
         self._touch(outcome.affected)
         return outcome
 
-    async def delete(self, space: str, item_ids: list[str]) -> DeleteOutcome:
+    async def delete(
+        self, space: str, item_ids: list[str], on_progress=None
+    ) -> DeleteOutcome:
         outcome = DeleteOutcome()
         affected: set[tuple[str, str]] = set()
-        for item_id in item_ids:
+        for done, item_id in enumerate(item_ids, start=1):
+            await self._tick(on_progress, done, len(item_ids))
             if item_id in self._deleted:
                 continue  # already trashed — idempotent
             item = self._resolve_item(item_id)
@@ -360,9 +379,12 @@ class MockPhotoSource:
         return outcome
 
     # ------------------------------------------------------ undo primitives
-    async def place(self, placements: list[PlacedItem]) -> Affected:
+    async def place(
+        self, placements: list[PlacedItem], on_progress=None
+    ) -> Affected:
         affected: set[tuple[str, str]] = set()
-        for p in placements:
+        for done, p in enumerate(placements, start=1):
+            await self._tick(on_progress, done, len(placements))
             current_space, _ = self._effective_loc(p.id)
             base_space, _, _ = _parse_id(p.id)
             if p.space == base_space and p.folder_id is None and p.id not in self._extras:
@@ -375,9 +397,12 @@ class MockPhotoSource:
         self._touch(result)
         return result
 
-    async def restore(self, placements: list[PlacedItem]) -> Affected:
+    async def restore(
+        self, placements: list[PlacedItem], on_progress=None
+    ) -> Affected:
         affected: set[tuple[str, str]] = set()
-        for p in placements:
+        for done, p in enumerate(placements, start=1):
+            await self._tick(on_progress, done, len(placements))
             snapshot = self._deleted.pop(p.id, None)
             if snapshot is None:
                 # Server restarted since the delete — mock trash is in-memory.

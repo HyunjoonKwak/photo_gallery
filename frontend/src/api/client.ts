@@ -14,6 +14,7 @@ import type {
   MoveRequest,
   OperationResponse,
   OperationsResponse,
+  ProgressResponse,
   Space,
   UserInfo,
 } from "./types";
@@ -96,8 +97,17 @@ export const api = {
       body: JSON.stringify(body),
     }),
   listOps: () => request<OperationsResponse>("/api/ops"),
-  undoOp: (opId: number) =>
-    request<OperationResponse>(`/api/ops/${opId}/undo`, { method: "POST" }),
+  undoOp: (opId: number, progressKey?: string) =>
+    request<OperationResponse>(
+      progressKey
+        ? `/api/ops/${opId}/undo?progress_key=${encodeURIComponent(progressKey)}`
+        : `/api/ops/${opId}/undo`,
+      { method: "POST" },
+    ),
+  opProgress: (key: string) =>
+    request<ProgressResponse>(
+      `/api/ops/progress?key=${encodeURIComponent(key)}`,
+    ),
   dedupScan: (space: Space) =>
     request<DedupJob>("/api/dedup/scan", {
       method: "POST",

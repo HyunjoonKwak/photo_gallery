@@ -13,6 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Protocol
 
+from ..progress import ProgressFn
 from ..schemas import PhotoBucket, PhotoFolder, PhotoItem, PlacedItem
 
 SPACES = ("personal", "team")
@@ -86,25 +87,40 @@ class PhotoSource(Protocol):
 
     # ----------------------------------------------------------- write side
     async def move(
-        self, space: str, item_ids: list[str], dest_folder_id: str, copy: bool
+        self,
+        space: str,
+        item_ids: list[str],
+        dest_folder_id: str,
+        copy: bool,
+        on_progress: ProgressFn | None = None,
     ) -> MoveOutcome:
         """Move (or copy) items into a folder — cross-space allowed.
 
         ``space`` is the source space of the items (needed by the DSM source to
-        resolve the share prefix; the mock source ignores it).
+        resolve the share prefix; the mock source ignores it). ``on_progress``
+        receives (done, total) as chunks complete (B-6 진행 바).
         """
         ...
 
-    async def delete(self, space: str, item_ids: list[str]) -> DeleteOutcome:
+    async def delete(
+        self,
+        space: str,
+        item_ids: list[str],
+        on_progress: ProgressFn | None = None,
+    ) -> DeleteOutcome:
         """Send items to the app trash (never permanent — spec: 휴지통 + Undo)."""
         ...
 
     # ------------------------------------------------------ undo primitives
-    async def place(self, placements: list[PlacedItem]) -> Affected:
+    async def place(
+        self, placements: list[PlacedItem], on_progress: ProgressFn | None = None
+    ) -> Affected:
         """Put items back at recorded locations (undo of a move)."""
         ...
 
-    async def restore(self, placements: list[PlacedItem]) -> Affected:
+    async def restore(
+        self, placements: list[PlacedItem], on_progress: ProgressFn | None = None
+    ) -> Affected:
         """Bring items back from trash (undo of a delete)."""
         ...
 

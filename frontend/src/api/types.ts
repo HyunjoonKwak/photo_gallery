@@ -64,12 +64,22 @@ export interface MoveRequest {
   dest_folder_id: string;
   copy_mode: boolean;
   target_user?: string;
+  /** Client-generated key for count-based progress polling. */
+  progress_key?: string;
 }
 
 export interface DeleteRequest {
   space: Space;
   item_ids: string[];
   target_user?: string;
+  progress_key?: string;
+}
+
+export interface ProgressResponse {
+  active: boolean;
+  done: number;
+  total: number;
+  label: string;
 }
 
 export interface CreateFolderRequest {

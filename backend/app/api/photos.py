@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from ..config import Settings, get_settings
 from ..operations import execute_create_folder, execute_delete, execute_move
 from ..photos.source import PhotoSource
+from .. import progress
 from ..schemas import (
     BucketItemsResponse,
     BucketsResponse,
@@ -142,9 +143,17 @@ async def op_move(
     settings: Settings = Depends(get_settings),
 ) -> OperationResponse:
     _check_target_user(session, req.target_user)
-    return await execute_move(
-        source, settings.sqlite_path, user=session.account, req=req
-    )
+    verb = "복사" if req.copy_mode else "이동"
+    try:
+        return await execute_move(
+            source,
+            settings.sqlite_path,
+            user=session.account,
+            req=req,
+            on_progress=progress.callback(req.progress_key, verb),
+        )
+    finally:
+        progress.clear(req.progress_key)
 
 
 @router.post("/ops/delete", response_model=OperationResponse)
@@ -155,9 +164,16 @@ async def op_delete(
     settings: Settings = Depends(get_settings),
 ) -> OperationResponse:
     _check_target_user(session, req.target_user)
-    return await execute_delete(
-        source, settings.sqlite_path, user=session.account, req=req
-    )
+    try:
+        return await execute_delete(
+            source,
+            settings.sqlite_path,
+            user=session.account,
+            req=req,
+            on_progress=progress.callback(req.progress_key, "삭제"),
+        )
+    finally:
+        progress.clear(req.progress_key)
 
 
 @router.post("/folders", response_model=OperationResponse)

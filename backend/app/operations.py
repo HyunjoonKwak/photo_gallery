@@ -20,6 +20,7 @@ from fastapi import HTTPException, status
 from .db import connect
 from .dedup import remove_cached_items
 from .photos.source import PhotoSource
+from .progress import ProgressFn
 from .schemas import (
     AffectedDay,
     CreateFolderRequest,
@@ -76,10 +77,15 @@ def _record(
 
 
 async def execute_move(
-    source: PhotoSource, sqlite_path: str, *, user: str, req: MoveRequest
+    source: PhotoSource,
+    sqlite_path: str,
+    *,
+    user: str,
+    req: MoveRequest,
+    on_progress: ProgressFn | None = None,
 ) -> OperationResponse:
     outcome = await source.move(
-        req.space, req.item_ids, req.dest_folder_id, req.copy_mode
+        req.space, req.item_ids, req.dest_folder_id, req.copy_mode, on_progress
     )
     verb = "복사" if req.copy_mode else "이동"
     summary = f"{len(req.item_ids)}장을 '{outcome.dest_name or '대상'}' 폴더로 {verb}"
@@ -108,9 +114,14 @@ async def execute_move(
 
 
 async def execute_delete(
-    source: PhotoSource, sqlite_path: str, *, user: str, req: DeleteRequest
+    source: PhotoSource,
+    sqlite_path: str,
+    *,
+    user: str,
+    req: DeleteRequest,
+    on_progress: ProgressFn | None = None,
 ) -> OperationResponse:
-    outcome = await source.delete(req.space, req.item_ids)
+    outcome = await source.delete(req.space, req.item_ids, on_progress)
     # Trashed items must vanish from duplicate groups; a later restore simply
     # re-hashes them on the next scan (photo_cache is a rebuildable cache).
     remove_cached_items(sqlite_path, [p.id for p in outcome.deleted])
@@ -161,7 +172,10 @@ async def execute_create_folder(
 
 
 async def undo_operation(
-    source: PhotoSource, sqlite_path: str, op_id: int
+    source: PhotoSource,
+    sqlite_path: str,
+    op_id: int,
+    on_progress: ProgressFn | None = None,
 ) -> OperationResponse:
     with connect(sqlite_path) as conn:
         row = conn.execute(
@@ -180,12 +194,16 @@ async def undo_operation(
     op_type = row["type"]
 
     if op_type == "move":
-        affected = await source.place([PlacedItem(**p) for p in payload["moved"]])
+        affected = await source.place(
+            [PlacedItem(**p) for p in payload["moved"]], on_progress
+        )
     elif op_type == "copy":
         affected = await source.remove_items(payload["created_ids"])
         remove_cached_items(sqlite_path, payload["created_ids"])
     elif op_type == "delete":
-        affected = await source.restore([PlacedItem(**p) for p in payload["deleted"]])
+        affected = await source.restore(
+            [PlacedItem(**p) for p in payload["deleted"]], on_progress
+        )
     elif op_type == "mkdir":
         if not await source.remove_folder(payload["folder_id"]):
             raise HTTPException(

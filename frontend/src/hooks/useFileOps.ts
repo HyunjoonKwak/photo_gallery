@@ -7,8 +7,46 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import type { OperationResponse, Space } from "../api/types";
+import { useProgressStore } from "../store/progress";
 import { useTimelineStore } from "../store/timeline";
 import { useToastStore } from "../store/toast";
+
+/** crypto.randomUUID is secure-context only — plain-HTTP NAS access
+ * (http://<nas-ip>:9800) doesn't have it, so fall back to a manual key. */
+function genProgressKey(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `p-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
+/** Start count-based progress tracking for one bulk mutation (B-6): create a
+ * key the backend reports against, poll it while the request runs, and hand
+ * back `stop` for the mutation's onSettled. */
+function startProgress(label: string) {
+  const key = genProgressKey();
+  const store = useProgressStore.getState();
+  store.start(key, label);
+  const timer = window.setInterval(() => {
+    api
+      .opProgress(key)
+      .then((r) => {
+        if (r.active) {
+          useProgressStore.getState().patch(key, r.done, r.total, r.label);
+        }
+      })
+      .catch(() => {
+        // polling is best-effort; the bar just stops updating
+      });
+  }, 700);
+  return {
+    key,
+    stop: () => {
+      window.clearInterval(timer);
+      useProgressStore.getState().clear(key);
+    },
+  };
+}
 
 export function useFileOps() {
   const queryClient = useQueryClient();
@@ -26,7 +64,8 @@ export function useFileOps() {
   };
 
   const undoMutation = useMutation({
-    mutationFn: api.undoOp,
+    mutationFn: (vars: { opId: number; progressKey?: string }) =>
+      api.undoOp(vars.opId, vars.progressKey),
     onSuccess: (res) => {
       invalidateAffected(res);
       useToastStore.getState().push(res.summary);
@@ -34,13 +73,18 @@ export function useFileOps() {
     onError: (err) => useToastStore.getState().push((err as Error).message),
   });
 
+  const runUndo = (opId: number) => {
+    const p = startProgress("되돌리기");
+    undoMutation.mutate({ opId, progressKey: p.key }, { onSettled: p.stop });
+  };
+
   const afterOperation = (res: OperationResponse) => {
     useTimelineStore.getState().clearSelection();
     invalidateAffected(res);
     useToastStore.getState().push(
       `${res.summary}했습니다`,
       res.undoable
-        ? { label: "되돌리기", run: () => undoMutation.mutate(res.operation_id) }
+        ? { label: "되돌리기", run: () => runUndo(res.operation_id) }
         : undefined,
     );
   };
@@ -66,7 +110,11 @@ export function useFileOps() {
       useToastStore.getState().push(
         `${res.summary}했습니다`,
         res.undoable
-          ? { label: "되돌리기", run: () => undoMutation.mutate(res.operation_id) }
+          ? {
+              label: "되돌리기",
+              // mkdir undo is a single folder removal — no progress needed
+              run: () => undoMutation.mutate({ opId: res.operation_id }),
+            }
           : undefined,
       );
     },
@@ -86,22 +134,35 @@ export function useFileOps() {
   };
 
   return {
-    move: (itemIds: string[], folderId: string, copyMode: boolean) =>
-      moveMutation.mutate({
-        space: spaceOf(itemIds),
-        item_ids: itemIds,
-        dest_folder_id: folderId,
-        copy_mode: copyMode,
-        target_user: targetUser(),
-      }),
-    remove: (itemIds: string[], onSuccess?: () => void) =>
+    move: (itemIds: string[], folderId: string, copyMode: boolean) => {
+      const p = startProgress(copyMode ? "복사" : "이동");
+      moveMutation.mutate(
+        {
+          space: spaceOf(itemIds),
+          item_ids: itemIds,
+          dest_folder_id: folderId,
+          copy_mode: copyMode,
+          target_user: targetUser(),
+          progress_key: p.key,
+        },
+        { onSettled: p.stop },
+      );
+    },
+    remove: (itemIds: string[], onSuccess?: () => void) => {
+      const p = startProgress("삭제");
       deleteMutation.mutate(
-        { space: spaceOf(itemIds), item_ids: itemIds, target_user: targetUser() },
-        { onSuccess: () => onSuccess?.() },
-      ),
+        {
+          space: spaceOf(itemIds),
+          item_ids: itemIds,
+          target_user: targetUser(),
+          progress_key: p.key,
+        },
+        { onSuccess: () => onSuccess?.(), onSettled: p.stop },
+      );
+    },
     createFolder: (space: Space, name: string) =>
       mkdirMutation.mutate({ space, name, target_user: targetUser() }),
-    undo: (opId: number) => undoMutation.mutate(opId),
+    undo: runUndo,
     isBusy:
       moveMutation.isPending || deleteMutation.isPending || mkdirMutation.isPending,
   };

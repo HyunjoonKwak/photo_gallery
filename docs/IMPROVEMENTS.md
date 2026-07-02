@@ -83,7 +83,7 @@
 - [x] 가역 작업(이동/휴지통행 삭제)은 **확인 팝업 없이 Undo 토스트** ([NN/g Confirmation Dialogs](https://www.nngroup.com/articles/confirmation-dialog/)) — 이동/복사/삭제/폴더생성 전부 즉시 실행 + "되돌리기" 액션 토스트
 - [x] 액션 버튼 있는 토스트는 **7–10초** 유지 + 호버 시 타이머 정지 (3초는 너무 짧음) — 8초 + 호버 정지(`Toasts.tsx`)
 - [x] **작업 기록 패널이 토스트의 안전망** — OperationsPanel에 항목별 [되돌리기] 구현됨
-- [ ] **10초 초과 벌크 작업은 개수 기반 진행 바**("34/120장 이동 중") + 백그라운드 진행 ([NN/g Progress Indicators](https://www.nngroup.com/articles/progress-indicators/))
+- [x] **벌크 작업 개수 기반 진행 바** (2026-07-02, NN/g) — 이동/복사/삭제/되돌리기에 "34/120장 이동 중" 진행 바. 백엔드: CopyMove를 25개 청크로 분할 실행 + `progress_key`(클라 생성) 기반 인메모리 진행률 레지스트리(TTL 프룬) + `GET /api/ops/progress` 폴링 엔드포인트; undo(`_reverse`)는 항목 단위 보고(항목별 CopyMove라 가장 느린 경로). 프론트: `useFileOps`가 700ms 폴링→`BulkProgress` 바(하단 중앙, **1초 이상 걸릴 때만 표시** — 짧은 작업엔 안 뜸). mock은 실 NAS 벌크 지연을 시뮬레이션(10개당 0.1s)해 NAS 없이 바 확인 가능. e2e: 181장 삭제에서 "70/181장 삭제 중…" 렌더 확인. **주의**: `crypto.randomUUID`는 secure context 전용이라 HTTP 접속(NAS)용 fallback 키 생성 포함
 - [ ] **영구 삭제만** 확인 다이얼로그("n장 영구 삭제" 명시) — 휴지통 30일 보존 후 영구삭제는 Immich 패턴
 - [ ] 파괴적 버튼은 일반 버튼과 색·간격으로 분리(인접 배치가 사고 유발)
 
