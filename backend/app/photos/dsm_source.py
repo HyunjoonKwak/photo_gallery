@@ -342,6 +342,32 @@ class DsmPhotoSource:
             id=item_id, folder=folder_name, exif=exif, address=address
         )
 
+    async def item_folders(
+        self, space: str, item_ids: list[str]
+    ) -> dict[str, str | None]:
+        # Batched Browse.Item get — additional.folder is a path STRING on the
+        # real NAS (2026-07-02 raw 확인). Used by dedup group cards, so one
+        # call per ~100 items instead of one per item.
+        out: dict[str, str | None] = {}
+        for start in range(0, len(item_ids), 100):
+            chunk = item_ids[start : start + 100]
+            data = await self._dsm.call(
+                _ns(space, "SYNO.Foto.Browse.Item"),
+                "get",
+                version=1,
+                sid=self._sid,
+                extra={
+                    "id": json.dumps([int(i) for i in chunk]),
+                    "additional": json.dumps(["folder"]),
+                },
+            )
+            for it in data.get("list", []):
+                folder = (it.get("additional") or {}).get("folder")
+                out[str(it.get("id"))] = (
+                    folder.get("name") if isinstance(folder, dict) else (folder or None)
+                )
+        return out
+
     # ------------------------------------------- AI classification (3단계)
     # Synology Photos 내장 AI 결과 재활용 — SYNO.API.Info 프로브로 실 NAS 확인
     # (2026-07-02): (Foto|FotoTeam).Browse.Person v1~3, Browse.Geocoding v1.

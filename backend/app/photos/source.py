@@ -79,6 +79,12 @@ class PhotoSource(Protocol):
         """Folder path + EXIF + location for one item (lightbox info panel)."""
         ...
 
+    async def item_folders(
+        self, space: str, item_ids: list[str]
+    ) -> dict[str, str | None]:
+        """id → folder path for a batch of items (dedup group cards)."""
+        ...
+
     # ------------------------------------------- AI classification (3단계)
     # Synology Photos' own AI has already indexed faces (인물) and GPS places
     # (장소); we read those groups and reuse the move+undo pipeline to act on

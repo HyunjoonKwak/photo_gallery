@@ -201,6 +201,14 @@ function GroupCard({
   const victims = group.items.filter((i) => i.id !== referenceId);
   const saved = victims.reduce((acc, i) => acc + (i.size ?? 0), 0);
 
+  // 크게 보기: 그룹 사진들을 전역 ordered로 실어 라이트박스에서 ←/→ 로
+  // 그룹 안에서만 넘기며 비교 (i = EXIF/폴더 정보, Delete = 휴지통).
+  const openViewer = (id: string) => {
+    const s = useTimelineStore.getState();
+    s.setOrdered(group.items);
+    s.openLightbox(id);
+  };
+
   return (
     <div className="rounded-2xl bg-white p-4 shadow-sm">
       <div className="mb-3 flex items-center gap-2">
@@ -214,7 +222,7 @@ function GroupCard({
           {group.kind === "exact" ? "정확 중복" : "유사 사진"}
         </span>
         <span className="text-xs text-slate-500">
-          {group.items.length}장 · 사진을 클릭해 보관본 변경
+          {group.items.length}장 · 사진 클릭 = 크게 비교 · [보관] 클릭 = 보관본 변경
         </span>
         <button
           onClick={onCleanup}
@@ -230,7 +238,8 @@ function GroupCard({
             key={item.id}
             item={item}
             isReference={item.id === referenceId}
-            onClick={() => onPickReference(item.id)}
+            onView={() => openViewer(item.id)}
+            onPickReference={() => onPickReference(item.id)}
           />
         ))}
       </div>
@@ -238,37 +247,69 @@ function GroupCard({
   );
 }
 
+/** Trim the space prefix noise off a folder path for the card meta line. */
+function folderLabel(folder: string | null): string {
+  if (!folder) return "폴더 정보 없음";
+  return folder === "/" ? "/ (최상위)" : folder;
+}
+
 function DedupThumb({
   item,
   isReference,
-  onClick,
+  onView,
+  onPickReference,
 }: {
   item: DedupItem;
   isReference: boolean;
-  onClick: () => void;
+  onView: () => void;
+  onPickReference: () => void;
 }) {
   return (
-    <button onClick={onClick} className="group relative text-left" title={item.filename}>
-      <img
-        src={thumbnailUrl(item.space, item.id, item.cache_key, "sm")}
-        alt={item.filename}
-        loading="lazy"
-        className={`h-28 w-28 rounded-xl object-cover transition-all ${
+    <div className="w-40 text-left">
+      <button
+        onClick={onView}
+        title="클릭해서 크게 비교"
+        className="group relative block"
+      >
+        <img
+          src={thumbnailUrl(item.space, item.id, item.cache_key, "sm")}
+          alt={item.filename}
+          loading="lazy"
+          className={`h-36 w-40 rounded-xl object-cover transition-all ${
+            isReference
+              ? "ring-4 ring-green-500"
+              : "opacity-70 grayscale-[25%] group-hover:opacity-100"
+          }`}
+        />
+        <span className="absolute bottom-1.5 right-1.5 rounded-full bg-black/50 px-1.5 py-0.5 text-[10px] text-white opacity-0 transition-opacity group-hover:opacity-100">
+          🔍 크게 보기
+        </span>
+      </button>
+      {/* 보관본 선택은 사진 열기와 분리된 명시적 배지 클릭 */}
+      <button
+        onClick={onPickReference}
+        title={isReference ? "현재 보관본" : "이 사진을 보관본으로"}
+        className={`absolute-none mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold transition-colors ${
           isReference
-            ? "ring-4 ring-green-500"
-            : "opacity-60 grayscale-[30%] group-hover:opacity-90"
-        }`}
-      />
-      <span
-        className={`absolute left-1.5 top-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
-          isReference ? "bg-green-600 text-white" : "bg-black/50 text-white/90"
+            ? "bg-green-600 text-white"
+            : "bg-slate-200 text-slate-500 hover:bg-green-100 hover:text-green-700"
         }`}
       >
-        {isReference ? "보관" : "삭제 예정"}
-      </span>
-      <span className="mt-1 block w-28 truncate text-[10px] text-slate-500">
-        {item.width}×{item.height} · {formatBytes(item.size)}
-      </span>
-    </button>
+        {isReference ? "✓ 보관" : "삭제 예정 → 보관으로"}
+      </button>
+      <p className="mt-1 truncate text-[11px] font-medium text-slate-600" title={item.filename}>
+        {item.filename}
+      </p>
+      <p className="text-[10px] text-slate-500">
+        {item.width}×{item.height} · {formatBytes(item.size)} ·{" "}
+        {item.taken_at.slice(0, 10)}
+      </p>
+      <p
+        className="truncate text-[10px] text-slate-400"
+        title={item.folder ?? undefined}
+      >
+        📁 {folderLabel(item.folder)}
+      </p>
+    </div>
   );
 }

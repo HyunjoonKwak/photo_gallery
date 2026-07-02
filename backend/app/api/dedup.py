@@ -67,15 +67,40 @@ async def groups(
     # 이미 wasted 내림차순 정렬 → 상위 N개만 반환(카드 수천 장 렌더 방지).
     limit: int = Query(100, ge=1, le=500),
     _session: Session = Depends(get_current_session),
+    source: PhotoSource = Depends(get_photo_source),
     settings: Settings = Depends(get_settings),
 ) -> DedupGroupsResponse:
     job = latest_job(settings.sqlite_path, space)
     scanned = job is not None and job.status == "done"
     result = build_groups(settings.sqlite_path, space, threshold) if scanned else []
+    top = result[:limit]
+
+    # Folder locations for the visible groups (photo_cache stores filenames
+    # only) — one batched DSM call per ~100 items; a lookup failure just
+    # leaves those folders blank rather than failing the response.
+    ids = [it.id for g in top for it in g.items]
+    if ids:
+        try:
+            folders = await source.item_folders(space, ids)
+        except Exception:  # noqa: BLE001 - cards remain useful without folders
+            folders = {}
+        if folders:
+            top = [
+                g.model_copy(
+                    update={
+                        "items": [
+                            it.model_copy(update={"folder": folders.get(it.id)})
+                            for it in g.items
+                        ]
+                    }
+                )
+                for g in top
+            ]
+
     return DedupGroupsResponse(
         space=space,
         threshold=threshold,
-        groups=result[:limit],
+        groups=top,
         total_groups=len(result),
         total_wasted_bytes=sum(g.wasted_bytes for g in result),
         scanned=scanned,

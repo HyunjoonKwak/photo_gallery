@@ -358,6 +358,18 @@ class MockPhotoSource:
             address=r.choice(["대한민국 서울 강남구", "대한민국 제주 서귀포시", ""]) or None,
         )
 
+    async def item_folders(
+        self, space: str, item_ids: list[str]
+    ) -> dict[str, str | None]:
+        out: dict[str, str | None] = {}
+        for item_id in item_ids:
+            try:
+                _, folder_id = self._effective_loc(item_id)
+                out[item_id] = self._folder_name(folder_id)
+            except HTTPException:
+                out[item_id] = None
+        return out
+
     # ------------------------------------------- AI classification (3단계)
     def _classify_pool(self, space: str) -> list[PhotoItem]:
         """Recent items of a space (base ids, trash excluded) to group over."""
