@@ -226,7 +226,10 @@ export function FolderPane({
         ))}
       </div>
 
-      <div ref={gridRef} className="flex-1 px-4 pb-10">
+      {/* width ref on the unpadded inner box — measuring the padded box makes
+       * justified rows too wide (photos overflow the right padding). */}
+      <div className="flex-1 px-4 pb-10">
+        <div ref={gridRef}>
         {/* Sub-folders */}
         {subQuery.isPending && (
           <p className="py-6 text-center text-sm text-slate-400">폴더 불러오는 중…</p>
@@ -328,6 +331,7 @@ export function FolderPane({
         {!current && subFolders.length === 0 && !subQuery.isPending && (
           <p className="py-10 text-center text-sm text-slate-400">폴더가 없습니다.</p>
         )}
+        </div>
       </div>
     </div>
   );

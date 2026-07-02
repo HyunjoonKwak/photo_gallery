@@ -173,7 +173,10 @@ export function ClassifyView() {
         )}
       </div>
 
-      <div ref={gridRef} className="px-4 pb-10">
+      {/* width ref on the unpadded inner box (padded-box measurement makes
+       * justified rows overflow the right padding) */}
+      <div className="px-4 pb-10">
+        <div ref={gridRef}>
         {!group && (
           <>
             <section className="py-4">
@@ -266,6 +269,7 @@ export function ClassifyView() {
             )}
           </section>
         )}
+        </div>
       </div>
     </div>
   );

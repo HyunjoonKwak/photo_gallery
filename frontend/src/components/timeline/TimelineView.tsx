@@ -282,43 +282,52 @@ export function TimelineView() {
   }
 
   return (
-    <div ref={setScrollRefs} className="relative h-full overflow-y-auto">
-      <DragSelection />
-      {pillLabel && (
-        // h-0 wrapper: the pill floats over the grid without occupying layout
-        // space (which would shift every virtualized row's offset).
-        <div className="pointer-events-none sticky top-0 z-20 h-0">
-          <span className="ml-3 mt-2 inline-block rounded-full bg-slate-800/80 px-3 py-1 text-xs font-medium text-white shadow">
-            {pillLabel}
-          </span>
-        </div>
-      )}
-      <div ref={contentRef} className="px-3">
-        <div
-          style={{
-            height: virtualizer.getTotalSize(),
-            width: "100%",
-            position: "relative",
-          }}
-        >
-          {virtualItems.map((v) => {
-            const row = model.rows[v.index];
-            if (!row) return null;
-            return (
-              <div
-                key={v.key}
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  width: "100%",
-                  transform: `translateY(${v.start}px)`,
-                }}
-              >
-                <RowRenderer row={row} items={loadedMap.get(row.day)} />
-              </div>
-            );
-          })}
+    // Outer wrapper anchors the scrubber to the *viewport* (a scroll
+    // container's absolute children would scroll away with the content).
+    <div className="relative h-full">
+      <div ref={setScrollRefs} className="h-full overflow-y-auto">
+        <DragSelection />
+        {pillLabel && (
+          // h-0 wrapper: the pill floats over the grid without occupying
+          // layout space (which would shift every virtualized row's offset).
+          <div className="pointer-events-none sticky top-0 z-20 h-0">
+            <span className="ml-3 mt-2 inline-block rounded-full bg-slate-800/80 px-3 py-1 text-xs font-medium text-white shadow">
+              {pillLabel}
+            </span>
+          </div>
+        )}
+        {/* pr-12 reserves a photo-free gutter for the scrubber rail; the
+         * width ref sits on the UNPADDED inner box — measuring the padded
+         * box made justified rows ~24px too wide, pushing photos under the
+         * scrubber labels. */}
+        <div className="pl-3 pr-12">
+          <div
+            ref={contentRef}
+            style={{
+              height: virtualizer.getTotalSize(),
+              width: "100%",
+              position: "relative",
+            }}
+          >
+            {virtualItems.map((v) => {
+              const row = model.rows[v.index];
+              if (!row) return null;
+              return (
+                <div
+                  key={v.key}
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    width: "100%",
+                    transform: `translateY(${v.start}px)`,
+                  }}
+                >
+                  <RowRenderer row={row} items={loadedMap.get(row.day)} />
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
       <Scrubber
