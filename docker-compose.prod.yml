@@ -1,0 +1,41 @@
+# GHCR 이미지 기반 프로덕션 배포 (NAS Container Manager)
+# 이미지는 로컬에서 `./manage.sh ghcr:push`로 빌드·푸시하고,
+# NAS에서 `./deploy.sh update`로 이 파일을 사용해 배포한다.
+
+services:
+  nas-photo:
+    image: ghcr.io/${GHCR_USERNAME:-hyunjoonkwak}/nas-photo:${IMAGE_TAG:-latest}
+    container_name: nas-photo
+    ports:
+      - "9800:9800"
+    volumes:
+      - ./data:/data # SQLite (세션/작업로그/사진 해시 캐시)
+    environment:
+      - TZ=Asia/Seoul
+      # DSM 연결 (자격증명은 넣지 않음 — 로그인 화면에서 입력)
+      - DSM_BASE_URL=${DSM_BASE_URL:-https://192.168.1.113}
+      - DSM_PORT=${DSM_PORT:-5001}
+      - DSM_VERIFY_TLS=${DSM_VERIFY_TLS:-false}
+      - DSM_TIMEOUT_SECONDS=${DSM_TIMEOUT_SECONDS:-30}
+      # 프론트 정적 서빙 + DB 경로 (이미지 내부 기본값 유지)
+      - FRONTEND_DIST=/app/static
+      - SQLITE_PATH=/data/app.db
+      # 리버스 프록시(HTTPS) 뒤 운영 시 true 권장
+      - COOKIE_SECURE=${COOKIE_SECURE:-false}
+      - SESSION_TTL_SECONDS=${SESSION_TTL_SECONDS:-28800}
+      - LOGIN_MAX_ATTEMPTS=${LOGIN_MAX_ATTEMPTS:-5}
+      - LOGIN_WINDOW_SECONDS=${LOGIN_WINDOW_SECONDS:-600}
+      # 운영에서는 반드시 false (실 NAS 연동)
+      - MOCK_MODE=${MOCK_MODE:-false}
+      - CORS_ORIGINS=${CORS_ORIGINS:-}
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:9800/api/health', timeout=3).status==200 else 1)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped

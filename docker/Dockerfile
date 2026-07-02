@@ -16,7 +16,16 @@ WORKDIR /app
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     FRONTEND_DIST=/app/static \
-    SQLITE_PATH=/data/app.db
+    SQLITE_PATH=/data/app.db \
+    TZ=Asia/Seoul
+
+# tzdata so the container's local time is KST — timeline buckets group photos
+# by server-local date (date.fromtimestamp), so this must match the user's TZ.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends tzdata \
+    && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime \
+    && echo $TZ > /etc/timezone \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
