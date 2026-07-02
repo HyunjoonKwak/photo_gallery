@@ -49,6 +49,7 @@ export interface FoldersResponse {
 // --- file operations ---
 
 export interface MoveRequest {
+  space: Space;
   item_ids: string[];
   dest_folder_id: string;
   copy_mode: boolean;
@@ -56,6 +57,7 @@ export interface MoveRequest {
 }
 
 export interface DeleteRequest {
+  space: Space;
   item_ids: string[];
   target_user?: string;
 }

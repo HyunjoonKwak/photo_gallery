@@ -296,8 +296,9 @@ class MockPhotoSource:
 
     # ------------------------------------------------------------ write side
     async def move(
-        self, item_ids: list[str], dest_folder_id: str, copy: bool
+        self, space: str, item_ids: list[str], dest_folder_id: str, copy: bool
     ) -> MoveOutcome:
+        # space is ignored: the mock encodes the space in each item id.
         dest = self._folder_by_id(dest_folder_id)
         outcome = MoveOutcome(dest_space=dest.space)
         affected: set[tuple[str, str]] = set()
@@ -330,7 +331,7 @@ class MockPhotoSource:
         self._touch(outcome.affected)
         return outcome
 
-    async def delete(self, item_ids: list[str]) -> DeleteOutcome:
+    async def delete(self, space: str, item_ids: list[str]) -> DeleteOutcome:
         outcome = DeleteOutcome()
         affected: set[tuple[str, str]] = set()
         for item_id in item_ids:

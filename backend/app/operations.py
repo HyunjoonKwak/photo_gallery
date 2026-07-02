@@ -78,7 +78,9 @@ def _record(
 async def execute_move(
     source: PhotoSource, sqlite_path: str, *, user: str, req: MoveRequest
 ) -> OperationResponse:
-    outcome = await source.move(req.item_ids, req.dest_folder_id, req.copy_mode)
+    outcome = await source.move(
+        req.space, req.item_ids, req.dest_folder_id, req.copy_mode
+    )
     folders = {f.id: f for f in await source.folders()}
     dest_name = folders[req.dest_folder_id].name if req.dest_folder_id in folders else "?"
     verb = "복사" if req.copy_mode else "이동"
@@ -110,7 +112,7 @@ async def execute_move(
 async def execute_delete(
     source: PhotoSource, sqlite_path: str, *, user: str, req: DeleteRequest
 ) -> OperationResponse:
-    outcome = await source.delete(req.item_ids)
+    outcome = await source.delete(req.space, req.item_ids)
     # Trashed items must vanish from duplicate groups; a later restore simply
     # re-hashes them on the next scan (photo_cache is a rebuildable cache).
     remove_cached_items(sqlite_path, [p.id for p in outcome.deleted])

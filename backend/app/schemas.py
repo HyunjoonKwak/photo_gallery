@@ -84,15 +84,23 @@ class FoldersResponse(BaseModel):
 
 
 class PlacedItem(BaseModel):
-    """One item's location at a point in time — the unit of undo payloads."""
+    """One item's location at a point in time — the unit of undo payloads.
+
+    ``src_path`` / ``trash_path`` are used only by the DSM source (real
+    filesystem paths for reversing FileStation operations); the mock source
+    reconstructs everything from ``id`` and leaves them unset.
+    """
 
     id: str
     space: str
     folder_id: str | None = None
     day: str  # YYYY-MM-DD (drives cache invalidation)
+    src_path: str | None = None  # DSM: original absolute path
+    trash_path: str | None = None  # DSM: path inside the app trash folder
 
 
 class MoveRequest(BaseModel):
+    space: str = "team"  # source space of the items (personal | team)
     item_ids: list[str] = Field(min_length=1, max_length=500)
     dest_folder_id: str
     copy_mode: bool = False
@@ -101,6 +109,7 @@ class MoveRequest(BaseModel):
 
 
 class DeleteRequest(BaseModel):
+    space: str = "team"
     item_ids: list[str] = Field(min_length=1, max_length=500)
     target_user: str | None = Field(default=None, max_length=128)
 

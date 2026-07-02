@@ -73,10 +73,12 @@ export function useFileOps() {
   });
 
   const targetUser = () => useTimelineStore.getState().viewedOwner ?? undefined;
+  const currentSpace = () => useTimelineStore.getState().space;
 
   return {
     move: (itemIds: string[], folder: PhotoFolder, copyMode: boolean) =>
       moveMutation.mutate({
+        space: currentSpace(),
         item_ids: itemIds,
         dest_folder_id: folder.id,
         copy_mode: copyMode,
@@ -84,7 +86,7 @@ export function useFileOps() {
       }),
     remove: (itemIds: string[], onSuccess?: () => void) =>
       deleteMutation.mutate(
-        { item_ids: itemIds, target_user: targetUser() },
+        { space: currentSpace(), item_ids: itemIds, target_user: targetUser() },
         { onSuccess: () => onSuccess?.() },
       ),
     createFolder: (space: Space, name: string) =>

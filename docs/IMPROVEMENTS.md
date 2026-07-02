@@ -155,5 +155,9 @@
   - 프론트: `useFileOps` 훅(선택 자동 해제 + 정밀 무효화 + **되돌리기 액션 토스트**), 폴더 드롭→실제 이동(⌥=복사), 액션바+폴더 피커(공용 보내기는 복사 기본 — spec ch.4), **작업 기록 패널**(항목별 되돌리기), 라이트박스 완성(`i` EXIF 패널·Delete 자동 전진·Shift+? 도움말), **폴더 뷰**(spec 9.3), 관리자 셸(멤버 선택 + 주황 배너 + 감사 로깅)
   - 검증: pytest 56개 통과, tsc+vite 빌드 통과, mock 서버 e2e 스모크(이동→폴더→삭제→undo→복원), **Docker 이미지 빌드+컨테이너 기동 검증**(헬스체크·정적 프론트·non-root)
 - [x] **D절 기반 2단계(중복 제거) 구현** (2026-07-02) — 자체 pHash(Pillow만)+SHA-256, photo_cache 해시 영속화, SQLite 잡+asyncio 워커(진행률/취소/재개), 8밴드 버킷팅+union-find 그룹핑, 중복 정리 뷰(스캔 진행바·임계값 슬라이더·reference 뒤집기·dry-run·기존 삭제/undo 재사용). v1 한계 4건 해소(스크롤 앵커링, 라이트박스 이동, spring-loaded, autoScroll 확인). 테스트 69개 통과
-- [ ] DSM 실연동 검증 (실 NAS 필요 — `dsm_source.py` 상단 검증 목록, 명세 13장. 2단계의 DSM 해시 경로 `item_hashes`도 포함)
+- [~] DSM 실연동 검증 (실 NAS 192.168.1.113, DSM 7.2 — 진행 중)
+  - [x] 조회: 로그인·역할판별(is_manager)·folders·Timeline(v1 고정)·KST buckets(62636장)·items·thumbnail — 전부 정확 동작
+  - [x] **파일 작업(공용 공간): 이동/복사/삭제/폴더생성 + 각 undo 전부 실 NAS 검증** (iPad 폴더에서 실행 후 원상복구). 발견·해결: photo 휴지통 비활성→앱 관리 휴지통(`/photo/#trash/t<ns>/`)으로 삭제/복원, `#`폴더는 계층별 생성, 순수숫자 폴더명 금지(`t` 접두), item→경로는 Browse.Item get+folder
+  - [ ] 개인 공간(SYNO.Foto) 파일 작업 — 경로 프리픽스(`/homes/<user>/Photos`?) 미검증, 현재 team만
+  - [ ] cross-space(개인↔공용) 이동, 관리자 타인 폴더(/homes), 2단계 dedup 실스캔(대량 썸네일 해시)
 - [ ] 3단계(AI 자동 분류) — 미착수

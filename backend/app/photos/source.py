@@ -77,13 +77,17 @@ class PhotoSource(Protocol):
 
     # ----------------------------------------------------------- write side
     async def move(
-        self, item_ids: list[str], dest_folder_id: str, copy: bool
+        self, space: str, item_ids: list[str], dest_folder_id: str, copy: bool
     ) -> MoveOutcome:
-        """Move (or copy) items into a folder — cross-space allowed."""
+        """Move (or copy) items into a folder — cross-space allowed.
+
+        ``space`` is the source space of the items (needed by the DSM source to
+        resolve the share prefix; the mock source ignores it).
+        """
         ...
 
-    async def delete(self, item_ids: list[str]) -> DeleteOutcome:
-        """Send items to trash (never permanent — spec: 휴지통 + Undo)."""
+    async def delete(self, space: str, item_ids: list[str]) -> DeleteOutcome:
+        """Send items to the app trash (never permanent — spec: 휴지통 + Undo)."""
         ...
 
     # ------------------------------------------------------ undo primitives

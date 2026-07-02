@@ -20,6 +20,7 @@ N4S4/synology-api) 기준의 최선 추정이며, 실제 NAS 검증 단계(명�
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time as _time
 from collections import Counter
@@ -118,6 +119,7 @@ class DsmPhotoSource:
         data = await self._dsm.call(
             _ns(space, "SYNO.Foto.Browse.Item"),
             "list",
+            version=1,
             sid=self._sid,
             extra={
                 "offset": 0,
@@ -126,30 +128,27 @@ class DsmPhotoSource:
                 "end_time": end,
                 "sort_by": "takentime",
                 "sort_direction": "asc",
-                # 검증 필요: additional 은 JSON 배열 문자열로 전달해야 한다.
                 "additional": json.dumps(["thumbnail", "resolution"]),
             },
         )
-        out: list[PhotoItem] = []
-        for it in data.get("list", []):
-            additional = it.get("additional", {})
-            resolution = additional.get("resolution", {})
-            thumb = additional.get("thumbnail", {})
-            taken = datetime.fromtimestamp(it.get("time", start)).isoformat()
-            out.append(
-                PhotoItem(
-                    id=str(it.get("id")),
-                    filename=it.get("filename", ""),
-                    taken_at=taken,
-                    width=int(resolution.get("width", 4)) or 4,
-                    height=int(resolution.get("height", 3)) or 3,
-                    size=it.get("filesize"),
-                    cache_key=thumb.get("cache_key", ""),
-                    placeholder_color=None,  # thumbhash lands with photo_cache (phase 2)
-                    folder=None,
-                )
-            )
-        return out
+        return [self._to_item(it) for it in data.get("list", [])]
+
+    @staticmethod
+    def _to_item(it: dict) -> PhotoItem:
+        additional = it.get("additional", {})
+        resolution = additional.get("resolution", {})
+        thumb = additional.get("thumbnail", {})
+        return PhotoItem(
+            id=str(it.get("id")),
+            filename=it.get("filename", ""),
+            taken_at=datetime.fromtimestamp(it.get("time", 0)).isoformat(),
+            width=int(resolution.get("width", 4)) or 4,
+            height=int(resolution.get("height", 3)) or 3,
+            size=it.get("filesize"),
+            cache_key=thumb.get("cache_key", ""),
+            placeholder_color=None,  # thumbhash lands with photo_cache (phase 2)
+            folder=None,
+        )
 
     async def folders(self) -> list[PhotoFolder]:
         out: list[PhotoFolder] = []
@@ -169,9 +168,22 @@ class DsmPhotoSource:
         return out
 
     async def folder_items(self, folder_id: str) -> list[PhotoItem]:
-        # 검증 필요: Browse.Item list 의 folder_id 필터. 공유/개인 네임스페이스는
-        # folder_id 프리픽스로 구분할 수 없어 실 NAS에서 규칙 확인 필요.
-        raise DsmError(100, "폴더 내용 조회는 실 NAS 검증 후 활성화됩니다.")
+        # folder_id 필터는 실 NAS에서 동작 확인됨(2026-07). 공유/개인 구분은
+        # folders()가 space를 붙여 주므로, 여기서는 team 기준으로 조회한다.
+        # (개인 공간 폴더 뷰는 space 인지가 필요 — 후속.)
+        data = await self._dsm.call(
+            "SYNO.FotoTeam.Browse.Item",
+            "list",
+            version=1,
+            sid=self._sid,
+            extra={
+                "folder_id": int(folder_id),
+                "offset": 0,
+                "limit": 1000,
+                "additional": json.dumps(["thumbnail", "resolution"]),
+            },
+        )
+        return [self._to_item(it) for it in data.get("list", [])]
 
     async def members(self) -> list[str]:
         # 관리자 전용: /homes 하위 폴더명 = 구성원 계정 (user home 서비스 전제).
@@ -213,35 +225,219 @@ class DsmPhotoSource:
 
     # ------------------------------------------------------------ write side
     #
-    # 구현 전략(spec ch.4, 실 NAS 검증 단계에서 활성화):
-    # 1) Foto item id → 파일 경로: Browse.Item `get` + additional=["folder"]
-    # 2) 이동/복사: SYNO.FileStation.CopyMove `start` → `status` 폴링(taskid,
-    #    finished 필드) — FileStation 쪽은 공식 문서화된 API
-    # 3) 삭제: SYNO.FileStation.Delete `start` → 폴링 (#recycle 활성 전제)
-    # 4) 이동 후 Photos 재인덱싱 지연 → 프론트는 낙관적 갱신 + 재조회 전제
-    # 검증 전에는 명확한 오류를 던져 MOCK_MODE 개발과 혼동을 막는다.
+    # 실 NAS 검증(DSM 7.2, 2026-07):
+    # - item→경로: Browse.Item get + additional=["folder"] → prefix+folder+name
+    # - 이동/복사: FileStation.CopyMove start→status 폴링(remove_src=이동/복사)
+    # - 삭제: photo 공유폴더 휴지통 비활성이라 Delete는 영구삭제 → 앱 관리
+    #   휴지통 폴더(/photo/#trash/<time_ns>/)로 CopyMove. 복원은 역이동.
+    # - 복사 취소(undo)만 실제 Delete(영구) — 방금 만든 사본이므로 안전.
+    # 재인덱싱 지연으로 buckets 캐시는 쓰기 후 무효화한다.
+    TRASH_ROOT = "/photo/#trash"
+
+    def _share_prefix(self, space: str) -> str:
+        if space == "team":
+            return "/photo"
+        # 개인 공간(SYNO.Foto)의 파일시스템 프리픽스는 실 NAS 미검증.
+        raise DsmError(
+            100, "개인 공간 파일 작업은 아직 지원되지 않습니다 (경로 검증 필요)."
+        )
+
+    async def _copymove(
+        self, src_paths: list[str], dest_dir: str, *, remove_src: bool
+    ) -> None:
+        data = await self._dsm.call(
+            "SYNO.FileStation.CopyMove",
+            "start",
+            version=3,
+            sid=self._sid,
+            extra={
+                "path": json.dumps(src_paths),
+                "dest_folder_path": dest_dir,
+                "remove_src": "true" if remove_src else "false",
+                "overwrite": "false",
+            },
+        )
+        await self._poll_task("SYNO.FileStation.CopyMove", 3, data.get("taskid"))
+
+    async def _delete_paths(self, paths: list[str]) -> None:
+        data = await self._dsm.call(
+            "SYNO.FileStation.Delete",
+            "start",
+            version=2,
+            sid=self._sid,
+            extra={"path": json.dumps(paths)},
+        )
+        await self._poll_task("SYNO.FileStation.Delete", 2, data.get("taskid"))
+
+    async def _poll_task(self, api: str, version: int, taskid: str | None) -> None:
+        if not taskid:
+            raise DsmError(100, "파일 작업 태스크를 시작하지 못했습니다.")
+        for _ in range(120):  # ≤ 60s
+            status = await self._dsm.call(
+                api, "status", version=version, sid=self._sid,
+                extra={"taskid": taskid},
+            )
+            if status.get("finished"):
+                return
+            await asyncio.sleep(0.5)
+        raise DsmError(100, "파일 작업이 제한 시간 안에 끝나지 않았습니다.")
+
+    async def _item_meta(
+        self, space: str, item_ids: list[str]
+    ) -> dict[str, dict]:
+        """id → {path, folder_id, day} for the given items."""
+        data = await self._dsm.call(
+            _ns(space, "SYNO.Foto.Browse.Item"),
+            "get",
+            version=1,
+            sid=self._sid,
+            extra={
+                "id": json.dumps([int(i) for i in item_ids]),
+                "additional": json.dumps(["folder"]),
+            },
+        )
+        prefix = self._share_prefix(space)
+        out: dict[str, dict] = {}
+        for it in data.get("list", []):
+            folder = it.get("additional", {}).get("folder") or {}
+            folder_name = folder.get("name") if isinstance(folder, dict) else folder
+            filename = it.get("filename", "")
+            day = date.fromtimestamp(it.get("time", 0)).isoformat()
+            out[str(it.get("id"))] = {
+                "path": f"{prefix}{folder_name}/{filename}".replace("//", "/"),
+                "filename": filename,
+                "folder_id": str(it.get("folder_id", "")),
+                "day": day,
+            }
+        return out
+
+    async def _dest_dir(self, dest_folder_id: str) -> tuple[str, str]:
+        """dest folder id → (absolute dir path, space)."""
+        for f in await self.folders():
+            if f.id == dest_folder_id:
+                prefix = self._share_prefix(f.space)
+                return f"{prefix}{f.name}".replace("//", "/").rstrip("/") or prefix, f.space
+        raise DsmError(100, "대상 폴더를 찾을 수 없습니다.")
 
     async def move(
-        self, item_ids: list[str], dest_folder_id: str, copy: bool
+        self, space: str, item_ids: list[str], dest_folder_id: str, copy: bool
     ) -> MoveOutcome:
-        # 검증 필요: PhotoFolder.name 이 실제 파일시스템 경로인지(현재 가정),
-        # cross-space 이동 시 재인덱싱 지연.
-        raise DsmError(100, "DSM 파일 이동은 실 NAS 검증 후 활성화됩니다 (MOCK_MODE로 개발).")
+        metas = await self._item_meta(space, item_ids)
+        dest_dir, dest_space = await self._dest_dir(dest_folder_id)
+        outcome = MoveOutcome(dest_space=dest_space)
+        affected: set[tuple[str, str]] = set()
+        src_paths = [metas[i]["path"] for i in item_ids if i in metas]
 
-    async def delete(self, item_ids: list[str]) -> DeleteOutcome:
-        raise DsmError(100, "DSM 삭제는 실 NAS 검증 후 활성화됩니다 (MOCK_MODE로 개발).")
+        await self._copymove(src_paths, dest_dir, remove_src=not copy)
+
+        for item_id in item_ids:
+            m = metas.get(item_id)
+            if not m:
+                continue
+            day = m["day"]
+            dest_path = f"{dest_dir}/{m['filename']}"
+            affected.add((space, day))
+            affected.add((dest_space, day))
+            if copy:
+                outcome.created_ids.append(dest_path)  # DSM: path, not item id
+            else:
+                outcome.moved.append(
+                    PlacedItem(
+                        id=item_id, space=space, folder_id=m["folder_id"], day=day,
+                        src_path=m["path"], trash_path=dest_path,  # current location
+                    )
+                )
+        outcome.affected = sorted(affected)
+        self._invalidate(affected)
+        return outcome
+
+    async def delete(self, space: str, item_ids: list[str]) -> DeleteOutcome:
+        metas = await self._item_meta(space, item_ids)
+        outcome = DeleteOutcome()
+        affected: set[tuple[str, str]] = set()
+        # One unique trash subfolder per delete op (avoids filename collisions).
+        # 't' prefix: DSM rejects all-numeric folder names (code 400).
+        trash_dir = f"{self.TRASH_ROOT}/t{_time.time_ns()}"
+        await self._ensure_dir(trash_dir)
+        src_paths = [metas[i]["path"] for i in item_ids if i in metas]
+        await self._copymove(src_paths, trash_dir, remove_src=True)
+
+        for item_id in item_ids:
+            m = metas.get(item_id)
+            if not m:
+                continue
+            affected.add((space, m["day"]))
+            outcome.deleted.append(
+                PlacedItem(
+                    id=item_id, space=space, folder_id=m["folder_id"], day=m["day"],
+                    src_path=m["path"], trash_path=f"{trash_dir}/{m['filename']}",
+                )
+            )
+        outcome.affected = sorted(affected)
+        self._invalidate(affected)
+        return outcome
+
+    async def _reverse(self, placements: list[PlacedItem]) -> Affected:
+        """Move each item from its current (trash_path) location back to src."""
+        affected: set[tuple[str, str]] = set()
+        for p in placements:
+            if not p.src_path or not p.trash_path:
+                continue
+            dest_dir = p.src_path.rsplit("/", 1)[0]
+            await self._copymove([p.trash_path], dest_dir, remove_src=True)
+            affected.add((p.space, p.day))
+        self._invalidate(affected)
+        return sorted(affected)
 
     async def place(self, placements: list[PlacedItem]) -> Affected:
-        raise DsmError(100, "DSM 되돌리기는 실 NAS 검증 후 활성화됩니다.")
+        return await self._reverse(placements)  # undo move
 
     async def restore(self, placements: list[PlacedItem]) -> Affected:
-        raise DsmError(100, "DSM 휴지통 복원은 실 NAS 검증 후 활성화됩니다.")
+        return await self._reverse(placements)  # undo delete (from app trash)
 
     async def remove_items(self, item_ids: list[str]) -> Affected:
-        raise DsmError(100, "DSM 복사 취소는 실 NAS 검증 후 활성화됩니다.")
+        # undo copy: item_ids are actually the created copies' absolute paths.
+        await self._delete_paths(item_ids)
+        invalidate_bucket_cache(self._sid)  # day unknown per path — clear all
+        return []
+
+    async def _ensure_dir(self, path: str) -> None:
+        # Create each level below the share root (/photo). Nested one-shot
+        # creation with force_parent fails on '#'-prefixed segments (code 1002),
+        # so build the path level by level; existing levels error out harmlessly.
+        parts = path.split("/")  # ['', 'photo', '#trash', '<id>']
+        for i in range(3, len(parts) + 1):
+            parent = "/".join(parts[: i - 1])
+            name = parts[i - 1]
+            try:
+                await self._dsm.call(
+                    "SYNO.FileStation.CreateFolder", "create", version=2,
+                    sid=self._sid, extra={"folder_path": parent, "name": name},
+                )
+            except DsmError:
+                pass  # already exists → fine
 
     async def create_folder(self, space: str, name: str) -> PhotoFolder:
-        raise DsmError(100, "DSM 폴더 생성은 실 NAS 검증 후 활성화됩니다.")
+        prefix = self._share_prefix(space)
+        await self._dsm.call(
+            "SYNO.FileStation.CreateFolder", "create", version=2, sid=self._sid,
+            extra={"folder_path": prefix, "name": name},
+        )
+        # Re-resolve via Photos so the new folder carries a Photos folder id
+        # (FileStation create returns a filesystem path, not a Foto id).
+        for f in await self.folders():
+            if f.space == space and f.name.rstrip("/").endswith(name):
+                return f
+        return PhotoFolder(id=f"{prefix}/{name}", name=f"/{name}", space=space)
 
     async def remove_folder(self, folder_id: str) -> bool:
-        raise DsmError(100, "DSM 폴더 삭제는 실 NAS 검증 후 활성화됩니다.")
+        try:
+            dest_dir, _ = await self._dest_dir(folder_id)
+        except DsmError:
+            return False
+        await self._delete_paths([dest_dir])
+        return True
+
+    def _invalidate(self, affected: set[tuple[str, str]]) -> None:
+        for space, _ in affected:
+            invalidate_bucket_cache(self._sid, space)
