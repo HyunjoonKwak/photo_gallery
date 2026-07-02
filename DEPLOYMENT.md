@@ -40,8 +40,13 @@ IMAGE_TAG=latest ./deploy.sh update   # pull + 배포
 
 ## 3. 운영 권장
 
-- **HTTPS**: DSM 제어판 → 로그인 포털 → 리버스 프록시로 `nas-photo:9800`을
-  HTTPS 도메인 뒤에 두고, `.env`에 `COOKIE_SECURE=true`.
+- **HTTPS (Nginx Proxy Manager 사용 — 확정)**: NPM에 Proxy Host 등록:
+  - Domain: 사용할 도메인 / Scheme: `http` / Forward IP: NAS IP / Port: `9800`
+  - SSL 탭에서 인증서 발급(Let's Encrypt) + `Force SSL` 권장
+  - Websockets 불필요(사용 안 함), `Block Common Exploits` 켜도 무방
+  - 등록 후 NAS의 `.env`에서 `COOKIE_SECURE=true`로 바꾸고 `./deploy.sh restart`
+  - 이후 접속은 HTTPS 도메인으로만; `http://IP:9800` 직접 접속은 쿠키가
+    Secure라 로그인 불가(정상)
 - **타임존**: 이미지에 `TZ=Asia/Seoul` 내장(타임라인 날짜 그룹핑 기준). 다른
   지역이면 compose의 `TZ`를 바꾸세요.
 - **DSM Auto Block**: 제어판 → 보안 → 자동 차단 허용 목록에 도커 게이트웨이
