@@ -73,9 +73,16 @@ export function TimelineScreen() {
   const onDragEnd = (e: DragEndEvent) => {
     const ids = dragIds;
     setDragIds(null);
+    // Dest folder: droppable data first (dual-pane cards/backgrounds carry it
+    // with pane-unique ids), else the legacy "folder:<id>" id convention.
+    const dataFolderId = e.over?.data.current?.folderId as string | undefined;
     const overId = e.over?.id;
-    if (!ids || typeof overId !== "string" || !overId.startsWith("folder:")) return;
-    const folderId = overId.slice("folder:".length);
+    const folderId =
+      dataFolderId ??
+      (typeof overId === "string" && overId.startsWith("folder:")
+        ? overId.slice("folder:".length)
+        : null);
+    if (!ids || !folderId) return;
     // Finder convention: drag = move, ⌥ = copy. No confirmation — undo toast.
     ops.move(ids, folderId, altHeld);
   };

@@ -28,6 +28,9 @@ export interface PhotoItem {
   cache_key: string;
   placeholder_color: string | null;
   folder: string | null;
+  /** Set client-side when the item's space differs from the global scope
+   * (folder view can show personal folders while scope is team). */
+  space?: Space;
 }
 
 export interface BucketItemsResponse {

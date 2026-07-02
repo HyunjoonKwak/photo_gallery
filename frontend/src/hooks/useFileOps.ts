@@ -73,12 +73,21 @@ export function useFileOps() {
   });
 
   const targetUser = () => useTimelineStore.getState().viewedOwner ?? undefined;
-  const currentSpace = () => useTimelineStore.getState().space;
+  // Source space: prefer the items' own space (folder view can operate on
+  // personal-folder photos while the global scope is team), else the scope.
+  const spaceOf = (itemIds: string[]) => {
+    const s = useTimelineStore.getState();
+    for (const id of itemIds) {
+      const sp = s.itemsById.get(id)?.space;
+      if (sp) return sp;
+    }
+    return s.space;
+  };
 
   return {
     move: (itemIds: string[], folderId: string, copyMode: boolean) =>
       moveMutation.mutate({
-        space: currentSpace(),
+        space: spaceOf(itemIds),
         item_ids: itemIds,
         dest_folder_id: folderId,
         copy_mode: copyMode,
@@ -86,7 +95,7 @@ export function useFileOps() {
       }),
     remove: (itemIds: string[], onSuccess?: () => void) =>
       deleteMutation.mutate(
-        { space: currentSpace(), item_ids: itemIds, target_user: targetUser() },
+        { space: spaceOf(itemIds), item_ids: itemIds, target_user: targetUser() },
         { onSuccess: () => onSuccess?.() },
       ),
     createFolder: (space: Space, name: string) =>

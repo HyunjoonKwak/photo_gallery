@@ -26,7 +26,7 @@ export function DragOverlayContent({
       {items.map((item, i) => (
         <img
           key={item.id}
-          src={thumbnailUrl(space, item.id, item.cache_key, "sm")}
+          src={thumbnailUrl(item.space ?? space, item.id, item.cache_key, "sm")}
           alt=""
           className="absolute inset-0 h-24 w-24 rounded-lg border-2 border-white object-cover shadow-lg"
           style={{

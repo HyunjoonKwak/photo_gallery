@@ -22,7 +22,8 @@ export function Lightbox() {
   const item = useTimelineStore((s) =>
     s.lightboxId ? (s.itemsById.get(s.lightboxId) ?? null) : null,
   );
-  const space = useTimelineStore((s) => s.space);
+  const globalSpace = useTimelineStore((s) => s.space);
+  const space = item?.space ?? globalSpace;
   const ops = useFileOps();
   const [showInfo, setShowInfo] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
@@ -66,7 +67,12 @@ export function Lightbox() {
     for (const i of [idx - 1, idx + 1]) {
       const neighbor = s.itemsById.get(s.orderedIds[i] ?? "");
       if (neighbor) {
-        new Image().src = thumbnailUrl(space, neighbor.id, neighbor.cache_key, "xl");
+        new Image().src = thumbnailUrl(
+          neighbor.space ?? space,
+          neighbor.id,
+          neighbor.cache_key,
+          "xl",
+        );
       }
     }
   }, [item, space]);

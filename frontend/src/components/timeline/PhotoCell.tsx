@@ -15,7 +15,8 @@ import type { CellLayout } from "../../lib/rowModel";
  */
 export const PhotoCell = memo(function PhotoCell({ cell }: { cell: CellLayout }) {
   const { item } = cell;
-  const space = useTimelineStore((s) => s.space);
+  const globalSpace = useTimelineStore((s) => s.space);
+  const space = item.space ?? globalSpace;
   const selected = useTimelineStore((s) => s.selected.has(item.id));
   const previewed = useTimelineStore((s) => s.previewIds.has(item.id));
   const selectionMode = useTimelineStore((s) => s.selected.size > 0);
