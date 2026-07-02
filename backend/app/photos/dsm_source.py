@@ -559,6 +559,16 @@ class DsmPhotoSource:
         invalidate_bucket_cache(self._sid)  # day unknown per path — clear all
         return []
 
+    async def purge_trash(self) -> None:
+        # Recursively delete the whole app trash folder; it is recreated by
+        # _ensure_dir on the next delete. A missing folder (never deleted
+        # anything yet / already purged) is not an error.
+        try:
+            await self._delete_paths([self.TRASH_ROOT])
+        except DsmError as exc:
+            if exc.code not in (408, 900):  # no such file/dir
+                raise
+
     async def _ensure_dir(self, path: str) -> None:
         # Create each level below the share root (/photo). Nested one-shot
         # creation with force_parent fails on '#'-prefixed segments (code 1002),

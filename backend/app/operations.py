@@ -171,6 +171,48 @@ async def execute_create_folder(
     )
 
 
+def trash_stats(sqlite_path: str) -> tuple[int, int]:
+    """(delete-op count, item count) currently sitting in the app trash."""
+    with connect(sqlite_path) as conn:
+        rows = conn.execute(
+            "SELECT payload_json FROM operation "
+            "WHERE type = 'delete' AND status = 'done'"
+        ).fetchall()
+    items = sum(len(json.loads(r["payload_json"]).get("deleted", [])) for r in rows)
+    return len(rows), items
+
+
+async def execute_empty_trash(
+    source: PhotoSource, sqlite_path: str, *, user: str
+) -> OperationResponse:
+    """Permanently delete all app-trash contents (the only irreversible op).
+
+    Every pending delete op flips to 'purged' so its undo is refused — the
+    files are gone. The purge itself is logged for the audit trail.
+    """
+    _, item_count = trash_stats(sqlite_path)
+    await source.purge_trash()
+    with connect(sqlite_path) as conn:
+        conn.execute(
+            "UPDATE operation SET status = 'purged' "
+            "WHERE type = 'delete' AND status = 'done'"
+        )
+        conn.commit()
+    summary = f"휴지통 비우기 ({item_count}장 영구 삭제)"
+    op_id = _record(
+        sqlite_path,
+        user=user,
+        target_user=None,
+        type_="empty_trash",
+        space_from=None,
+        space_to=None,
+        payload={"summary": summary, "purged_items": item_count},
+    )
+    return OperationResponse(
+        operation_id=op_id, summary=summary, affected=[], undoable=False
+    )
+
+
 async def undo_operation(
     source: PhotoSource,
     sqlite_path: str,

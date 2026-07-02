@@ -219,3 +219,52 @@ def test_admin_can_target_other_user_and_it_is_logged(tmp_path, monkeypatch):
 
 def test_members_endpoint_forbidden_for_member(client):
     assert client.get("/api/photos/members").status_code == 403
+
+
+# ------------------------------------------------------------ trash (B-6)
+
+
+def test_trash_stats_and_member_cannot_empty(client):
+    _, items = _first_day_items(client)
+    ids = [items[0]["id"], items[1]["id"]]
+    client.post("/api/photos/ops/delete", json={"item_ids": ids})
+
+    stats = client.get("/api/ops/trash").json()
+    assert stats == {"operations": 1, "items": 2}
+
+    # Emptying the shared trash kills everyone's delete undos — admin only.
+    assert client.post("/api/ops/trash/empty").status_code == 403
+
+
+def test_empty_trash_purges_and_blocks_undo(client):
+    client.post("/api/auth/login", json={"account": "admin", "passwd": "x"})
+    _, items = _first_day_items(client)
+    op = client.post(
+        "/api/photos/ops/delete", json={"item_ids": [items[0]["id"]]}
+    ).json()
+
+    resp = client.post("/api/ops/trash/empty")
+    assert resp.status_code == 200
+    assert "영구 삭제" in resp.json()["summary"]
+    assert resp.json()["undoable"] is False
+
+    # Trash is empty and the purged delete can no longer be undone.
+    assert client.get("/api/ops/trash").json() == {"operations": 0, "items": 0}
+    assert client.post(f"/api/ops/{op['operation_id']}/undo").status_code == 409
+
+    ops = client.get("/api/ops").json()["operations"]
+    assert ops[0]["type"] == "empty_trash" and ops[0]["can_undo"] is False
+    purged = next(o for o in ops if o["id"] == op["operation_id"])
+    assert purged["status"] == "purged"
+
+
+def test_progress_endpoint_reports_and_clears(client):
+    _, items = _first_day_items(client)
+    # Unknown key → inactive.
+    assert client.get("/api/ops/progress?key=nope").json()["active"] is False
+    # After an op with a progress_key completes, the key is cleared.
+    client.post(
+        "/api/photos/ops/delete",
+        json={"item_ids": [items[0]["id"]], "progress_key": "k1"},
+    )
+    assert client.get("/api/ops/progress?key=k1").json()["active"] is False

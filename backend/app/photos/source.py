@@ -131,6 +131,14 @@ class PhotoSource(Protocol):
     async def create_folder(self, space: str, name: str) -> PhotoFolder:
         ...
 
+    async def purge_trash(self) -> None:
+        """Permanently remove all app-trash contents (휴지통 비우기).
+
+        The ONLY irreversible operation in the app — callers must confirm
+        (IMPROVEMENTS B-6: 영구 삭제만 확인 다이얼로그).
+        """
+        ...
+
     async def remove_folder(self, folder_id: str) -> bool:
         """Remove an empty folder (undo of mkdir). False if not empty/removable."""
         ...

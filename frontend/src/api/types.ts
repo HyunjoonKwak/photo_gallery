@@ -103,12 +103,18 @@ export interface OperationResponse {
 
 export interface OperationEntry {
   id: number;
-  type: "move" | "copy" | "delete" | "mkdir";
+  type: "move" | "copy" | "delete" | "mkdir" | "empty_trash";
   summary: string;
-  status: "done" | "undone" | "failed";
+  /** purged = 휴지통 비우기로 undo 소멸 */
+  status: "done" | "undone" | "failed" | "purged";
   created_at: string;
   can_undo: boolean;
   target_user: string | null;
+}
+
+export interface TrashStatsResponse {
+  operations: number;
+  items: number;
 }
 
 export interface OperationsResponse {

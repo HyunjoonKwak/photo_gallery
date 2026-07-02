@@ -154,12 +154,19 @@ class OperationResponse(BaseModel):
 
 class OperationEntry(BaseModel):
     id: int
-    type: str  # move | copy | delete | mkdir
+    type: str  # move | copy | delete | mkdir | empty_trash
     summary: str
-    status: str  # done | undone | failed
+    status: str  # done | undone | failed | purged (trash emptied — undo gone)
     created_at: str
     can_undo: bool
     target_user: str | None = None
+
+
+class TrashStatsResponse(BaseModel):
+    """App-trash contents (pending delete ops whose files sit in #trash)."""
+
+    operations: int
+    items: int
 
 
 class OperationsResponse(BaseModel):

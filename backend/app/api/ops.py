@@ -2,12 +2,22 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from ..config import Settings, get_settings
-from ..operations import list_operations, undo_operation
+from ..operations import (
+    execute_empty_trash,
+    list_operations,
+    trash_stats,
+    undo_operation,
+)
 from ..photos.source import PhotoSource
-from ..schemas import OperationResponse, OperationsResponse, ProgressResponse
+from ..schemas import (
+    OperationResponse,
+    OperationsResponse,
+    ProgressResponse,
+    TrashStatsResponse,
+)
 from ..session_store import Session
 from .deps import get_current_session, get_photo_source
 from .. import progress as progress_registry
@@ -35,6 +45,33 @@ async def get_progress(
         return ProgressResponse(active=False)
     return ProgressResponse(
         active=True, done=entry.done, total=entry.total, label=entry.label
+    )
+
+
+@router.get("/trash", response_model=TrashStatsResponse)
+async def get_trash_stats(
+    _session: Session = Depends(get_current_session),
+    settings: Settings = Depends(get_settings),
+) -> TrashStatsResponse:
+    ops_count, items = trash_stats(settings.sqlite_path)
+    return TrashStatsResponse(operations=ops_count, items=items)
+
+
+@router.post("/trash/empty", response_model=OperationResponse)
+async def empty_trash(
+    session: Session = Depends(get_current_session),
+    source: PhotoSource = Depends(get_photo_source),
+    settings: Settings = Depends(get_settings),
+) -> OperationResponse:
+    """휴지통 비우기 — 유일한 비가역 작업. 삭제된 undo들도 함께 무효화되므로
+    가족 전체에 영향: 관리자 전용."""
+    if session.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="관리자만 휴지통을 비울 수 있습니다.",
+        )
+    return await execute_empty_trash(
+        source, settings.sqlite_path, user=session.account
     )
 
 

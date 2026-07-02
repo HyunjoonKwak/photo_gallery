@@ -16,6 +16,7 @@ import type {
   OperationsResponse,
   ProgressResponse,
   Space,
+  TrashStatsResponse,
   UserInfo,
 } from "./types";
 
@@ -108,6 +109,9 @@ export const api = {
     request<ProgressResponse>(
       `/api/ops/progress?key=${encodeURIComponent(key)}`,
     ),
+  trashStats: () => request<TrashStatsResponse>("/api/ops/trash"),
+  emptyTrash: () =>
+    request<OperationResponse>("/api/ops/trash/empty", { method: "POST" }),
   dedupScan: (space: Space) =>
     request<DedupJob>("/api/dedup/scan", {
       method: "POST",

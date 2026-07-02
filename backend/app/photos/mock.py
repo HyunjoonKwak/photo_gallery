@@ -275,6 +275,11 @@ class MockPhotoSource:
         out.sort(key=lambda i: (i.taken_at, i.id))
         return out
 
+    async def purge_trash(self) -> None:
+        # Trashed snapshots are gone for good; the op-log status flip (purged)
+        # blocks undo before it would ever reach restore().
+        self._deleted.clear()
+
     async def folder_count(self, folder_id: str) -> int:
         self._folder_by_id(folder_id)  # 404 for unknown folders
         return sum(
