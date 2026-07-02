@@ -6,7 +6,7 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
-import type { OperationResponse, PhotoFolder, Space } from "../api/types";
+import type { OperationResponse, Space } from "../api/types";
 import { useTimelineStore } from "../store/timeline";
 import { useToastStore } from "../store/toast";
 
@@ -76,11 +76,11 @@ export function useFileOps() {
   const currentSpace = () => useTimelineStore.getState().space;
 
   return {
-    move: (itemIds: string[], folder: PhotoFolder, copyMode: boolean) =>
+    move: (itemIds: string[], folderId: string, copyMode: boolean) =>
       moveMutation.mutate({
         space: currentSpace(),
         item_ids: itemIds,
-        dest_folder_id: folder.id,
+        dest_folder_id: folderId,
         copy_mode: copyMode,
         target_user: targetUser(),
       }),

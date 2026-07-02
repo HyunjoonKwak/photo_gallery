@@ -65,7 +65,7 @@ export function SelectionActionBar() {
           onClose={() => setPicker(null)}
           onConfirm={(folder, copyMode) => {
             setPicker(null);
-            ops.move(selectedIds(), folder, copyMode);
+            ops.move(selectedIds(), folder.id, copyMode);
           }}
         />
       )}

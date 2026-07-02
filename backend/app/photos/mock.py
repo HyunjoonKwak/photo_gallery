@@ -259,8 +259,9 @@ class MockPhotoSource:
         result.sort(key=lambda i: (i.taken_at, i.id))
         return result
 
-    async def folders(self) -> list[PhotoFolder]:
-        return self._all_folders()
+    async def folders(self, parent_id: str | None = None) -> list[PhotoFolder]:
+        # Mock folders are a flat top-level set; children requests return empty.
+        return [] if parent_id else self._all_folders()
 
     async def folder_items(self, folder_id: str) -> list[PhotoItem]:
         self._folder_by_id(folder_id)  # 404 for unknown folders
@@ -300,7 +301,7 @@ class MockPhotoSource:
     ) -> MoveOutcome:
         # space is ignored: the mock encodes the space in each item id.
         dest = self._folder_by_id(dest_folder_id)
-        outcome = MoveOutcome(dest_space=dest.space)
+        outcome = MoveOutcome(dest_space=dest.space, dest_name=dest.name)
         affected: set[tuple[str, str]] = set()
 
         for item_id in item_ids:

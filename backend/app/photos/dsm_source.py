@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import time as _time
 from collections import Counter
 from datetime import date, datetime, timedelta
@@ -32,10 +33,20 @@ from ..schemas import PhotoBucket, PhotoFolder, PhotoItem, PlacedItem
 from .hashing import compute_hashes
 from .source import Affected, DeleteOutcome, MoveOutcome
 
+logger = logging.getLogger(__name__)
+
 # Bucket cache: (sid, space) -> (monotonic_ts, buckets). Building buckets pages
 # the entire library (~2s per 5000 items), so we cache the result briefly and
 # invalidate on writes. Process-local; lost on restart (rebuilds on demand).
 _BUCKET_CACHE: dict[tuple[str, str], tuple[float, list[PhotoBucket]]] = {}
+# Folder metadata cache: sid -> {folder_id: (space, name)}. The folder tree is
+# huge (1500+) and hierarchical, so we load it lazily (one level per request)
+# and remember id→(space,path) as levels are browsed. File-op helpers resolve a
+# folder's space/path from here; cleared on folder create/remove.
+_FOLDER_META: dict[str, dict[str, tuple[str, str]]] = {}
+# Top-level folders are the one slow level (DSM scans all top folders); cache
+# them per sid. Deeper levels are fast and fetched live.
+_TOP_FOLDER_CACHE: dict[str, tuple[float, list[PhotoFolder]]] = {}
 _BUCKET_TTL = 300.0  # seconds
 _PAGE = 5000
 
@@ -46,6 +57,11 @@ def invalidate_bucket_cache(sid: str, space: str | None = None) -> None:
             _BUCKET_CACHE.pop(key, None)
     else:
         _BUCKET_CACHE.pop((sid, space), None)
+
+
+def invalidate_folder_cache(sid: str) -> None:
+    _FOLDER_META.pop(sid, None)
+    _TOP_FOLDER_CACHE.pop(sid, None)
 
 
 def _ns(space: str, api: str) -> str:
@@ -160,31 +176,77 @@ class DsmPhotoSource:
             folder=None,
         )
 
-    async def folders(self) -> list[PhotoFolder]:
+    async def folders(self, parent_id: str | None = None) -> list[PhotoFolder]:
+        """One level of the folder tree (lazy).
+
+        ``parent_id`` None → top-level folders of both spaces. Otherwise → the
+        direct children of that folder (its space is recalled from the metadata
+        cache, populated as levels are browsed). Depth is derived from the
+        Photos folder name (full path). The full tree is 1500+ folders and each
+        node is a round-trip, so loading everything up front is impractical —
+        the UI expands nodes on demand.
+        """
+        metas = _FOLDER_META.setdefault(self._sid, {})
         out: list[PhotoFolder] = []
-        for space in ("team", "personal"):
+
+        if parent_id is None:
+            cached = _TOP_FOLDER_CACHE.get(self._sid)
+            if cached and (_time.monotonic() - cached[0]) < _BUCKET_TTL:
+                return cached[1]
+            # Both spaces' top level in parallel — team's scan is the slow part.
+            team, personal = await asyncio.gather(
+                self._list_children("team", 0), self._list_children("personal", 0)
+            )
+            for space, children in (("team", team), ("personal", personal)):
+                for f in children:
+                    pf = self._folder_from(f, space, parent_id=None)
+                    metas[pf.id] = (space, pf.name)
+                    out.append(pf)
+            _TOP_FOLDER_CACHE[self._sid] = (_time.monotonic(), out)
+            return out
+
+        meta = metas.get(parent_id)
+        if meta is None:
+            raise DsmError(100, "폴더를 먼저 탐색해야 합니다 (경로 캐시 없음).")
+        space = meta[0]
+        for f in await self._list_children(space, int(parent_id)):
+            pf = self._folder_from(f, space, parent_id=parent_id)
+            metas[pf.id] = (space, pf.name)
+            out.append(pf)
+        return out
+
+    @staticmethod
+    def _folder_from(f: dict, space: str, parent_id: str | None) -> PhotoFolder:
+        name = f.get("name", "")
+        # Photos folder name is the full path (/a/b/c) → depth from slash count.
+        depth = max(0, name.strip("/").count("/"))
+        return PhotoFolder(
+            id=str(f.get("id")), name=name, space=space,
+            parent_id=parent_id, depth=depth,
+        )
+
+    async def _list_children(self, space: str, parent_id: int) -> list[dict]:
+        out: list[dict] = []
+        offset = 0
+        while True:
             data = await self._dsm.call(
                 _ns(space, "SYNO.Foto.Browse.Folder"),
                 "list",
+                version=1,
                 sid=self._sid,
-                extra={"offset": 0, "limit": 200},
+                extra={"id": parent_id, "offset": offset, "limit": 1000},
             )
-            for f in data.get("list", []):
-                out.append(
-                    PhotoFolder(
-                        id=str(f.get("id")), name=f.get("name", ""), space=space
-                    )
-                )
+            page = data.get("list", [])
+            out.extend(page)
+            if len(page) < 1000:
+                break
+            offset += 1000
         return out
 
     async def folder_items(self, folder_id: str) -> list[PhotoItem]:
-        # folder_id 필터는 실 NAS 동작 확인됨(2026-07). 폴더의 space를 folders()
-        # 에서 판정해 개인/공용 네임스페이스를 올바르게 선택한다.
-        space = "team"
-        for f in await self.folders():
-            if f.id == folder_id:
-                space = f.space
-                break
+        # folder_id 필터는 실 NAS 동작 확인됨(2026-07). 폴더 space는 메타 캐시
+        # 에서 판정(UI가 트리 탐색 중 채움); 미스면 최상위를 한 번 로드해 시도.
+        space = self._folder_space(folder_id)
         data = await self._dsm.call(
             _ns(space, "SYNO.Foto.Browse.Item"),
             "list",
@@ -323,20 +385,28 @@ class DsmPhotoSource:
             }
         return out
 
+    def _folder_space(self, folder_id: str) -> str:
+        meta = _FOLDER_META.get(self._sid, {}).get(folder_id)
+        if meta is None:
+            raise DsmError(100, "폴더를 먼저 탐색해야 합니다 (경로 캐시 없음).")
+        return meta[0]
+
     async def _dest_dir(self, dest_folder_id: str) -> tuple[str, str]:
-        """dest folder id → (absolute dir path, space)."""
-        for f in await self.folders():
-            if f.id == dest_folder_id:
-                prefix = self._share_prefix(f.space)
-                return f"{prefix}{f.name}".replace("//", "/").rstrip("/") or prefix, f.space
-        raise DsmError(100, "대상 폴더를 찾을 수 없습니다.")
+        """dest folder id → (absolute dir path, space) via the metadata cache."""
+        meta = _FOLDER_META.get(self._sid, {}).get(dest_folder_id)
+        if meta is None:
+            raise DsmError(100, "대상 폴더를 먼저 탐색해야 합니다 (경로 캐시 없음).")
+        space, name = meta
+        prefix = self._share_prefix(space)
+        return f"{prefix}{name}".replace("//", "/").rstrip("/") or prefix, space
 
     async def move(
         self, space: str, item_ids: list[str], dest_folder_id: str, copy: bool
     ) -> MoveOutcome:
         metas = await self._item_meta(space, item_ids)
         dest_dir, dest_space = await self._dest_dir(dest_folder_id)
-        outcome = MoveOutcome(dest_space=dest_space)
+        dest_name = _FOLDER_META.get(self._sid, {}).get(dest_folder_id, (dest_space, ""))[1]
+        outcome = MoveOutcome(dest_space=dest_space, dest_name=dest_name)
         affected: set[tuple[str, str]] = set()
         src_paths = [metas[i]["path"] for i in item_ids if i in metas]
 
@@ -435,6 +505,7 @@ class DsmPhotoSource:
             "SYNO.FileStation.CreateFolder", "create", version=2, sid=self._sid,
             extra={"folder_path": prefix, "name": name},
         )
+        invalidate_folder_cache(self._sid)
         # Re-resolve via Photos so the new folder carries a Photos folder id
         # (FileStation create returns a filesystem path, not a Foto id).
         for f in await self.folders():
@@ -448,6 +519,7 @@ class DsmPhotoSource:
         except DsmError:
             return False
         await self._delete_paths([dest_dir])
+        invalidate_folder_cache(self._sid)
         return True
 
     def _invalidate(self, affected: set[tuple[str, str]]) -> None:

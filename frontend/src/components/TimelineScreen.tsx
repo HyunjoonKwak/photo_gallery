@@ -9,8 +9,6 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import { useQuery } from "@tanstack/react-query";
-import { api } from "../api/client";
 import { useTimelineStore } from "../store/timeline";
 import { useFileOps } from "../hooks/useFileOps";
 import { DedupView } from "./DedupView";
@@ -33,7 +31,6 @@ import { SelectionActionBar } from "./timeline/SelectionActionBar";
 export function TimelineScreen() {
   const space = useTimelineStore((s) => s.space);
   const viewMode = useTimelineStore((s) => s.viewMode);
-  const foldersQuery = useQuery({ queryKey: ["folders"], queryFn: api.folders });
   const ops = useFileOps();
 
   const sensors = useSensors(
@@ -78,12 +75,9 @@ export function TimelineScreen() {
     setDragIds(null);
     const overId = e.over?.id;
     if (!ids || typeof overId !== "string" || !overId.startsWith("folder:")) return;
-    const folder = foldersQuery.data?.folders.find(
-      (f) => `folder:${f.id}` === overId,
-    );
-    if (!folder) return;
+    const folderId = overId.slice("folder:".length);
     // Finder convention: drag = move, ⌥ = copy. No confirmation — undo toast.
-    ops.move(ids, folder, altHeld);
+    ops.move(ids, folderId, altHeld);
   };
 
   return (

@@ -1,7 +1,6 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { api } from "../../api/client";
 import type { PhotoFolder } from "../../api/types";
+import { FolderTree } from "../FolderTree";
 
 export type PickerMode = "move" | "copy" | "toTeam";
 
@@ -20,14 +19,8 @@ export function FolderPickerDialog({
   onConfirm: (folder: PhotoFolder, copyMode: boolean) => void;
   onClose: () => void;
 }) {
-  const foldersQuery = useQuery({ queryKey: ["folders"], queryFn: api.folders });
   const [copyMode, setCopyMode] = useState(mode !== "move");
   const [selected, setSelected] = useState<PhotoFolder | null>(null);
-
-  const all = foldersQuery.data?.folders ?? [];
-  const folders = mode === "toTeam" ? all.filter((f) => f.space === "team") : all;
-  const team = folders.filter((f) => f.space === "team");
-  const personal = folders.filter((f) => f.space === "personal");
 
   const title =
     mode === "toTeam"
@@ -35,32 +28,6 @@ export function FolderPickerDialog({
       : mode === "copy"
         ? `${count}장 복사`
         : `${count}장 이동`;
-
-  const group = (label: string, list: PhotoFolder[]) =>
-    list.length > 0 && (
-      <div key={label}>
-        <h4 className="px-1 pb-1 pt-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
-          {label}
-        </h4>
-        <ul className="space-y-0.5">
-          {list.map((f) => (
-            <li key={f.id}>
-              <button
-                onClick={() => setSelected(f)}
-                className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm ${
-                  selected?.id === f.id
-                    ? "bg-blue-100 text-blue-800 ring-1 ring-blue-300"
-                    : "text-slate-700 hover:bg-slate-100"
-                }`}
-              >
-                <span aria-hidden>📁</span>
-                <span className="truncate">{f.name}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      </div>
-    );
 
   return (
     <div
@@ -73,9 +40,28 @@ export function FolderPickerDialog({
         onClick={(e) => e.stopPropagation()}
       >
         <h3 className="text-sm font-bold text-slate-800">{title}</h3>
+        {selected && (
+          <p className="mt-1 truncate text-xs text-blue-700">
+            선택됨: {selected.name}
+          </p>
+        )}
         <div className="mt-1 max-h-72 overflow-y-auto">
-          {group("공용 폴더", team)}
-          {group("내 개인 폴더", personal)}
+          <h4 className="px-1 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+            공용 폴더
+          </h4>
+          <FolderTree space="team" onSelect={setSelected} selectedId={selected?.id} />
+          {mode !== "toTeam" && (
+            <>
+              <h4 className="px-1 pb-1 pt-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                내 개인 폴더
+              </h4>
+              <FolderTree
+                space="personal"
+                onSelect={setSelected}
+                selectedId={selected?.id}
+              />
+            </>
+          )}
         </div>
 
         {mode === "toTeam" && (

@@ -73,9 +73,11 @@ async def list_bucket_items(
 
 @router.get("/folders", response_model=FoldersResponse)
 async def list_folders(
+    parent_id: str | None = None,
     source: PhotoSource = Depends(get_photo_source),
 ) -> FoldersResponse:
-    return FoldersResponse(folders=await source.folders())
+    """One level of the folder tree. Omit parent_id for top-level folders."""
+    return FoldersResponse(folders=await source.folders(parent_id))
 
 
 @router.get("/folder-items", response_model=BucketItemsResponse)

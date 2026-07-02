@@ -81,10 +81,8 @@ async def execute_move(
     outcome = await source.move(
         req.space, req.item_ids, req.dest_folder_id, req.copy_mode
     )
-    folders = {f.id: f for f in await source.folders()}
-    dest_name = folders[req.dest_folder_id].name if req.dest_folder_id in folders else "?"
     verb = "복사" if req.copy_mode else "이동"
-    summary = f"{len(req.item_ids)}장을 '{dest_name}' 폴더로 {verb}"
+    summary = f"{len(req.item_ids)}장을 '{outcome.dest_name or '대상'}' 폴더로 {verb}"
 
     payload = {
         "summary": summary,

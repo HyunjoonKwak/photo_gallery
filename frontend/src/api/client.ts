@@ -64,7 +64,12 @@ export const api = {
     request<BucketsResponse>(`/api/photos/buckets?space=${space}`),
   bucketItems: (space: Space, day: string) =>
     request<BucketItemsResponse>(`/api/photos/items?space=${space}&day=${day}`),
-  folders: () => request<FoldersResponse>("/api/photos/folders"),
+  folders: (parentId?: string) =>
+    request<FoldersResponse>(
+      parentId
+        ? `/api/photos/folders?parent_id=${encodeURIComponent(parentId)}`
+        : "/api/photos/folders",
+    ),
   folderItems: (folderId: string) =>
     request<BucketItemsResponse>(
       `/api/photos/folder-items?folder_id=${encodeURIComponent(folderId)}`,

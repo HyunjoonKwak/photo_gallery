@@ -40,6 +40,8 @@ export interface PhotoFolder {
   id: string;
   name: string;
   space: Space;
+  parent_id: string | null;
+  depth: number;
 }
 
 export interface FoldersResponse {

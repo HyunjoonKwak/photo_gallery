@@ -25,6 +25,7 @@ Affected = list[tuple[str, str]]
 @dataclass
 class MoveOutcome:
     dest_space: str
+    dest_name: str = ""  # destination folder name, for the operation summary
     # Prior locations of moved items (empty in copy mode) — the undo payload.
     moved: list[PlacedItem] = field(default_factory=list)
     # Ids of copies made in copy mode — undo deletes these permanently.
@@ -49,8 +50,12 @@ class PhotoSource(Protocol):
         """All items of one day bucket, in display (taken_at) order."""
         ...
 
-    async def folders(self) -> list[PhotoFolder]:
-        """Drop-target folders across both spaces (team always included)."""
+    async def folders(self, parent_id: str | None = None) -> list[PhotoFolder]:
+        """One level of the folder tree (lazy).
+
+        ``parent_id`` None → top-level folders of both spaces; otherwise → the
+        direct children of that folder.
+        """
         ...
 
     async def folder_items(self, folder_id: str) -> list[PhotoItem]:

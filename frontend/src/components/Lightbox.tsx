@@ -188,7 +188,7 @@ export function Lightbox() {
             onClose={() => setShowMove(false)}
             onConfirm={(folder, copyMode) => {
               setShowMove(false);
-              ops.move([item.id], folder, copyMode);
+              ops.move([item.id], folder.id, copyMode);
             }}
           />
         </div>

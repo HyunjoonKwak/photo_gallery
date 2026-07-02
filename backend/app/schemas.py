@@ -74,6 +74,8 @@ class PhotoFolder(BaseModel):
     id: str
     name: str
     space: str  # personal | team
+    parent_id: str | None = None  # None for top-level folders
+    depth: int = 0  # nesting depth (0 = top level), for tree indentation
 
 
 class FoldersResponse(BaseModel):
