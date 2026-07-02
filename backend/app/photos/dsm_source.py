@@ -244,22 +244,33 @@ class DsmPhotoSource:
         return out
 
     async def folder_items(self, folder_id: str) -> list[PhotoItem]:
-        # folder_id 필터는 실 NAS 동작 확인됨(2026-07). 폴더 space는 메타 캐시
-        # 에서 판정(UI가 트리 탐색 중 채움); 미스면 최상위를 한 번 로드해 시도.
+        # folder_id 필터는 실 NAS 동작 확인됨(2026-07): 해당 폴더의 "직속" 사진만
+        # 반환(하위 폴더 사진 미포함). 폴더 space는 메타 캐시에서 판정(UI가 트리
+        # 탐색 중 채움); 미스면 최상위를 한 번 로드해 시도.
+        # 대용량 리프 폴더(1000장 초과)는 전체 페이지네이션으로 순회(limit 잘림 방지).
         space = self._folder_space(folder_id)
-        data = await self._dsm.call(
-            _ns(space, "SYNO.Foto.Browse.Item"),
-            "list",
-            version=1,
-            sid=self._sid,
-            extra={
-                "folder_id": int(folder_id),
-                "offset": 0,
-                "limit": 1000,
-                "additional": json.dumps(["thumbnail", "resolution"]),
-            },
-        )
-        return [self._to_item(it) for it in data.get("list", [])]
+        out: list[PhotoItem] = []
+        offset = 0
+        page_size = 1000
+        while True:
+            data = await self._dsm.call(
+                _ns(space, "SYNO.Foto.Browse.Item"),
+                "list",
+                version=1,
+                sid=self._sid,
+                extra={
+                    "folder_id": int(folder_id),
+                    "offset": offset,
+                    "limit": page_size,
+                    "additional": json.dumps(["thumbnail", "resolution"]),
+                },
+            )
+            page = data.get("list", [])
+            out.extend(self._to_item(it) for it in page)
+            if len(page) < page_size:
+                break
+            offset += page_size
+        return out
 
     async def members(self) -> list[str]:
         # 관리자 전용: /homes 하위 폴더명 = 구성원 계정 (user home 서비스 전제).

@@ -187,6 +187,11 @@ export function FolderView() {
                   이 폴더는 비어 있습니다.
                 </p>
               )}
+              {!itemsQuery.isPending && items.length === 0 && subFolders.length > 0 && (
+                <p className="py-4 text-center text-sm text-slate-400">
+                  이 폴더에 직접 담긴 사진은 없습니다. 위 하위 폴더를 열어 보세요.
+                </p>
+              )}
               {rows.map(
                 (row) =>
                   row.kind === "photos" && (
