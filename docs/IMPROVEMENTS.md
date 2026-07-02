@@ -158,6 +158,6 @@
 - [~] DSM 실연동 검증 (실 NAS 192.168.1.113, DSM 7.2 — 진행 중)
   - [x] 조회: 로그인·역할판별(is_manager)·folders·Timeline(v1 고정)·KST buckets(62636장)·items·thumbnail — 전부 정확 동작
   - [x] **파일 작업(공용 공간): 이동/복사/삭제/폴더생성 + 각 undo 전부 실 NAS 검증** (iPad 폴더에서 실행 후 원상복구). 발견·해결: photo 휴지통 비활성→앱 관리 휴지통(`/photo/#trash/t<ns>/`)으로 삭제/복원, `#`폴더는 계층별 생성, 순수숫자 폴더명 금지(`t` 접두), item→경로는 Browse.Item get+folder
-  - [ ] 개인 공간(SYNO.Foto) 파일 작업 — 경로 프리픽스(`/homes/<user>/Photos`?) 미검증, 현재 team만
-  - [ ] cross-space(개인↔공용) 이동, 관리자 타인 폴더(/homes), 2단계 dedup 실스캔(대량 썸네일 해시)
+  - [x] **개인 공간(SYNO.Foto) 검증** — 프리픽스 `/home/Photos`(=`/homes/<user>/Photos`) 확정. buckets/items(29047장) count 정확, `/home/Photos`에서 CopyMove/CreateFolder/Delete 이동→복구 실동작(s.png). **발견·수정한 버그**: 하루 2148장(모바일 백업) 날짜에서 `items()`가 limit 1000에 잘림 → 페이지네이션으로 전량 반환. **발견한 한계**: `SYNO.Foto.Browse.Folder`는 최상위 폴더만 반환(계층적) → `folders()`가 깊은 하위 폴더를 못 가져옴(폴더 트리 재귀 필요 — 후속)
+  - [ ] cross-space(개인↔공용) 이동, 관리자 타인 폴더(/homes/<other>/Photos), 폴더 트리 재귀, 2단계 dedup 실스캔(대량 썸네일 해시)
 - [ ] 3단계(AI 자동 분류) — 미착수

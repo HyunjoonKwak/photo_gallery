@@ -116,22 +116,32 @@ class DsmPhotoSource:
         d = date.fromisoformat(day)
         start = int(datetime(d.year, d.month, d.day).timestamp())
         end = int((datetime(d.year, d.month, d.day) + timedelta(days=1)).timestamp())
-        data = await self._dsm.call(
-            _ns(space, "SYNO.Foto.Browse.Item"),
-            "list",
-            version=1,
-            sid=self._sid,
-            extra={
-                "offset": 0,
-                "limit": 1000,
-                "start_time": start,
-                "end_time": end,
-                "sort_by": "takentime",
-                "sort_direction": "asc",
-                "additional": json.dumps(["thumbnail", "resolution"]),
-            },
-        )
-        return [self._to_item(it) for it in data.get("list", [])]
+        # Page through the whole day — a single mobile-backup day can hold
+        # thousands of photos, so a fixed limit would silently truncate it.
+        out: list[PhotoItem] = []
+        offset = 0
+        while True:
+            data = await self._dsm.call(
+                _ns(space, "SYNO.Foto.Browse.Item"),
+                "list",
+                version=1,
+                sid=self._sid,
+                extra={
+                    "offset": offset,
+                    "limit": _PAGE,
+                    "start_time": start,
+                    "end_time": end,
+                    "sort_by": "takentime",
+                    "sort_direction": "asc",
+                    "additional": json.dumps(["thumbnail", "resolution"]),
+                },
+            )
+            page = data.get("list", [])
+            out.extend(self._to_item(it) for it in page)
+            if len(page) < _PAGE:
+                break
+            offset += _PAGE
+        return out
 
     @staticmethod
     def _to_item(it: dict) -> PhotoItem:
@@ -168,11 +178,15 @@ class DsmPhotoSource:
         return out
 
     async def folder_items(self, folder_id: str) -> list[PhotoItem]:
-        # folder_id 필터는 실 NAS에서 동작 확인됨(2026-07). 공유/개인 구분은
-        # folders()가 space를 붙여 주므로, 여기서는 team 기준으로 조회한다.
-        # (개인 공간 폴더 뷰는 space 인지가 필요 — 후속.)
+        # folder_id 필터는 실 NAS 동작 확인됨(2026-07). 폴더의 space를 folders()
+        # 에서 판정해 개인/공용 네임스페이스를 올바르게 선택한다.
+        space = "team"
+        for f in await self.folders():
+            if f.id == folder_id:
+                space = f.space
+                break
         data = await self._dsm.call(
-            "SYNO.FotoTeam.Browse.Item",
+            _ns(space, "SYNO.Foto.Browse.Item"),
             "list",
             version=1,
             sid=self._sid,
@@ -235,12 +249,10 @@ class DsmPhotoSource:
     TRASH_ROOT = "/photo/#trash"
 
     def _share_prefix(self, space: str) -> str:
-        if space == "team":
-            return "/photo"
-        # 개인 공간(SYNO.Foto)의 파일시스템 프리픽스는 실 NAS 미검증.
-        raise DsmError(
-            100, "개인 공간 파일 작업은 아직 지원되지 않습니다 (경로 검증 필요)."
-        )
+        # 실 NAS 검증(2026-07): 공용 = /photo, 개인 = /home/Photos(로그인 사용자
+        # 홈 alias, = /homes/<user>/Photos). 관리자가 타인 개인 공간을 조작하는
+        # 경우의 /homes/<other>/Photos 프리픽스는 관리자 기능 단계에서 별도 처리.
+        return "/photo" if space == "team" else "/home/Photos"
 
     async def _copymove(
         self, src_paths: list[str], dest_dir: str, *, remove_src: bool
