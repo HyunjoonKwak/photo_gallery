@@ -7,6 +7,7 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragOverEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { useTimelineStore } from "../store/timeline";
@@ -39,6 +40,9 @@ export function TimelineScreen() {
   );
   const [dragIds, setDragIds] = useState<string[] | null>(null);
   const [altHeld, setAltHeld] = useState(false);
+  // Whether the drag currently hovers a valid folder target — drives the
+  // ghost's drop feedback (B-4: 무효 대상 안내).
+  const [overFolder, setOverFolder] = useState(false);
 
   // Global keys: Shift (range preview), Alt (copy mode), Escape (close/clear).
   useEffect(() => {
@@ -71,9 +75,18 @@ export function TimelineScreen() {
     setDragIds([...useTimelineStore.getState().selected]);
   };
 
+  const onDragOver = (e: DragOverEvent) => {
+    const overId = e.over?.id;
+    setOverFolder(
+      Boolean(e.over?.data.current?.folderId) ||
+        (typeof overId === "string" && overId.startsWith("folder:")),
+    );
+  };
+
   const onDragEnd = (e: DragEndEvent) => {
     const ids = dragIds;
     setDragIds(null);
+    setOverFolder(false);
     // Dest folder: droppable data first (dual-pane cards/backgrounds carry it
     // with pane-unique ids), else the legacy "folder:<id>" id convention.
     const dataFolderId = e.over?.data.current?.folderId as string | undefined;
@@ -94,8 +107,12 @@ export function TimelineScreen() {
         sensors={sensors}
         collisionDetection={pointerWithin}
         onDragStart={onDragStart}
+        onDragOver={onDragOver}
         onDragEnd={onDragEnd}
-        onDragCancel={() => setDragIds(null)}
+        onDragCancel={() => {
+          setDragIds(null);
+          setOverFolder(false);
+        }}
       >
         {viewMode === "timeline" && (
           <div className="flex h-full">
@@ -119,7 +136,13 @@ export function TimelineScreen() {
           </div>
         )}
         <DragOverlay dropAnimation={null}>
-          {dragIds && <DragOverlayContent ids={dragIds} copyMode={altHeld} />}
+          {dragIds && (
+            <DragOverlayContent
+              ids={dragIds}
+              copyMode={altHeld}
+              overValid={overFolder}
+            />
+          )}
         </DragOverlay>
       </DndContext>
       <SelectionActionBar />

@@ -4,15 +4,19 @@ import type { PhotoItem } from "../../api/types";
 
 /** Drag ghost: a small stack of the first thumbnails + "n장" badge, with the
  * move/copy mode shown live (⌥/Alt = copy, Finder convention — IMPROVEMENTS
- * B-4). Rendered inside dnd-kit's DragOverlay, which is mandatory here because
- * the source cell can be unmounted by virtualization mid-drag.
+ * B-4). The mode badge doubles as drop feedback: green over a valid folder
+ * target, muted guidance elsewhere. Rendered inside dnd-kit's DragOverlay,
+ * which is mandatory here because the source cell can be unmounted by
+ * virtualization mid-drag.
  */
 export function DragOverlayContent({
   ids,
   copyMode,
+  overValid = false,
 }: {
   ids: string[];
   copyMode: boolean;
+  overValid?: boolean;
 }) {
   const itemsById = useTimelineStore((s) => s.itemsById);
   const space = useTimelineStore((s) => s.space);
@@ -38,8 +42,16 @@ export function DragOverlayContent({
       <div className="absolute -right-3 -top-3 z-10 rounded-full bg-blue-600 px-2 py-0.5 text-xs font-bold text-white shadow">
         {ids.length}장
       </div>
-      <div className="absolute -bottom-2 left-1/2 z-10 -translate-x-1/2 rounded-full bg-slate-800 px-2 py-0.5 text-[10px] font-medium text-white shadow">
-        {copyMode ? "+ 복사" : "이동"}
+      <div
+        className={`absolute -bottom-2 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-medium text-white shadow transition-colors ${
+          overValid ? "bg-green-600" : "bg-slate-800/80"
+        }`}
+      >
+        {overValid
+          ? copyMode
+            ? "놓아서 복사"
+            : "놓아서 이동"
+          : `${copyMode ? "복사" : "이동"} — 폴더 위로`}
       </div>
     </div>
   );

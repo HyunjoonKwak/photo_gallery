@@ -6,7 +6,18 @@ import type { PhotoFolder } from "../api/types";
 import { layoutBucket } from "../lib/rowModel";
 import { useTimelineStore } from "../store/timeline";
 import { PhotoCell } from "./timeline/PhotoCell";
-import { folderBasename } from "./FolderTree";
+import { SPRING_MS, folderBasename } from "./FolderTree";
+
+/** Spring-loaded drill-in: dragging over a folder card/row for a moment opens
+ * it, so photos can be dropped into nested folders in one gesture (B-4). */
+function useSpringOpen(isOver: boolean, open: () => void) {
+  useEffect(() => {
+    if (!isOver) return;
+    const t = window.setTimeout(open, SPRING_MS);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOver]);
+}
 
 /** A sub-folder card in the pane — click to drill in, also a drop target.
  * `dndPrefix` keeps droppable ids unique when two panes show the same folder;
@@ -27,6 +38,7 @@ function FolderCard({
     id: `${dndPrefix}folder:${folder.id}`,
     data: { folderId: folder.id },
   });
+  useSpringOpen(isOver, () => onOpen(folder));
   return (
     <button
       ref={setNodeRef}
@@ -63,6 +75,7 @@ function FolderRow({
     id: `${dndPrefix}folder:${folder.id}`,
     data: { folderId: folder.id },
   });
+  useSpringOpen(isOver, () => onOpen(folder));
   return (
     <button
       ref={setNodeRef}

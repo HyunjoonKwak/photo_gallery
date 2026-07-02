@@ -1,8 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useDroppable } from "@dnd-kit/core";
 import { api } from "../api/client";
 import type { PhotoFolder, Space } from "../api/types";
+
+/** Finder's spring-loaded folders (IMPROVEMENTS B-4): while a drag hovers a
+ * collapsed node/card for this long, it opens by itself. */
+export const SPRING_MS = 600;
 
 /** Lazy folder tree (IMPROVEMENTS: the real NAS has 1500+ folders, so the tree
  * loads one level at a time — children are fetched only when a node expands).
@@ -35,6 +39,14 @@ function FolderTreeNode({
     disabled: !droppable,
   });
   const children = childrenQuery.data?.folders ?? [];
+
+  // Spring-loaded: dragging over a collapsed node auto-expands it so nested
+  // targets are reachable without dropping first (isOver is drag-only).
+  useEffect(() => {
+    if (!isOver || expanded) return;
+    const t = window.setTimeout(() => setExpanded(true), SPRING_MS);
+    return () => window.clearTimeout(t);
+  }, [isOver, expanded]);
 
   return (
     <div>
