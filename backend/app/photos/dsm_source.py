@@ -21,6 +21,8 @@ N4S4/synology-api) 기준의 최선 추정이며, 실제 NAS 검증 단계(명�
 from __future__ import annotations
 
 import json
+import time as _time
+from collections import Counter
 from datetime import date, datetime, timedelta
 
 from ..dsm.client import DsmClient
@@ -28,6 +30,21 @@ from ..dsm.errors import DsmError
 from ..schemas import PhotoBucket, PhotoFolder, PhotoItem, PlacedItem
 from .hashing import compute_hashes
 from .source import Affected, DeleteOutcome, MoveOutcome
+
+# Bucket cache: (sid, space) -> (monotonic_ts, buckets). Building buckets pages
+# the entire library (~2s per 5000 items), so we cache the result briefly and
+# invalidate on writes. Process-local; lost on restart (rebuilds on demand).
+_BUCKET_CACHE: dict[tuple[str, str], tuple[float, list[PhotoBucket]]] = {}
+_BUCKET_TTL = 300.0  # seconds
+_PAGE = 5000
+
+
+def invalidate_bucket_cache(sid: str, space: str | None = None) -> None:
+    if space is None:
+        for key in [k for k in _BUCKET_CACHE if k[0] == sid]:
+            _BUCKET_CACHE.pop(key, None)
+    else:
+        _BUCKET_CACHE.pop((sid, space), None)
 
 
 def _ns(space: str, api: str) -> str:
@@ -50,26 +67,48 @@ class DsmPhotoSource:
         self._sid = sid
 
     async def buckets(self, space: str) -> list[PhotoBucket]:
-        # 검증 필요: Timeline API 응답 구조. Synology Photos 웹 UI 자체가
-        # count-first 타임라인을 쓰므로 대응 API가 존재한다.
-        data = await self._dsm.call(
-            _ns(space, "SYNO.Foto.Browse.Timeline"),
-            "get",
-            sid=self._sid,
-            extra={"timeline_group_unit": "day"},
-        )
-        sections = data.get("section") or data.get("list") or []
-        out: list[PhotoBucket] = []
-        for s in sections:
-            year, month = s.get("year"), s.get("month")
-            day = s.get("day")
-            count = int(s.get("item_count", 0))
-            if not (year and month and day) or count <= 0:
-                continue
-            out.append(
-                PhotoBucket(day=f"{year:04d}-{month:02d}-{day:02d}", count=count)
+        """Day buckets grouped in local (KST) time by paging the whole library.
+
+        실 NAS 검증(DSM 7.2, 2026-07): SYNO.Foto.Browse.Timeline 의 일별 count 는
+        UTC 계열로 그룹핑되어 우리가 쓰는 로컬(KST) 자정 경계 items() 와 날짜별
+        개수가 어긋난다(사진 표시는 정확하나 헤더 count 불일치). 정확도를 위해
+        Timeline 을 쓰지 않고 Browse.Item 을 전량 페이징하며 taken time 을 서버
+        로컬 타임존으로 그룹핑한다 — buckets 와 items 가 동일 소스·동일 TZ 라
+        개수가 정확히 일치한다. (배포 컨테이너 TZ=Asia/Seoul 전제 — docker 설정)
+
+        비용: 라이브러리당 ~2s/5000장. 결과는 (sid,space)로 짧게 캐시하고
+        쓰기 작업 시 무효화한다.
+        """
+        cache_key = (self._sid, space)
+        cached = _BUCKET_CACHE.get(cache_key)
+        if cached and (_time.monotonic() - cached[0]) < _BUCKET_TTL:
+            return cached[1]
+
+        counter: Counter[str] = Counter()
+        offset = 0
+        while True:
+            data = await self._dsm.call(
+                _ns(space, "SYNO.Foto.Browse.Item"),
+                "list",
+                version=1,
+                sid=self._sid,
+                # additional 생략 → time 만 받아 페이로드 최소화.
+                extra={"offset": offset, "limit": _PAGE},
             )
-        out.sort(key=lambda b: b.day, reverse=True)
+            items = data.get("list", [])
+            for it in items:
+                ts = it.get("time")
+                if ts:
+                    counter[date.fromtimestamp(ts).isoformat()] += 1
+            if len(items) < _PAGE:
+                break
+            offset += _PAGE
+
+        out = [
+            PhotoBucket(day=day, count=count)
+            for day, count in sorted(counter.items(), reverse=True)
+        ]
+        _BUCKET_CACHE[cache_key] = (_time.monotonic(), out)
         return out
 
     async def items(self, space: str, day: str) -> list[PhotoItem]:
