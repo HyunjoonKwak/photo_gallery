@@ -50,6 +50,9 @@ export function TimelineView() {
   const [scrollTop, setScrollTop] = useState(0);
 
   // --- content width / viewport height ---
+  // Keyed on scrollEl (set by the callback ref): the grid only mounts after
+  // the buckets query resolves (loading spinner early-return), so an
+  // on-mount-only effect would observe nothing and width would stay 0.
   useLayoutEffect(() => {
     const content = contentRef.current;
     const scroll = scrollRef.current;
@@ -61,7 +64,7 @@ export function TimelineView() {
     ro.observe(content);
     ro.observe(scroll);
     return () => ro.disconnect();
-  }, []);
+  }, [scrollEl]);
 
   useEffect(() => {
     const el = scrollEl;

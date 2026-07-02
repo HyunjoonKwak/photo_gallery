@@ -62,6 +62,10 @@ class PhotoSource(Protocol):
         """Items currently assigned to a folder (folder view)."""
         ...
 
+    async def folder_count(self, folder_id: str) -> int:
+        """Number of items directly in a folder (folder view badges)."""
+        ...
+
     async def members(self) -> list[str]:
         """Family member accounts (admin: cross-user organizing)."""
         ...

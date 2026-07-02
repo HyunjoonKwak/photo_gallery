@@ -274,6 +274,14 @@ class MockPhotoSource:
         out.sort(key=lambda i: (i.taken_at, i.id))
         return out
 
+    async def folder_count(self, folder_id: str) -> int:
+        self._folder_by_id(folder_id)  # 404 for unknown folders
+        return sum(
+            1
+            for item_id, (_, fid) in self._loc.items()
+            if fid == folder_id and item_id not in self._deleted
+        )
+
     async def members(self) -> list[str]:
         return list(_MEMBERS)
 

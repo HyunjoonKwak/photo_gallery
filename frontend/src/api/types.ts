@@ -51,6 +51,11 @@ export interface FoldersResponse {
   folders: PhotoFolder[];
 }
 
+export interface FolderCountsResponse {
+  /** folder id → direct item count; failed ids are omitted. */
+  counts: Record<string, number>;
+}
+
 // --- file operations ---
 
 export interface MoveRequest {

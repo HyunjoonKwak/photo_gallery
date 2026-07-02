@@ -272,6 +272,19 @@ class DsmPhotoSource:
             offset += page_size
         return out
 
+    async def folder_count(self, folder_id: str) -> int:
+        # Browse.Item "count" takes the same filters as "list" — one cheap call
+        # instead of paging every item just to count it.
+        space = self._folder_space(folder_id)
+        data = await self._dsm.call(
+            _ns(space, "SYNO.Foto.Browse.Item"),
+            "count",
+            version=1,
+            sid=self._sid,
+            extra={"folder_id": int(folder_id)},
+        )
+        return int(data.get("count", 0))
+
     async def members(self) -> list[str]:
         # 관리자 전용: /homes 하위 폴더명 = 구성원 계정 (user home 서비스 전제).
         data = await self._dsm.call(

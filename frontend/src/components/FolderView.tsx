@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTimelineStore } from "../store/timeline";
 import { useFileOps } from "../hooks/useFileOps";
+import { useResizableWidth } from "../hooks/useResizableWidth";
 import type { PhotoFolder } from "../api/types";
 import { FolderPane } from "./FolderPane";
 import { FolderTree, folderBasename } from "./FolderTree";
@@ -76,6 +77,7 @@ function DualActions({
  */
 export function FolderView() {
   const [dual, setDual] = useState(false);
+  const aside = useResizableWidth("nasphoto.folderAsideWidth", 240);
   const [pathA, setPathA] = useState<PhotoFolder[]>([]);
   const [pathB, setPathB] = useState<PhotoFolder[]>([]);
   const [activePane, setActivePane] = useState<0 | 1>(0);
@@ -154,7 +156,8 @@ export function FolderView() {
           {/* Left: quick-jump tree. Selecting resets the breadcrumb. */}
           <aside
             data-no-boxselect
-            className="w-60 shrink-0 overflow-y-auto border-r border-slate-200 bg-white px-2 py-2"
+            style={{ width: aside.width }}
+            className="shrink-0 overflow-y-auto border-r border-slate-200 bg-white px-2 py-2"
           >
             <button
               onClick={onCreateFolder}
@@ -181,6 +184,10 @@ export function FolderView() {
               onSelect={(f) => setPathA([f])}
             />
           </aside>
+          <div
+            {...aside.handleProps}
+            className="w-1 shrink-0 cursor-col-resize bg-transparent transition-colors hover:bg-blue-300 active:bg-blue-400"
+          />
           <main className="flex min-w-0 flex-1">
             <FolderPane
               path={pathA}

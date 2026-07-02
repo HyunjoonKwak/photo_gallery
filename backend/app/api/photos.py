@@ -9,6 +9,7 @@ single geometry computation small (the Immich #28861 freeze mitigation).
 
 from __future__ import annotations
 
+import asyncio
 from datetime import date
 from typing import Literal
 
@@ -22,6 +23,7 @@ from ..schemas import (
     BucketsResponse,
     CreateFolderRequest,
     DeleteRequest,
+    FolderCountsResponse,
     FoldersResponse,
     MembersResponse,
     MoveRequest,
@@ -90,6 +92,30 @@ async def list_folder_items(
     folders = {f.id: f for f in await source.folders()}
     space = folders[folder_id].space if folder_id in folders else "team"
     return BucketItemsResponse(space=space, day="", items=items)
+
+
+@router.get("/folder-counts", response_model=FolderCountsResponse)
+async def get_folder_counts(
+    ids: str,
+    source: PhotoSource = Depends(get_photo_source),
+) -> FolderCountsResponse:
+    """Direct item counts for a set of folders (folder view badges).
+
+    Comma-separated ids, counted in parallel; a folder whose count fails is
+    omitted (the UI simply hides that badge) so one bad id can't 500 the batch.
+    """
+    id_list = [i.strip() for i in ids.split(",") if i.strip()][:200]
+
+    async def one(fid: str) -> tuple[str, int | None]:
+        try:
+            return fid, await source.folder_count(fid)
+        except Exception:
+            return fid, None
+
+    pairs = await asyncio.gather(*(one(fid) for fid in id_list))
+    return FolderCountsResponse(
+        counts={fid: n for fid, n in pairs if n is not None}
+    )
 
 
 @router.get("/members", response_model=MembersResponse)

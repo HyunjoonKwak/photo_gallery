@@ -23,6 +23,17 @@ function rangeIds(orderedIds: string[], a: string, b: string): string[] {
 }
 
 export type ViewMode = "timeline" | "folders" | "dedup";
+export type FolderDisplay = "grid" | "list";
+
+const FOLDER_DISPLAY_KEY = "nasphoto.folderDisplay";
+
+function initialFolderDisplay(): FolderDisplay {
+  try {
+    return localStorage.getItem(FOLDER_DISPLAY_KEY) === "list" ? "list" : "grid";
+  } catch {
+    return "grid";
+  }
+}
 
 interface TimelineState {
   space: Space;
@@ -34,6 +45,9 @@ interface TimelineState {
   pendingFolderPath: PhotoFolder[] | null;
   openFolderView: (path: PhotoFolder[]) => void;
   consumePendingFolderPath: () => void;
+  /** Folder view: show sub-folders as icon cards or a list (persisted). */
+  folderDisplay: FolderDisplay;
+  setFolderDisplay: (d: FolderDisplay) => void;
   /** Admin only: the member whose photos are being organized (spec 4.5). */
   viewedOwner: string | null;
   setViewedOwner: (owner: string | null) => void;
@@ -99,6 +113,15 @@ export const useTimelineStore = create<TimelineState>()((set, get) => ({
       lightboxId: null,
     }),
   consumePendingFolderPath: () => set({ pendingFolderPath: null }),
+  folderDisplay: initialFolderDisplay(),
+  setFolderDisplay: (folderDisplay) => {
+    try {
+      localStorage.setItem(FOLDER_DISPLAY_KEY, folderDisplay);
+    } catch {
+      // private mode etc. — preference just won't persist
+    }
+    set({ folderDisplay });
+  },
   viewedOwner: null,
   setViewedOwner: (viewedOwner) => set({ viewedOwner }),
 

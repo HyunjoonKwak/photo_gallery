@@ -20,6 +20,7 @@ export function useFileOps() {
       queryClient.invalidateQueries({ queryKey: ["bucket", a.space, a.day] });
     }
     queryClient.invalidateQueries({ queryKey: ["folder-items"] });
+    queryClient.invalidateQueries({ queryKey: ["folder-counts"] });
     queryClient.invalidateQueries({ queryKey: ["ops"] });
     queryClient.invalidateQueries({ queryKey: ["dedup-groups"] });
   };

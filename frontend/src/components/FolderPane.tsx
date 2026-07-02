@@ -14,10 +14,12 @@ import { folderBasename } from "./FolderTree";
  */
 function FolderCard({
   folder,
+  count,
   dndPrefix,
   onOpen,
 }: {
   folder: PhotoFolder;
+  count: number | undefined;
   dndPrefix: string;
   onOpen: (f: PhotoFolder) => void;
 }) {
@@ -38,6 +40,48 @@ function FolderCard({
       <span className="w-full truncate text-xs text-slate-700">
         {folderBasename(folder.name)}
       </span>
+      <span className="text-[10px] text-slate-400">
+        {count != null ? `${count.toLocaleString()}장` : " "}
+      </span>
+    </button>
+  );
+}
+
+/** List-view row: same behaviors as the card (drill-in click, drop target). */
+function FolderRow({
+  folder,
+  count,
+  dndPrefix,
+  onOpen,
+}: {
+  folder: PhotoFolder;
+  count: number | undefined;
+  dndPrefix: string;
+  onOpen: (f: PhotoFolder) => void;
+}) {
+  const { isOver, setNodeRef } = useDroppable({
+    id: `${dndPrefix}folder:${folder.id}`,
+    data: { folderId: folder.id },
+  });
+  return (
+    <button
+      ref={setNodeRef}
+      onClick={() => onOpen(folder)}
+      title={folder.name}
+      className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors ${
+        isOver ? "bg-blue-100 ring-2 ring-blue-400" : "hover:bg-slate-100"
+      }`}
+    >
+      <span aria-hidden>📁</span>
+      <span className="min-w-0 flex-1 truncate text-slate-700">
+        {folderBasename(folder.name)}
+      </span>
+      {count != null && (
+        <span className="shrink-0 text-xs text-slate-400">
+          {count.toLocaleString()}장
+        </span>
+      )}
+      <span className="shrink-0 text-slate-300">›</span>
     </button>
   );
 }
@@ -80,6 +124,20 @@ export function FolderPane({
     queryFn: () => api.folders(current?.id),
   });
   const subFolders = subQuery.data?.folders ?? [];
+
+  // Direct photo counts for the visible sub-folders (badge). One batched
+  // request per level; failures just hide the badge.
+  const countIds = useMemo(() => subFolders.map((f) => f.id), [subFolders]);
+  const countsQuery = useQuery({
+    queryKey: ["folder-counts", countIds.join(",")],
+    queryFn: () => api.folderCounts(countIds),
+    enabled: countIds.length > 0,
+    staleTime: 30_000,
+  });
+  const counts = countsQuery.data?.counts ?? {};
+
+  const folderDisplay = useTimelineStore((s) => s.folderDisplay);
+  const setFolderDisplay = useTimelineStore((s) => s.setFolderDisplay);
 
   // Photos directly in the current folder (none at root). Tag each item with
   // the pane's space so thumbnails/ops use the right namespace even when the
@@ -175,19 +233,60 @@ export function FolderPane({
         )}
         {subFolders.length > 0 && (
           <section className="py-3">
-            <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
-              {current ? "하위 폴더" : "폴더"} ({subFolders.length})
-            </h3>
-            <div className="flex flex-wrap gap-1">
-              {subFolders.map((f) => (
-                <FolderCard
-                  key={f.id}
-                  folder={f}
-                  dndPrefix={dndPrefix}
-                  onOpen={openFolder}
-                />
-              ))}
+            <div className="mb-1 flex items-center justify-between">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                {current ? "하위 폴더" : "폴더"} ({subFolders.length})
+              </h3>
+              <nav className="flex gap-0.5 rounded-lg bg-slate-100 p-0.5">
+                <button
+                  onClick={() => setFolderDisplay("grid")}
+                  title="아이콘 보기"
+                  className={`rounded-md px-2 py-0.5 text-xs transition-colors ${
+                    folderDisplay === "grid"
+                      ? "bg-white text-slate-700 shadow-sm"
+                      : "text-slate-400 hover:text-slate-600"
+                  }`}
+                >
+                  ▦
+                </button>
+                <button
+                  onClick={() => setFolderDisplay("list")}
+                  title="리스트 보기"
+                  className={`rounded-md px-2 py-0.5 text-xs transition-colors ${
+                    folderDisplay === "list"
+                      ? "bg-white text-slate-700 shadow-sm"
+                      : "text-slate-400 hover:text-slate-600"
+                  }`}
+                >
+                  ☰
+                </button>
+              </nav>
             </div>
+            {folderDisplay === "grid" ? (
+              <div className="flex flex-wrap gap-1">
+                {subFolders.map((f) => (
+                  <FolderCard
+                    key={f.id}
+                    folder={f}
+                    count={counts[f.id]}
+                    dndPrefix={dndPrefix}
+                    onOpen={openFolder}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="max-w-2xl divide-y divide-slate-50">
+                {subFolders.map((f) => (
+                  <FolderRow
+                    key={f.id}
+                    folder={f}
+                    count={counts[f.id]}
+                    dndPrefix={dndPrefix}
+                    onOpen={openFolder}
+                  />
+                ))}
+              </div>
+            )}
           </section>
         )}
 

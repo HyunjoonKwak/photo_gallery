@@ -82,6 +82,11 @@ class FoldersResponse(BaseModel):
     folders: list[PhotoFolder]
 
 
+class FolderCountsResponse(BaseModel):
+    # folder id → direct item count; ids whose count failed are omitted.
+    counts: dict[str, int]
+
+
 # --- File operations (move/copy/delete + undo) ---
 
 

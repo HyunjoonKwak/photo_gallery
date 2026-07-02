@@ -7,6 +7,7 @@ import type {
   DedupJob,
   DedupJobResponse,
   DeleteRequest,
+  FolderCountsResponse,
   FoldersResponse,
   LoginRequest,
   MembersResponse,
@@ -73,6 +74,10 @@ export const api = {
   folderItems: (folderId: string) =>
     request<BucketItemsResponse>(
       `/api/photos/folder-items?folder_id=${encodeURIComponent(folderId)}`,
+    ),
+  folderCounts: (ids: string[]) =>
+    request<FolderCountsResponse>(
+      `/api/photos/folder-counts?ids=${encodeURIComponent(ids.join(","))}`,
     ),
   members: () => request<MembersResponse>("/api/photos/members"),
   opMove: (body: MoveRequest) =>
