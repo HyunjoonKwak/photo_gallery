@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 
 from .db import connect
 from .photos.source import PhotoSource
-from .schemas import DedupGroup, DedupItem, DedupJob
+from .schemas import DedupGroup, DedupItem, DedupJob, PhotoItem
 
 logger = logging.getLogger(__name__)
 
@@ -107,11 +107,14 @@ async def _run_scan(source: PhotoSource, sqlite_path: str, space: str, job_id: i
         _update_job(sqlite_path, job_id, total=total)
 
         with connect(sqlite_path) as conn:
+            # thumbhash IS NOT NULL: rows hashed before the B-2 column existed
+            # are re-hashed once so their blur placeholder gets filled.
             cached = {
                 row["file_id"]
                 for row in conn.execute(
                     "SELECT file_id FROM photo_cache "
-                    "WHERE space = ? AND sha256 IS NOT NULL AND phash IS NOT NULL",
+                    "WHERE space = ? AND sha256 IS NOT NULL AND phash IS NOT NULL "
+                    "  AND thumbhash IS NOT NULL",
                     (space,),
                 )
             }
@@ -126,12 +129,12 @@ async def _run_scan(source: PhotoSource, sqlite_path: str, space: str, job_id: i
             # not fail the whole scan — skip it and keep going.
             async with sem:
                 try:
-                    sha, ph = await source.item_hashes(space, item)
+                    sha, ph, th = await source.item_hashes(space, item)
                 except Exception:  # noqa: BLE001 - per-item boundary
                     return None
             return (
                 item.id, space, item.filename, item.taken_at, item.cache_key,
-                item.width, item.height, item.size, sha, ph,
+                item.width, item.height, item.size, sha, ph, th,
             )
 
         for bucket in buckets:
@@ -155,8 +158,8 @@ async def _run_scan(source: PhotoSource, sqlite_path: str, space: str, job_id: i
                         conn.executemany(
                             "INSERT OR REPLACE INTO photo_cache "
                             "(file_id, space, path, taken_at, thumb_key, width, "
-                            " height, size, sha256, phash) "
-                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            " height, size, sha256, phash, thumbhash) "
+                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                             rows,
                         )
                         conn.commit()
@@ -312,6 +315,34 @@ def build_groups(sqlite_path: str, space: str, threshold: int) -> list[DedupGrou
 
     groups.sort(key=lambda g: g.wasted_bytes, reverse=True)
     return groups
+
+
+def fill_thumbhashes(sqlite_path: str, items: list[PhotoItem]) -> list[PhotoItem]:
+    """Attach cached blur placeholders (B-2) to list-response items.
+
+    Items the dedup scan hasn't hashed yet simply keep their color fallback —
+    the blur coverage grows with each scan, no extra DSM traffic here.
+    """
+    ids = [it.id for it in items]
+    if not ids:
+        return items
+    found: dict[str, str] = {}
+    with connect(sqlite_path) as conn:
+        for start in range(0, len(ids), 500):  # SQLite parameter limit safety
+            chunk = ids[start : start + 500]
+            marks = ",".join("?" * len(chunk))
+            for row in conn.execute(
+                f"SELECT file_id, thumbhash FROM photo_cache "  # noqa: S608
+                f"WHERE file_id IN ({marks}) AND thumbhash IS NOT NULL",
+                chunk,
+            ):
+                found[row["file_id"]] = row["thumbhash"]
+    if not found:
+        return items
+    return [
+        it.model_copy(update={"thumbhash": found[it.id]}) if it.id in found else it
+        for it in items
+    ]
 
 
 def remove_cached_items(sqlite_path: str, item_ids: list[str]) -> None:

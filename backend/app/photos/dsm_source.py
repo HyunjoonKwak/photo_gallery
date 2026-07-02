@@ -458,11 +458,11 @@ class DsmPhotoSource:
             },
         )
 
-    async def item_hashes(self, space: str, item: PhotoItem) -> tuple[str, str]:
+    async def item_hashes(self, space: str, item: PhotoItem) -> tuple[str, str, str]:
         """Real hashes over the small thumbnail (D절: 원본 전송 회피).
 
         SHA-256 over thumbnail bytes(동일 원본 → 동일 Synology 썸네일 전제,
-        실 NAS 검증 항목), pHash over the decoded pixels.
+        실 NAS 검증 항목), pHash + ThumbHash over the decoded pixels.
         """
         data, _ = await self.thumbnail(space, item.id, item.cache_key, "sm")
         return compute_hashes(data)

@@ -1,6 +1,7 @@
 import { memo, useState } from "react";
 import { useDraggable } from "@dnd-kit/core";
 import { thumbnailUrl } from "../../api/client";
+import { thumbhashToUrl } from "../../lib/thumbhash";
 import { useTimelineStore } from "../../store/timeline";
 import type { CellLayout } from "../../lib/rowModel";
 
@@ -10,8 +11,9 @@ import type { CellLayout } from "../../lib/rowModel";
  * - photo click opens the lightbox; the hover check-circle selects
  * - once selection mode is active (anything selected), photo clicks toggle
  * - Shift+click extends the range from the anchor
- * Two-stage loading: placeholder color first, thumbnail fades in on load
- * (thumbhash replaces the color when the photo_cache pipeline lands).
+ * Three-stage loading (IMPROVEMENTS B-2): blurred thumbhash (when the dedup
+ * scan has hashed the item) or placeholder color → sm thumbnail fades in →
+ * xl in the lightbox.
  */
 export const PhotoCell = memo(function PhotoCell({ cell }: { cell: CellLayout }) {
   const { item } = cell;
@@ -59,6 +61,12 @@ export const PhotoCell = memo(function PhotoCell({ cell }: { cell: CellLayout })
         width: cell.width,
         height: cell.height,
         backgroundColor: item.placeholder_color ?? "#e2e8f0",
+        backgroundImage:
+          !loaded && item.thumbhash
+            ? `url(${thumbhashToUrl(item.thumbhash) ?? ""})`
+            : undefined,
+        backgroundSize: "cover",
+        backgroundPosition: "center",
       }}
     >
       <img

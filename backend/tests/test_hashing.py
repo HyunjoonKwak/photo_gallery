@@ -55,8 +55,8 @@ def test_small_edit_is_near_duplicate():
 
 def test_recompression_is_perceptually_identical():
     img = _photo_like(4)
-    a, _ = compute_hashes(_jpeg_bytes(img, quality=95))
-    b, _ = compute_hashes(_jpeg_bytes(img, quality=70))
+    a, _, _ = compute_hashes(_jpeg_bytes(img, quality=95))
+    b, _, _ = compute_hashes(_jpeg_bytes(img, quality=70))
     ph_a = phash_int(Image.open(BytesIO(_jpeg_bytes(img, quality=95))))
     ph_b = phash_int(Image.open(BytesIO(_jpeg_bytes(img, quality=70))))
     assert a != b  # different bytes → different sha
@@ -67,3 +67,20 @@ def test_different_photos_are_far_apart():
     a = phash_int(_photo_like(5))
     b = phash_int(_photo_like(11))
     assert hamming(a, b) > 10
+
+
+def test_thumbhash_structure_and_determinism():
+    from app.photos.hashing import thumbhash_bytes
+
+    img = _photo_like(7)  # 320×240 landscape, no alpha
+    th = thumbhash_bytes(img)
+    # 5-byte header + AC coefficients; well under the ~32-byte typical size.
+    assert isinstance(th, bytes) and 5 < len(th) <= 40
+    header16 = th[3] | (th[4] << 8)
+    assert header16 >> 15 == 1  # landscape flag
+    assert (th[2] >> 7) == 0  # hasAlpha bit off for RGB input
+    assert thumbhash_bytes(img) == th  # deterministic
+
+    portrait = img.transpose(Image.Transpose.ROTATE_90)
+    th_p = thumbhash_bytes(portrait)
+    assert (th_p[3] | (th_p[4] << 8)) >> 15 == 0  # portrait → flag off

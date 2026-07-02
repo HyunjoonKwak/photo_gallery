@@ -139,6 +139,43 @@ def _sim_hashes(space: str, day: str, idx: int) -> tuple[str, int]:
     return f"{r.getrandbits(256):064x}", r.getrandbits(64)
 
 
+_THUMBHASH_CACHE: dict[tuple[int, int, int], str] = {}
+
+
+def _sim_thumbhash(item: PhotoItem) -> str:
+    """Real thumbhash encoded from a small gradient matching the item's
+    placeholder hue — validates the encode/decode pipeline without a NAS.
+    Cached by (hue, w, h): mock items share a small hue/aspect space, so scans
+    stay fast."""
+    import base64
+    from colorsys import hls_to_rgb
+
+    from PIL import Image
+
+    from .hashing import thumbhash_bytes
+
+    m = re.match(r"hsl\((\d+)", item.placeholder_color or "hsl(200")
+    hue = int(m.group(1)) if m else 200
+    hue2 = (hue + 40) % 360
+    # tiny gradient canvas in the item's aspect ratio
+    w = 24 if item.width >= item.height else max(8, round(24 * item.width / item.height))
+    h = 24 if item.height > item.width else max(8, round(24 * item.height / item.width))
+    cached = _THUMBHASH_CACHE.get((hue, w, h))
+    if cached:
+        return cached
+    img = Image.new("RGB", (w, h))
+    c1 = hls_to_rgb(hue / 360, 0.78, 0.45)
+    c2 = hls_to_rgb(hue2 / 360, 0.6, 0.55)
+    px = img.load()
+    for y in range(h):
+        for x in range(w):
+            t = (x / max(1, w - 1) + y / max(1, h - 1)) / 2
+            px[x, y] = tuple(round(255 * (a * (1 - t) + b * t)) for a, b in zip(c1, c2))
+    result = base64.b64encode(thumbhash_bytes(img)).decode()
+    _THUMBHASH_CACHE[(hue, w, h)] = result
+    return result
+
+
 def _svg_thumbnail(item: PhotoItem, size: str) -> bytes:
     long_edge = 320 if size == "sm" else 1280
     if item.width >= item.height:
@@ -417,7 +454,7 @@ class MockPhotoSource:
     ) -> tuple[bytes, str]:
         return _svg_thumbnail(self._resolve_item(item_id), size), "image/svg+xml"
 
-    async def item_hashes(self, space: str, item: PhotoItem) -> tuple[str, str]:
+    async def item_hashes(self, space: str, item: PhotoItem) -> tuple[str, str, str]:
         """Simulated hashes with planted duplicate clusters (deterministic).
 
         Roles by base index within a day: idx%23==1 → exact duplicate of the
@@ -425,10 +462,14 @@ class MockPhotoSource:
         bits flipped). Copies ("-cN" ids) inherit the base item's hashes —
         copying a photo then scanning finds it as an exact duplicate, which is
         exactly the workflow the dedup UI demonstrates.
+
+        The thumbhash is REAL (encoded from a gradient matching the item's
+        placeholder hue) so the blur pipeline is exercisable end-to-end
+        without a NAS.
         """
         base_space, day, idx = _parse_id(item.id)
         sha, ph = _sim_hashes(base_space, day, idx)
-        return sha, f"{ph:016x}"
+        return sha, f"{ph:016x}", _sim_thumbhash(item)
 
     # ------------------------------------------------------------ write side
     @staticmethod

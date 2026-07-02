@@ -54,7 +54,7 @@
 - [x] 공용 공간도 **모든 구성원에게 타임라인 제공** — 공용/개인 동일한 타임라인 UI(권한은 DSM이 enforce)
 
 ### B-2. 썸네일 로딩
-- [ ] (부분) 3단계: **thumbhash(즉시 블러) → 소형 webp → 대형 프리뷰**. 현재는 `placeholder_color`(단색) → 소형 → 대형 **2단계+색상**으로 구현. thumbhash는 이미지 픽셀 접근이 필요해 **photo_cache 파이프라인(D절)과 함께** 도입 — API 응답에 `placeholder_color` 슬롯을 이미 마련해 교체만 하면 됨
+- [x] **3단계 로딩: thumbhash(즉시 블러) → 소형 → 대형** (2026-07-03) — ThumbHash 인코더 자체 구현(`hashing.thumbhash_bytes`, evanw 레퍼런스 포팅, Pillow-only·numpy 없음; 입력 32px 축소로 ~10ms/장). dedup 스캔이 (sha, phash, **thumbhash**)를 photo_cache에 저장(기존 행은 thumbhash 없으면 재해시), items/folder/person/place 목록 응답에 배치 주입(`fill_thumbhashes`). 프론트는 공식 `thumbhash` npm(3KB)으로 base64→blur dataURL 디코드(메모이즈), PhotoCell 배경에 표시(스캔 안 된 항목은 기존 단색 fallback). e2e: 인코더↔공식 디코더 호환 확인(유효 PNG·종횡비·자연색). **주의: 블러가 보이려면 배포 후 중복 스캔 1회 재실행 필요**(기존 photo_cache 행 채움)
 - [x] 1단계에서는 Synology Photos 썸네일(`SYNO.Foto.Thumbnail`) 재활용이 우선 — `dsm_source.thumbnail()` 프록시로 구현(실 NAS 미검증)
 
 ### B-3. 다중 선택 (Google Photos 패턴)

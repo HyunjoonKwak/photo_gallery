@@ -16,6 +16,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
 from ..config import Settings, get_settings
+from ..dedup import fill_thumbhashes
 from ..operations import execute_create_folder, execute_delete, execute_move
 from ..photos.source import PhotoSource
 from .. import progress
@@ -65,6 +66,7 @@ async def list_bucket_items(
     day: str,
     space: Space = Query("team"),
     source: PhotoSource = Depends(get_photo_source),
+    settings: Settings = Depends(get_settings),
 ) -> BucketItemsResponse:
     try:
         date.fromisoformat(day)
@@ -73,7 +75,7 @@ async def list_bucket_items(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="day 형식은 YYYY-MM-DD 입니다.",
         ) from exc
-    items = await source.items(space, day)
+    items = fill_thumbhashes(settings.sqlite_path, await source.items(space, day))
     return BucketItemsResponse(space=space, day=day, items=items)
 
 
@@ -90,9 +92,12 @@ async def list_folders(
 async def list_folder_items(
     folder_id: str,
     source: PhotoSource = Depends(get_photo_source),
+    settings: Settings = Depends(get_settings),
 ) -> BucketItemsResponse:
     """Items assigned to one folder (folder view). Space rides on the folder."""
-    items = await source.folder_items(folder_id)
+    items = fill_thumbhashes(
+        settings.sqlite_path, await source.folder_items(folder_id)
+    )
     folders = {f.id: f for f in await source.folders()}
     space = folders[folder_id].space if folder_id in folders else "team"
     return BucketItemsResponse(space=space, day="", items=items)
@@ -163,8 +168,11 @@ async def list_person_items(
     id: str,
     space: Space = Query("team"),
     source: PhotoSource = Depends(get_photo_source),
+    settings: Settings = Depends(get_settings),
 ) -> BucketItemsResponse:
-    items = await source.person_items(space, id)
+    items = fill_thumbhashes(
+        settings.sqlite_path, await source.person_items(space, id)
+    )
     return BucketItemsResponse(space=space, day="", items=items)
 
 
@@ -181,8 +189,11 @@ async def list_place_items(
     id: str,
     space: Space = Query("team"),
     source: PhotoSource = Depends(get_photo_source),
+    settings: Settings = Depends(get_settings),
 ) -> BucketItemsResponse:
-    items = await source.place_items(space, id)
+    items = fill_thumbhashes(
+        settings.sqlite_path, await source.place_items(space, id)
+    )
     return BucketItemsResponse(space=space, day="", items=items)
 
 

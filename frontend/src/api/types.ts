@@ -27,6 +27,9 @@ export interface PhotoItem {
   size: number | null;
   cache_key: string;
   placeholder_color: string | null;
+  /** base64 thumbhash (blur placeholder) — present once the dedup scan has
+   * hashed the item; decoded client-side. */
+  thumbhash: string | null;
   folder: string | null;
   /** Set client-side when the item's space differs from the global scope
    * (folder view can show personal folders while scope is team). */

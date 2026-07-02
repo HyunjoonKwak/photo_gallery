@@ -110,11 +110,13 @@ class PhotoSource(Protocol):
         """Thumbnail bytes + content type. ``size`` is ``sm`` (grid) or ``xl``."""
         ...
 
-    async def item_hashes(self, space: str, item: PhotoItem) -> tuple[str, str]:
-        """(sha256, phash-hex) for duplicate detection (D절).
+    async def item_hashes(self, space: str, item: PhotoItem) -> tuple[str, str, str]:
+        """(sha256, phash-hex, thumbhash-base64) — dedup (D절) + blur
+        placeholder (B-2).
 
         DSM computes over the small thumbnail (원본 전송 회피); mock simulates
-        deterministic hashes with planted duplicate clusters.
+        deterministic sha/phash with planted duplicate clusters and encodes a
+        real thumbhash from a synthetic gradient.
         """
         ...
 

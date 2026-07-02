@@ -53,9 +53,12 @@ class PhotoItem(BaseModel):
     height: int
     size: int | None = None  # bytes
     cache_key: str
-    # Solid placeholder color shown before the thumbnail loads. Replaced by a
-    # thumbhash once the photo_cache pipeline lands (phase 2).
+    # Solid placeholder color shown before the thumbnail loads (fallback when
+    # no thumbhash is cached yet).
     placeholder_color: str | None = None
+    # Blur placeholder (base64 thumbhash, B-2) — filled from photo_cache for
+    # items the dedup scan has hashed; decoded client-side.
+    thumbhash: str | None = None
     folder: str | None = None
 
 

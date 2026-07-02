@@ -45,7 +45,8 @@ CREATE TABLE IF NOT EXISTS photo_cache (
   size      INTEGER,
   camera    TEXT,
   sha256    TEXT,               -- exact-duplicate hash (over thumbnail bytes)
-  phash     TEXT                -- 64-bit perceptual hash, hex
+  phash     TEXT,               -- 64-bit perceptual hash, hex
+  thumbhash TEXT                -- blur placeholder, base64 (B-2)
 );
 
 CREATE INDEX IF NOT EXISTS idx_photo_cache_taken_at ON photo_cache (taken_at);
@@ -102,7 +103,7 @@ def _migrate(conn: sqlite3.Connection) -> None:
     cache_columns = {
         row["name"] for row in conn.execute("PRAGMA table_info(photo_cache)")
     }
-    for column in ("sha256", "phash"):
+    for column in ("sha256", "phash", "thumbhash"):
         if column not in cache_columns:
             conn.execute(f"ALTER TABLE photo_cache ADD COLUMN {column} TEXT")
 
