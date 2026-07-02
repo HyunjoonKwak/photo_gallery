@@ -3,6 +3,7 @@ import { thumbnailUrl } from "../api/client";
 import { useTimelineStore } from "../store/timeline";
 import { useFileOps } from "../hooks/useFileOps";
 import { formatBytes } from "../lib/dates";
+import { FolderPickerDialog } from "./timeline/FolderPickerDialog";
 
 const SHORTCUTS: [string, string][] = [
   ["← →", "이전 / 다음 사진"],
@@ -25,6 +26,7 @@ export function Lightbox() {
   const ops = useFileOps();
   const [showInfo, setShowInfo] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [showMove, setShowMove] = useState(false);
 
   const deleteAndAdvance = () => {
     const s = useTimelineStore.getState();
@@ -115,6 +117,13 @@ export function Lightbox() {
           onClick={(e) => e.stopPropagation()}
         >
           <button
+            onClick={() => setShowMove(true)}
+            title="폴더로 이동"
+            className="rounded-full bg-black/50 px-3 py-2 text-sm text-white/80 hover:bg-black/70 hover:text-white"
+          >
+            이동
+          </button>
+          <button
             onClick={deleteAndAdvance}
             title="휴지통으로 이동 (Delete)"
             className="rounded-full bg-black/50 px-3 py-2 text-sm text-red-300 hover:bg-black/70 hover:text-red-200"
@@ -168,6 +177,21 @@ export function Lightbox() {
             <InfoRow label="폴더" value={item.folder ?? "(폴더 미지정)"} />
           </dl>
         </aside>
+      )}
+
+      {/* In-viewer move (spec 9.4: 라이트박스에서도 정리 가능) */}
+      {showMove && (
+        <div onClick={(e) => e.stopPropagation()}>
+          <FolderPickerDialog
+            mode="move"
+            count={1}
+            onClose={() => setShowMove(false)}
+            onConfirm={(folder, copyMode) => {
+              setShowMove(false);
+              ops.move([item.id], folder, copyMode);
+            }}
+          />
+        </div>
       )}
 
       {/* Shortcut help overlay */}

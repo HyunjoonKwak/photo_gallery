@@ -140,3 +140,41 @@ class OperationsResponse(BaseModel):
 
 class MembersResponse(BaseModel):
     members: list[str]
+
+
+# --- Duplicate detection (phase 2) ---
+
+
+class DedupJob(BaseModel):
+    id: int
+    space: str
+    status: str  # running | done | failed | cancelled
+    processed: int
+    total: int
+    error: str | None = None
+    updated_at: str
+
+
+class DedupJobResponse(BaseModel):
+    job: DedupJob | None
+
+
+class DedupItem(PhotoItem):
+    space: str  # items in a group may span spaces after cross-space moves
+
+
+class DedupGroup(BaseModel):
+    id: str
+    kind: str  # exact | similar
+    items: list[DedupItem]
+    reference_id: str  # suggested keeper (user can override client-side)
+    wasted_bytes: int
+
+
+class DedupGroupsResponse(BaseModel):
+    space: str
+    threshold: int
+    groups: list[DedupGroup]  # top-N by wasted bytes (limit param)
+    total_groups: int  # total group count before the limit was applied
+    total_wasted_bytes: int  # across ALL groups, not just the returned page
+    scanned: bool  # False → no completed scan yet, prompt the user to scan

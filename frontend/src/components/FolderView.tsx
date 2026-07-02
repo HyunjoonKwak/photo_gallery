@@ -23,6 +23,15 @@ function FolderListRow({
   onSelect: () => void;
 }) {
   const { isOver, setNodeRef } = useDroppable({ id: `folder:${folder.id}` });
+
+  // Spring-loaded folders (Finder convention, IMPROVEMENTS B-4): hovering a
+  // folder with a drag for 600ms opens it, so the user can drop deeper.
+  useEffect(() => {
+    if (!isOver || selected) return;
+    const timer = setTimeout(onSelect, 600);
+    return () => clearTimeout(timer);
+  }, [isOver, selected, onSelect]);
+
   return (
     <li ref={setNodeRef}>
       <button

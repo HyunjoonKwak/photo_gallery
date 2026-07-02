@@ -37,13 +37,31 @@ CREATE TABLE IF NOT EXISTS operation (
 CREATE TABLE IF NOT EXISTS photo_cache (
   file_id   TEXT PRIMARY KEY,
   space     TEXT,
-  path      TEXT,
+  path      TEXT,               -- filename (display)
   taken_at  TEXT,
-  thumb_key TEXT,
+  thumb_key TEXT,               -- thumbnail cache_key
   width     INTEGER,
   height    INTEGER,
   size      INTEGER,
-  camera    TEXT
+  camera    TEXT,
+  sha256    TEXT,               -- exact-duplicate hash (over thumbnail bytes)
+  phash     TEXT                -- 64-bit perceptual hash, hex
+);
+
+CREATE INDEX IF NOT EXISTS idx_photo_cache_taken_at ON photo_cache (taken_at);
+CREATE INDEX IF NOT EXISTS idx_photo_cache_space ON photo_cache (space);
+
+-- Background jobs (dedup scan 등): SQLite에 영속화해 재시작에도 상태 유지.
+CREATE TABLE IF NOT EXISTS job (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  type         TEXT NOT NULL,   -- dedup_scan
+  space        TEXT NOT NULL,
+  status       TEXT NOT NULL,   -- running | done | failed | cancelled
+  processed    INTEGER NOT NULL DEFAULT 0,
+  total        INTEGER NOT NULL DEFAULT 0,
+  error        TEXT,
+  created_at   TEXT NOT NULL,
+  updated_at   TEXT NOT NULL
 );
 
 -- Failed login attempts, used to throttle brute-force tries at the app layer
@@ -80,6 +98,21 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.execute(
             "ALTER TABLE session ADD COLUMN can_browse_homes INTEGER NOT NULL DEFAULT 0"
         )
+
+    cache_columns = {
+        row["name"] for row in conn.execute("PRAGMA table_info(photo_cache)")
+    }
+    for column in ("sha256", "phash"):
+        if column not in cache_columns:
+            conn.execute(f"ALTER TABLE photo_cache ADD COLUMN {column} TEXT")
+
+    # A job left 'running' means the server died mid-scan; hashes are already
+    # persisted per item, so a re-scan resumes cheaply from photo_cache.
+    conn.execute(
+        "UPDATE job SET status = 'failed', "
+        "error = '서버 재시작으로 중단됨 — 재스캔하면 이어서 진행됩니다.' "
+        "WHERE status = 'running'"
+    )
 
 
 def connect(sqlite_path: str) -> sqlite3.Connection:

@@ -18,6 +18,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException, status
 
 from .db import connect
+from .dedup import remove_cached_items
 from .photos.source import PhotoSource
 from .schemas import (
     AffectedDay,
@@ -110,6 +111,9 @@ async def execute_delete(
     source: PhotoSource, sqlite_path: str, *, user: str, req: DeleteRequest
 ) -> OperationResponse:
     outcome = await source.delete(req.item_ids)
+    # Trashed items must vanish from duplicate groups; a later restore simply
+    # re-hashes them on the next scan (photo_cache is a rebuildable cache).
+    remove_cached_items(sqlite_path, [p.id for p in outcome.deleted])
     summary = f"{len(outcome.deleted)}장을 휴지통으로 이동"
     payload = {
         "summary": summary,
@@ -179,6 +183,7 @@ async def undo_operation(
         affected = await source.place([PlacedItem(**p) for p in payload["moved"]])
     elif op_type == "copy":
         affected = await source.remove_items(payload["created_ids"])
+        remove_cached_items(sqlite_path, payload["created_ids"])
     elif op_type == "delete":
         affected = await source.restore([PlacedItem(**p) for p in payload["deleted"]])
     elif op_type == "mkdir":

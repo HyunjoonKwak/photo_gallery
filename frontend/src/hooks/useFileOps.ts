@@ -21,6 +21,7 @@ export function useFileOps() {
     }
     queryClient.invalidateQueries({ queryKey: ["folder-items"] });
     queryClient.invalidateQueries({ queryKey: ["ops"] });
+    queryClient.invalidateQueries({ queryKey: ["dedup-groups"] });
   };
 
   const undoMutation = useMutation({

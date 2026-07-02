@@ -95,6 +95,27 @@ def _parse_id(item_id: str) -> tuple[str, str, int]:
     return m.group(1), m.group(2), int(m.group(3))
 
 
+def _sim_hashes(space: str, day: str, idx: int) -> tuple[str, int]:
+    """Deterministic simulated (sha256, phash) with planted duplicates.
+
+    Resolved recursively so chains stay consistent: an item whose anchor is
+    itself a duplicate lands on the same final hash pair.
+    """
+    if idx > 0 and idx % 23 == 1:
+        # Exact duplicate of the previous item (~1 per average day).
+        return _sim_hashes(space, day, idx - 1)
+    if idx > 0 and idx % 13 == 1:
+        # Near duplicate: same photo with 1–4 perceptual bits flipped.
+        _, anchor_ph = _sim_hashes(space, day, idx - 1)
+        r = _rng(f"{space}:{day}:{idx}:flip")
+        ph = anchor_ph
+        for _ in range(r.randint(1, 4)):
+            ph ^= 1 << r.randrange(64)
+        return f"{r.getrandbits(256):064x}", ph
+    r = _rng(f"{space}:{day}:{idx}:hash")
+    return f"{r.getrandbits(256):064x}", r.getrandbits(64)
+
+
 def _svg_thumbnail(item: PhotoItem, size: str) -> bytes:
     long_edge = 320 if size == "sm" else 1280
     if item.width >= item.height:
@@ -259,6 +280,19 @@ class MockPhotoSource:
         self, space: str, item_id: str, cache_key: str, size: str
     ) -> tuple[bytes, str]:
         return _svg_thumbnail(self._resolve_item(item_id), size), "image/svg+xml"
+
+    async def item_hashes(self, space: str, item: PhotoItem) -> tuple[str, str]:
+        """Simulated hashes with planted duplicate clusters (deterministic).
+
+        Roles by base index within a day: idx%23==1 → exact duplicate of the
+        previous item (same sha+phash); idx%13==1 → near duplicate (1–4 phash
+        bits flipped). Copies ("-cN" ids) inherit the base item's hashes —
+        copying a photo then scanning finds it as an exact duplicate, which is
+        exactly the workflow the dedup UI demonstrates.
+        """
+        base_space, day, idx = _parse_id(item.id)
+        sha, ph = _sim_hashes(base_space, day, idx)
+        return sha, f"{ph:016x}"
 
     # ------------------------------------------------------------ write side
     async def move(

@@ -109,21 +109,28 @@
 2. dnd-kit 멀티 드래그를 기본 기능으로 착각 / DragOverlay 없이 가상 리스트에서 드래그 → **선택 스냅샷 + DragOverlay 커스텀 고스트**(`TimelineScreen.tsx`)
 3. 드래그 박스 선택과 DnD 드래그 시작 충돌 → **activation distance 8px + 시작점 분기**(셀=DnD, 배경=박스 선택, `shouldStartSelecting`)
 
-**알려진 v1 한계(후속 개선)**: 스크러버로 멀리 점프한 뒤 위쪽 버킷이 로드되면 높이 보정으로 스크롤이 약간 밀릴 수 있음(Google Photos는 스크롤 앵커링으로 해결 — 후속), 박스 선택은 화면에 마운트된 셀만 대상(가상화 특성), 드래그 중 엣지 자동 스크롤 미구현.
+**v1 한계 해소 현황(2026-07-02)**:
+- ~~위쪽 버킷 로드 시 스크롤 밀림~~ → **스크롤 앵커링 구현**(첫 가시 행의 날짜 헤더 키에 앵커, useLayoutEffect에서 오프셋 델타 보정 — Google Photos 기법)
+- ~~드래그 중 엣지 자동 스크롤~~ → dnd-kit **기본 autoScroll**이 스크롤 가능 조상을 자동 감지(별도 코드 불필요 확인)
+- ~~라이트박스 이동 버튼~~ → 폴더 피커 연결 구현
+- ~~spring-loaded 폴더~~ → 폴더 뷰 목록에서 드래그 호버 600ms 시 자동 열림
+- (유지) 박스 선택은 화면에 마운트된 셀만 대상 — 가상화 특성상 의도된 트레이드오프
 
 ---
 
-## D. 2단계(중복 제거) 설계 확정
+## D. 2단계(중복 제거) 설계 확정 — **구현 완료 (2026-07-02)**
 
 명세 11장 방향(체크섬 + imagehash)이 벤치마크로 검증됨. 구체화:
 
-- [ ] **2단계 탐지**: SHA-256(정확 중복) + **pHash 64bit**(near-duplicate, **Hamming ≤ 5** 안팎 — 0~2 사실상 동일, ~5 유사, 10+ 다른 사진). 임계값은 사용자 조절 슬라이더로 노출(Czkawka 패턴)
-- [ ] 해시는 **Synology 썸네일 다운로드본에 계산**(원본 전송 회피 — pHash는 저해상도로 충분, Damselfly도 썸네일에 ML 실행)
-- [ ] `photo_cache`에 `sha256`, `phash` 컬럼 추가 + `taken_at` 인덱스 — **해시 영속화로 재스캔 시 재계산 회피**
-- [ ] 대량이면 전수 쌍 비교(O(n²), dupeGuru 반면교사) 대신 BK-tree/버킷팅
-- [ ] **잡 처리**: Redis 없이 **SQLite 잡 테이블 + 워커 태스크**(LibrePhotos django-q2의 ORM 브로커 발상). 진행률(processed/total)·재개 필드 필수, 스캔→썸네일→해시 잡 체이닝(Immich BullMQ 파이프라인 개념만 차용). FastAPI BackgroundTasks는 부적합(상태 추적·재개 불가)
-- [ ] **UX**: dry-run 미리보기(삭제 예정 목록 + 절약 용량) → 그룹별 **기준(reference) 파일 자동 선택**(해상도/원본 폴더 우선, 사용자 뒤집기 가능 — dupeGuru 패턴) → 휴지통(#recycle) 이동 + Undo. 비파괴 대안으로 PhotoPrism식 Stacking(대표 1장만 표시)도 옵션 검토
-- [ ] CLIP 임베딩 기반 탐지(Immich 방식)는 NAS 사양·목적상 **비권고** — 추후 옵션으로만
+- [x] **2단계 탐지**: SHA-256(정확 중복) + **pHash 64bit**(near-duplicate, **Hamming ≤ 5** 기본 — 0~2 사실상 동일, ~5 유사, 10+ 다른 사진). 임계값은 사용자 조절 슬라이더(0~7)로 노출(Czkawka 패턴)
+  - **편차 기록**: `imagehash` 패키지 대신 **자체 pHash 구현**(`photos/hashing.py`, Pillow만 의존) — imagehash는 numpy+scipy를 끌고 와 NAS 컨테이너가 무거워짐. 알고리즘 동일(32×32 그레이스케일→DCT-II→8×8 저주파→중앙값 비트), 실이미지 단위 테스트로 검증(재압축=지각적 동일, 소규모 편집=near, 구조 다름=far). DSM 스캔 규모에서 필요 시 numpy 전환
+- [x] 해시는 **Synology 썸네일 다운로드본에 계산**(원본 전송 회피) — DSM 소스는 sm 썸네일 bytes로 실계산(실 NAS 검증 항목: 동일 원본→동일 썸네일 전제), mock은 중복 클러스터를 심은 결정적 시뮬레이션(복사본은 원본 해시 상속 → 복사→스캔→정확 중복 검출 데모)
+- [x] `photo_cache`에 `sha256`, `phash` 컬럼 추가 + `taken_at`/`space` 인덱스 — **해시 영속화로 재스캔 시 재계산 회피**(중단된 스캔도 자연 재개)
+- [x] 전수 쌍 비교(O(n²), dupeGuru 반면교사) 대신 **멀티 인덱스 버킷팅**(8밴드×8비트 — 비둘기집으로 Hamming ≤ 7 재현율 보장) + union-find
+- [x] **잡 처리**: Redis 없이 **SQLite `job` 테이블 + asyncio 워커 태스크**. 진행률(processed/total) 폴링, 취소, 서버 재시작 시 running→failed 전환+해시 영속화 기반 재개. (썸네일은 Synology 재활용이라 스캔→해시 단일 단계로 충분 — 체이닝 불필요)
+- [x] **UX**: 그룹 목록 자체가 dry-run(삭제 예정 표시 + 절약 용량) → 그룹별 **기준(reference) 파일 자동 선택**(해상도→용량→촬영일, 클릭으로 뒤집기 — dupeGuru 패턴) → 기존 삭제 플로우 재사용(휴지통 + 작업로그 + **되돌리기 토스트**). 그룹은 절약량 상위 N개 페이지네이션(수천 카드 렌더 방지)
+- [ ] PhotoPrism식 Stacking(비파괴 대안) — 옵션 검토 항목으로 유지(미구현)
+- [x] CLIP 임베딩 기반 탐지(Immich 방식)는 NAS 사양·목적상 **비권고** — 도입하지 않음(설계 준수)
 
 ---
 
@@ -147,5 +154,6 @@
   - 백엔드: PhotoSource 변이 프로토콜(move/copy/delete/undo 프리미티브), mock 상태 오버레이(cross-space 이동·복사·휴지통·복원이 실제로 동작), `operations.py` 작업로그 서비스(역연산 payload, 7일 undo 기한), `/api/photos/ops/*`·`/api/ops` 라우터, target_user 감사 로깅(관리자만 허용)
   - 프론트: `useFileOps` 훅(선택 자동 해제 + 정밀 무효화 + **되돌리기 액션 토스트**), 폴더 드롭→실제 이동(⌥=복사), 액션바+폴더 피커(공용 보내기는 복사 기본 — spec ch.4), **작업 기록 패널**(항목별 되돌리기), 라이트박스 완성(`i` EXIF 패널·Delete 자동 전진·Shift+? 도움말), **폴더 뷰**(spec 9.3), 관리자 셸(멤버 선택 + 주황 배너 + 감사 로깅)
   - 검증: pytest 56개 통과, tsc+vite 빌드 통과, mock 서버 e2e 스모크(이동→폴더→삭제→undo→복원), **Docker 이미지 빌드+컨테이너 기동 검증**(헬스체크·정적 프론트·non-root)
-- [ ] DSM 실연동 검증 (실 NAS 필요 — `dsm_source.py` 상단 검증 목록, 명세 13장)
-- [ ] D절 기반 2단계 구현
+- [x] **D절 기반 2단계(중복 제거) 구현** (2026-07-02) — 자체 pHash(Pillow만)+SHA-256, photo_cache 해시 영속화, SQLite 잡+asyncio 워커(진행률/취소/재개), 8밴드 버킷팅+union-find 그룹핑, 중복 정리 뷰(스캔 진행바·임계값 슬라이더·reference 뒤집기·dry-run·기존 삭제/undo 재사용). v1 한계 4건 해소(스크롤 앵커링, 라이트박스 이동, spring-loaded, autoScroll 확인). 테스트 69개 통과
+- [ ] DSM 실연동 검증 (실 NAS 필요 — `dsm_source.py` 상단 검증 목록, 명세 13장. 2단계의 DSM 해시 경로 `item_hashes`도 포함)
+- [ ] 3단계(AI 자동 분류) — 미착수

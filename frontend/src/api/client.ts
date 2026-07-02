@@ -3,6 +3,9 @@ import type {
   BucketItemsResponse,
   BucketsResponse,
   CreateFolderRequest,
+  DedupGroupsResponse,
+  DedupJob,
+  DedupJobResponse,
   DeleteRequest,
   FoldersResponse,
   LoginRequest,
@@ -85,6 +88,21 @@ export const api = {
   listOps: () => request<OperationsResponse>("/api/ops"),
   undoOp: (opId: number) =>
     request<OperationResponse>(`/api/ops/${opId}/undo`, { method: "POST" }),
+  dedupScan: (space: Space) =>
+    request<DedupJob>("/api/dedup/scan", {
+      method: "POST",
+      body: JSON.stringify({ space }),
+    }),
+  dedupStatus: (space: Space) =>
+    request<DedupJobResponse>(`/api/dedup/status?space=${space}`),
+  dedupCancel: (space: Space) =>
+    request<DedupJobResponse>(`/api/dedup/cancel?space=${space}`, {
+      method: "POST",
+    }),
+  dedupGroups: (space: Space, threshold: number) =>
+    request<DedupGroupsResponse>(
+      `/api/dedup/groups?space=${space}&threshold=${threshold}`,
+    ),
 };
 
 /** URL for a thumbnail <img> (session cookie rides along automatically). */

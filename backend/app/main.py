@@ -17,7 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from .api import auth, ops, photos, system
+from .api import auth, dedup, ops, photos, system
 from .config import Settings, get_settings
 from .db import init_db
 from .dsm.client import DsmClient
@@ -85,6 +85,7 @@ def create_app() -> FastAPI:
     app.include_router(system.router)
     app.include_router(photos.router)
     app.include_router(ops.router)
+    app.include_router(dedup.router)
 
     @app.get("/api/health", tags=["system"])
     async def health() -> dict[str, str]:

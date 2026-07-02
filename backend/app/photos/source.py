@@ -67,6 +67,14 @@ class PhotoSource(Protocol):
         """Thumbnail bytes + content type. ``size`` is ``sm`` (grid) or ``xl``."""
         ...
 
+    async def item_hashes(self, space: str, item: PhotoItem) -> tuple[str, str]:
+        """(sha256, phash-hex) for duplicate detection (D절).
+
+        DSM computes over the small thumbnail (원본 전송 회피); mock simulates
+        deterministic hashes with planted duplicate clusters.
+        """
+        ...
+
     # ----------------------------------------------------------- write side
     async def move(
         self, item_ids: list[str], dest_folder_id: str, copy: bool

@@ -22,9 +22,14 @@ Synology NAS(DSM 7.2+) 위에서 Docker로 동작하는 가족 사진 정리 웹
 - [x] **폴더 뷰** (타임라인↔폴더 토글) + **관리자 셸**(가족 구성원 선택, 주황 배너,
       target_user 감사 로깅)
 - [x] **Docker 검증** — 이미지 빌드 + 컨테이너 기동(헬스체크·정적 서빙·non-root) 확인
+- [x] **2단계: 중복 사진 정리** — SHA-256+pHash(자체 구현, Pillow만 의존) 해시를
+      `photo_cache`에 영속화, SQLite 잡+진행률/취소/재개, 밴드 버킷팅 그룹핑,
+      "중복 정리" 뷰(스캔 진행바·유사 기준 슬라이더·보관본 클릭 변경·dry-run
+      미리보기 → 휴지통+되돌리기)
 - [ ] **DSM Photos API 실연동 검증**(`backend/app/photos/dsm_source.py`) — 실 NAS 필요.
-      검증 전까지 파일 작업은 MOCK_MODE에서만 동작
+      검증 전까지 파일 작업·해시 스캔은 MOCK_MODE에서만 동작
 - [ ] 관리자의 타인 개인 폴더 실데이터 열람(FileStation `/homes` 경로) — 실 NAS 필요
+- [ ] 3단계: AI 자동 분류 (미착수)
 
 ## 아키텍처
 

@@ -97,6 +97,43 @@ export interface MembersResponse {
   members: string[];
 }
 
+// --- duplicate detection (phase 2) ---
+
+export interface DedupJob {
+  id: number;
+  space: Space;
+  status: "running" | "done" | "failed" | "cancelled";
+  processed: number;
+  total: number;
+  error: string | null;
+  updated_at: string;
+}
+
+export interface DedupJobResponse {
+  job: DedupJob | null;
+}
+
+export interface DedupItem extends PhotoItem {
+  space: Space;
+}
+
+export interface DedupGroup {
+  id: string;
+  kind: "exact" | "similar";
+  items: DedupItem[];
+  reference_id: string;
+  wasted_bytes: number;
+}
+
+export interface DedupGroupsResponse {
+  space: Space;
+  threshold: number;
+  groups: DedupGroup[]; // top-N by wasted bytes
+  total_groups: number;
+  total_wasted_bytes: number; // across all groups
+  scanned: boolean;
+}
+
 export interface EndpointInfo {
   api: string;
   path: string;

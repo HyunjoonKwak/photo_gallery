@@ -129,7 +129,40 @@ export function TimelineView() {
     virtualizer.measure();
   }, [model.rows, virtualizer]);
 
+  // --- scroll anchoring (Google Photos trick) ---
+  // When buckets *above* the viewport load, their placeholder rows are
+  // replaced by real geometry and everything below shifts. We anchor on the
+  // day header of the first visible row (header keys survive the swap) and
+  // compensate scrollTop by its offset delta before paint.
+  const anchorRef = useRef<{ key: string; offset: number } | null>(null);
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    const anchor = anchorRef.current;
+    if (!el || !anchor) return;
+    const idx = model.rows.findIndex((r) => r.key === anchor.key);
+    if (idx < 0) return;
+    const delta = model.offsets[idx] - anchor.offset;
+    if (Math.abs(delta) > 1) {
+      el.scrollTop += delta;
+      anchorRef.current = { key: anchor.key, offset: model.offsets[idx] };
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [model]);
+
   const virtualItems = virtualizer.getVirtualItems();
+
+  // Track the anchor after adjustments (useEffect runs after useLayoutEffect).
+  useEffect(() => {
+    const first = virtualItems[0];
+    if (!first) return;
+    const row = model.rows[first.index];
+    if (!row) return;
+    const headerKey = `h-${row.day}`;
+    const headerIdx = model.rows.findIndex((r) => r.key === headerKey);
+    if (headerIdx >= 0) {
+      anchorRef.current = { key: headerKey, offset: model.offsets[headerIdx] };
+    }
+  });
 
   // Request buckets whose rows entered the (overscanned) viewport.
   useEffect(() => {

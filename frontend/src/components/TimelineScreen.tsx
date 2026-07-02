@@ -13,6 +13,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { useTimelineStore } from "../store/timeline";
 import { useFileOps } from "../hooks/useFileOps";
+import { DedupView } from "./DedupView";
 import { FolderPanel } from "./FolderPanel";
 import { FolderView } from "./FolderView";
 import { Lightbox } from "./Lightbox";
@@ -94,7 +95,7 @@ export function TimelineScreen() {
         onDragEnd={onDragEnd}
         onDragCancel={() => setDragIds(null)}
       >
-        {viewMode === "timeline" ? (
+        {viewMode === "timeline" && (
           <div className="flex h-full">
             <FolderPanel />
             <main className="relative min-w-0 flex-1">
@@ -102,9 +103,9 @@ export function TimelineScreen() {
               <TimelineView key={space} />
             </main>
           </div>
-        ) : (
-          <FolderView />
         )}
+        {viewMode === "folders" && <FolderView />}
+        {viewMode === "dedup" && <DedupView key={space} />}
         <DragOverlay dropAnimation={null}>
           {dragIds && <DragOverlayContent ids={dragIds} copyMode={altHeld} />}
         </DragOverlay>

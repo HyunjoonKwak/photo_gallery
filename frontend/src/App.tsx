@@ -18,6 +18,7 @@ const TABS: { space: Space; label: string }[] = [
 const VIEWS: { mode: ViewMode; label: string }[] = [
   { mode: "timeline", label: "타임라인" },
   { mode: "folders", label: "폴더" },
+  { mode: "dedup", label: "중복 정리" },
 ];
 
 function SpaceTabs() {

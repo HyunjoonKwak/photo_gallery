@@ -22,7 +22,7 @@ function rangeIds(orderedIds: string[], a: string, b: string): string[] {
   return orderedIds.slice(lo, hi + 1);
 }
 
-export type ViewMode = "timeline" | "folders";
+export type ViewMode = "timeline" | "folders" | "dedup";
 
 interface TimelineState {
   space: Space;
