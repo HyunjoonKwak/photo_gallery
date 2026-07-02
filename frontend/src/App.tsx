@@ -10,58 +10,71 @@ import { TimelineScreen } from "./components/TimelineScreen";
 import { OperationsPanel } from "./components/OperationsPanel";
 import { Toasts } from "./components/Toasts";
 
-const TABS: { space: Space; label: string }[] = [
-  { space: "team", label: "공용 폴더" },
-  { space: "personal", label: "내 개인 폴더" },
+// 범위(어느 저장소) — '폴더'라는 단어와 충돌하지 않도록 스코프 이름만 사용.
+const SCOPES: { space: Space; label: string }[] = [
+  { space: "team", label: "공용" },
+  { space: "personal", label: "개인" },
 ];
 
-const VIEWS: { mode: ViewMode; label: string }[] = [
-  { mode: "timeline", label: "타임라인" },
-  { mode: "folders", label: "폴더" },
-  { mode: "dedup", label: "중복 정리" },
+// 보기(무엇을 볼지) — 주 메뉴. 아이콘으로 성격을 구분.
+const VIEWS: { mode: ViewMode; label: string; icon: string }[] = [
+  { mode: "timeline", label: "타임라인", icon: "📅" },
+  { mode: "folders", label: "폴더", icon: "📁" },
+  { mode: "dedup", label: "중복 정리", icon: "🔁" },
 ];
 
-function SpaceTabs() {
-  const space = useTimelineStore((s) => s.space);
-  const setSpace = useTimelineStore((s) => s.setSpace);
+/** 주 메뉴: 보기 방식(타임라인/폴더/중복 정리) 전환. */
+function ViewToggle() {
+  const viewMode = useTimelineStore((s) => s.viewMode);
+  const setViewMode = useTimelineStore((s) => s.setViewMode);
   return (
-    <nav className="flex gap-1 rounded-xl bg-slate-100 p-1">
-      {TABS.map((tab) => (
+    <nav className="flex gap-1">
+      {VIEWS.map((v) => (
         <button
-          key={tab.space}
-          onClick={() => setSpace(tab.space)}
-          className={`rounded-lg px-3 py-1 text-sm font-medium transition-colors ${
-            space === tab.space
-              ? "bg-white text-slate-800 shadow-sm"
-              : "text-slate-500 hover:text-slate-700"
+          key={v.mode}
+          onClick={() => setViewMode(v.mode)}
+          className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+            viewMode === v.mode
+              ? "bg-slate-800 text-white"
+              : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
           }`}
         >
-          {tab.label}
+          <span className="text-base leading-none">{v.icon}</span>
+          {v.label}
         </button>
       ))}
     </nav>
   );
 }
 
-function ViewToggle() {
+/** 스코프 전환: 현재 보기를 어느 저장소(공용/개인)에 적용할지. 보기 메뉴와
+ * 성격이 다르므로 '범위:' 라벨 + 구분된 세그먼트로 위계를 드러낸다. 폴더 보기는
+ * 공용·개인 트리를 동시에 보여줘 스코프가 무의미하므로 숨긴다. */
+function ScopeSwitcher() {
+  const space = useTimelineStore((s) => s.space);
+  const setSpace = useTimelineStore((s) => s.setSpace);
   const viewMode = useTimelineStore((s) => s.viewMode);
-  const setViewMode = useTimelineStore((s) => s.setViewMode);
+  if (viewMode === "folders") return null;
   return (
-    <nav className="flex gap-1 rounded-xl bg-slate-100 p-1">
-      {VIEWS.map((v) => (
-        <button
-          key={v.mode}
-          onClick={() => setViewMode(v.mode)}
-          className={`rounded-lg px-3 py-1 text-sm font-medium transition-colors ${
-            viewMode === v.mode
-              ? "bg-white text-slate-800 shadow-sm"
-              : "text-slate-500 hover:text-slate-700"
-          }`}
-        >
-          {v.label}
-        </button>
-      ))}
-    </nav>
+    <div className="flex items-center gap-2">
+      <div className="h-6 w-px bg-slate-200" aria-hidden />
+      <span className="text-xs font-medium text-slate-400">범위</span>
+      <nav className="flex gap-1 rounded-xl bg-slate-100 p-1">
+        {SCOPES.map((s) => (
+          <button
+            key={s.space}
+            onClick={() => setSpace(s.space)}
+            className={`rounded-lg px-3 py-1 text-sm font-medium transition-colors ${
+              space === s.space
+                ? "bg-white text-slate-800 shadow-sm"
+                : "text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            {s.label}
+          </button>
+        ))}
+      </nav>
+    </div>
   );
 }
 
@@ -162,8 +175,9 @@ export default function App() {
       >
         <div className="flex items-center gap-3 px-4 py-2">
           <h1 className="text-sm font-bold text-slate-800">NAS 사진 정리</h1>
-          <SpaceTabs />
+          <div className="h-6 w-px bg-slate-200" aria-hidden />
           <ViewToggle />
+          <ScopeSwitcher />
           {user.role === "admin" && <MemberSelect account={user.account} />}
           {user.mock_mode && (
             <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
