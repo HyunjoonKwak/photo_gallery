@@ -178,6 +178,6 @@
   - [x] **백엔드**: protocol `persons/person_items/places/place_items` + dsm_source(Person list additional=thumbnail·show=false 숨김 필터·페이지네이션, Geocoding list, Browse.Item `person_id`/`geocoding_id` 필터 — `_filtered_items` 공용 헬퍼로 folder_items와 통합) + mock(결정적 인물 3·장소 2, 이름 없는 그룹 포함) + API 4종(`/api/photos/persons·person-items·places·place-items`)
   - [x] **프론트 ✨분류 뷰**: 인물(원형 커버+이름+n장)/장소(칩) 브라우즈 → 그룹 드릴인(사진 그리드, 전역 선택 모델 재사용 → 기존 액션바/DnD/라이트박스/진행바 그대로 동작) + "전체 선택" 버튼으로 폴더 모으기. 좌측 FolderPanel 동일 배치(드래그 이동 가능). 범위(공용/개인) 칩 적용
   - 검증: pytest 74(신규 2), mock e2e — 인물 3그룹/장소 2그룹 표시 → 엄마(451장) 드릴인 → 전체 선택 → '행사' 이동(진행 바 "70/451장 이동 중…" 표시) → undo 원복
-  - [ ] **실 NAS 데이터 검증(배포 후)** — Photos '인물' 기능 활성 필요. 인물/장소 그룹·커버 썸네일·item 필터 응답 필드(item_count 등) 실측 확인
+  - [x] **실 NAS 데이터 검증(2026-07-02, 배포 후 사용자 확인)** — 분류 탭에서 인물·장소 그룹 정상 표시 확인(공용/개인)
   - [ ] (옵트인) 클라우드 비전 API 폴더명/그룹 제안 — 대표 사진만 전송, API 키 .env 옵트인
 - 운영: 리버스 프록시는 **Nginx Proxy Manager 사용 확정**(2026-07-02) — DEPLOYMENT.md §3 절차 참조(Proxy Host → :9800, Let's Encrypt, 이후 `COOKIE_SECURE=true`)
