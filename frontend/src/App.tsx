@@ -1,13 +1,45 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./api/client";
+import type { Space } from "./api/types";
 import { useAuthStore } from "./store/auth";
+import { useTimelineStore } from "./store/timeline";
 import { LoginForm } from "./components/LoginForm";
 import { ApiInfoPanel } from "./components/ApiInfoPanel";
+import { TimelineScreen } from "./components/TimelineScreen";
+import { Toasts } from "./components/Toasts";
+
+const TABS: { space: Space; label: string }[] = [
+  { space: "team", label: "공용 폴더" },
+  { space: "personal", label: "내 개인 폴더" },
+];
+
+function SpaceTabs() {
+  const space = useTimelineStore((s) => s.space);
+  const setSpace = useTimelineStore((s) => s.setSpace);
+  return (
+    <nav className="flex gap-1 rounded-xl bg-slate-100 p-1">
+      {TABS.map((tab) => (
+        <button
+          key={tab.space}
+          onClick={() => setSpace(tab.space)}
+          className={`rounded-lg px-3 py-1 text-sm font-medium transition-colors ${
+            space === tab.space
+              ? "bg-white text-slate-800 shadow-sm"
+              : "text-slate-500 hover:text-slate-700"
+          }`}
+        >
+          {tab.label}
+        </button>
+      ))}
+    </nav>
+  );
+}
 
 export default function App() {
   const { user, setUser } = useAuthStore();
   const queryClient = useQueryClient();
+  const [showApiInfo, setShowApiInfo] = useState(false);
 
   // Restore session on load (cookie may still be valid after a refresh).
   const meQuery = useQuery({
@@ -31,7 +63,7 @@ export default function App() {
 
   if (meQuery.isPending) {
     return (
-      <div className="min-h-screen flex items-center justify-center text-slate-500">
+      <div className="flex min-h-screen items-center justify-center text-slate-500">
         세션 확인 중...
       </div>
     );
@@ -42,11 +74,31 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-100">
-      <header className="bg-white border-b border-slate-200">
-        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
-          <h1 className="font-semibold text-slate-800">NAS 사진 정리</h1>
-          <div className="flex items-center gap-3 text-sm">
+    <div className="flex h-screen flex-col bg-slate-50">
+      <header
+        data-no-boxselect
+        className="shrink-0 border-b border-slate-200 bg-white"
+      >
+        <div className="flex items-center gap-4 px-4 py-2">
+          <h1 className="text-sm font-bold text-slate-800">NAS 사진 정리</h1>
+          <SpaceTabs />
+          {user.mock_mode && (
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
+              MOCK 데이터
+            </span>
+          )}
+          <div className="ml-auto flex items-center gap-3 text-sm">
+            <button
+              onClick={() => setShowApiInfo((v) => !v)}
+              title="DSM API 연결 정보"
+              className={`rounded-lg px-2 py-1 text-xs ${
+                showApiInfo
+                  ? "bg-slate-200 text-slate-700"
+                  : "text-slate-400 hover:text-slate-600"
+              }`}
+            >
+              DSM 정보
+            </button>
             <span className="text-slate-600">
               {user.account}
               <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">
@@ -61,20 +113,17 @@ export default function App() {
             </button>
           </div>
         </div>
+        {showApiInfo && (
+          <div className="max-h-72 overflow-auto border-t border-slate-100 px-4 py-3">
+            <ApiInfoPanel />
+          </div>
+        )}
       </header>
 
-      <main className="max-w-4xl mx-auto px-4 py-6 space-y-4">
-        <section className="bg-white rounded-2xl shadow-sm p-5">
-          <h2 className="text-lg font-semibold text-slate-800 mb-1">
-            DSM API 연결 확인
-          </h2>
-          <p className="text-sm text-slate-500 mb-4">
-            로그인 성공. 아래는 실제 NAS의 SYNO.API.Info 프로브 결과입니다 (1단계
-            검증).
-          </p>
-          <ApiInfoPanel />
-        </section>
-      </main>
+      <div className="min-h-0 flex-1">
+        <TimelineScreen />
+      </div>
+      <Toasts />
     </div>
   );
 }

@@ -1,4 +1,12 @@
-import type { ApiInfoResponse, LoginRequest, UserInfo } from "./types";
+import type {
+  ApiInfoResponse,
+  BucketItemsResponse,
+  BucketsResponse,
+  FoldersResponse,
+  LoginRequest,
+  Space,
+  UserInfo,
+} from "./types";
 
 /** Error carrying the backend's friendly message + HTTP status. */
 export class ApiError extends Error {
@@ -43,4 +51,20 @@ export const api = {
   logout: () => request<void>("/api/auth/logout", { method: "POST" }),
   me: () => request<UserInfo>("/api/auth/me"),
   systemInfo: () => request<ApiInfoResponse>("/api/system/info"),
+  photoBuckets: (space: Space) =>
+    request<BucketsResponse>(`/api/photos/buckets?space=${space}`),
+  bucketItems: (space: Space, day: string) =>
+    request<BucketItemsResponse>(`/api/photos/items?space=${space}&day=${day}`),
+  folders: () => request<FoldersResponse>("/api/photos/folders"),
 };
+
+/** URL for a thumbnail <img> (session cookie rides along automatically). */
+export function thumbnailUrl(
+  space: Space,
+  id: string,
+  cacheKey: string,
+  size: "sm" | "xl",
+): string {
+  const q = new URLSearchParams({ space, id, cache_key: cacheKey, size });
+  return `/api/photos/thumbnail?${q.toString()}`;
+}

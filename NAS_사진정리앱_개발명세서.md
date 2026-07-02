@@ -280,6 +280,11 @@ Undo 원칙: 모든 파괴적 작업(이동/삭제)은 **역연산 정보**를 `
 - 휴지통(#recycle) 활성 여부(삭제 Undo 전제)
 - DSM 로그인 타임아웃 설정값(제어판 보안) — sid 만료 주기가 앱 세션(8h)보다 짧을 수 있음(만료 시 401 처리 전제)
 - DSM Auto Block 설정 — 앱(도커 게이트웨이 IP)이 로그인 실패 누적으로 차단되지 않도록 허용 IP 목록 등록
+- **Photos API 실연동 검증** (`backend/app/photos/dsm_source.py` 상단 목록 참조):
+  - `SYNO.Foto.Browse.Timeline` `get`의 존재·`timeline_group_unit` 파라미터·일별 카운트 응답 구조
+  - `SYNO.Foto.Browse.Item` `list`의 `start_time`/`end_time` epoch 필터와 `additional` JSON 인코딩
+  - `SYNO.Foto.Thumbnail` `get`의 바이너리 응답(id·cache_key·type·size 파라미터)
+  - 검증 전 개발은 `MOCK_MODE=true`(README 참조)로 진행
 - **사용자 홈(user home) 서비스 활성 여부** 및 관리자 계정의 `/homes/<user>` 접근 권한 (관리자 기능 전제)
 - 관리자가 타인 개인 Photos를 볼 때 Foto API로 가능한지, FileStation `/homes` 경로가 필요한지 확인
 ```

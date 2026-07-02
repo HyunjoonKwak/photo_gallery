@@ -39,6 +39,12 @@ class Settings(BaseSettings):
     login_max_attempts: int = Field(default=5)
     login_window_seconds: int = Field(default=600)  # 10 minutes
 
+    # --- Dev mock mode (no NAS required) ---
+    # True -> login accepts any credentials and photo APIs serve deterministic
+    # fake data, so the frontend can be developed without a reachable DSM.
+    # NEVER enable in production.
+    mock_mode: bool = Field(default=False)
+
     # --- Storage ---
     sqlite_path: str = Field(default="./data/app.db")
 

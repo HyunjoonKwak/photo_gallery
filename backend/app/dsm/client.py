@@ -57,9 +57,12 @@ class DsmClient:
         "SYNO.FileStation.Thumb",
         "SYNO.Foto.Browse.Folder",
         "SYNO.Foto.Browse.Item",
+        "SYNO.Foto.Browse.Timeline",
         "SYNO.Foto.Thumbnail",
         "SYNO.FotoTeam.Browse.Folder",
         "SYNO.FotoTeam.Browse.Item",
+        "SYNO.FotoTeam.Browse.Timeline",
+        "SYNO.FotoTeam.Thumbnail",
     )
 
     def __init__(self, webapi_base: str, http: httpx.AsyncClient):
@@ -135,6 +138,55 @@ class DsmClient:
         url = f"{self._base}/{endpoint.path}"
         return await self._send(url, params, api=api)
 
+    async def fetch_binary(
+        self,
+        api: str,
+        method: str,
+        *,
+        version: int | None = None,
+        sid: str | None = None,
+        extra: dict[str, Any] | None = None,
+    ) -> tuple[bytes, str]:
+        """Call an API that answers with raw bytes (e.g. SYNO.Foto.Thumbnail).
+
+        Success responses are image bytes; failures still come back as the JSON
+        error envelope, which we detect by content type and convert to DsmError.
+        """
+        endpoint = await self._endpoint(api)
+        params: dict[str, Any] = {
+            "api": api,
+            "version": str(endpoint.pick_version(version)),
+            "method": method,
+        }
+        if extra:
+            params.update({k: v for k, v in extra.items() if v is not None})
+        if sid:
+            params["_sid"] = sid
+        url = f"{self._base}/{endpoint.path}"
+
+        try:
+            resp = await self._http.get(url, params=params)
+            resp.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise DsmError(
+                100, f"NAS에 연결할 수 없습니다: {type(exc).__name__}", api=api
+            ) from exc
+
+        content_type = resp.headers.get("content-type", "")
+        if content_type.startswith("application/json"):
+            try:
+                body = resp.json()
+            except ValueError as exc:
+                raise DsmError(100, "NAS 응답을 해석할 수 없습니다.", api=api) from exc
+            code = 100
+            if isinstance(body, dict):
+                err = body.get("error")
+                if isinstance(err, dict) and "code" in err:
+                    code = int(err["code"])
+            raise DsmError(code, message_for(api, code), api=api)
+
+        return resp.content, content_type or "image/jpeg"
+
     # ------------------------------------------------------------------ auth
     async def login(
         self, account: str, passwd: str, otp_code: str | None = None
@@ -163,17 +215,19 @@ class DsmClient:
         return LoginResult(sid=sid, account=account, raw=data)
 
     async def logout(self, sid: str) -> None:
-        endpoint = await self._endpoint("SYNO.API.Auth")
-        params = {
-            "api": "SYNO.API.Auth",
-            "version": str(endpoint.pick_version(7)),
-            "method": "logout",
-            "session": "FileStation",
-            "_sid": sid,
-        }
-        url = f"{self._base}/{endpoint.path}"
-        # Logout failures are non-fatal; swallow DSM errors but surface transport.
+        # Logout is best-effort: an unreachable NAS or already-dead sid must not
+        # block the app-side logout, so every DsmError (including the endpoint
+        # probe) is swallowed here.
         try:
+            endpoint = await self._endpoint("SYNO.API.Auth")
+            params = {
+                "api": "SYNO.API.Auth",
+                "version": str(endpoint.pick_version(7)),
+                "method": "logout",
+                "session": "FileStation",
+                "_sid": sid,
+            }
+            url = f"{self._base}/{endpoint.path}"
             await self._send(url, params, api="SYNO.API.Auth")
         except DsmError:
             pass

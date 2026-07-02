@@ -44,42 +44,44 @@
 
 ## B. 프론트 UI/UX 설계 결정 — 화면 구현 시 적용
 
+> **구현 현황(2026-07-02, 1단계 타임라인 마일스톤)**: B-1·B-3 완료, B-2·B-4·B-5·B-6 부분 완료(파일 작업 API/작업기록과 함께 완성되는 항목은 다음 단계). 미체크 항목의 사유는 각 절 참조. NAS 없이 개발 가능하도록 백엔드 **MOCK_MODE** 추가(결정적 가짜 데이터 + SVG 썸네일). DSM 실연동 코드는 `backend/app/photos/dsm_source.py`에 있으며 **실 NAS 미검증**(파일 상단 검증 목록 참조).
+
 ### B-1. 타임라인
-- [ ] 월/일 버킷 **count-first** 방식: 개수 메타데이터만 먼저 받아 섹션 높이 사전 할당 → 스크롤바가 전체 아카이브를 대표 ([Building the Google Photos Web UI](https://medium.com/google-design/building-the-google-photos-web-ui-45b714dfbed1), [Immich Timeline](https://deepwiki.com/immich-app/immich/3.5-timeline-and-asset-display))
-- [ ] 우측 **날짜 스크러버**(드래그 시 연/월 라벨)로 임의 시점 점프
-- [ ] **justified layout**(행 높이 균등, 원본 비율 유지·크롭 없음) — square grid 비권고(가족 사진은 세로/가로 혼재)
-- [ ] ⚠️ 큰 버킷의 geometry **동기 일괄 계산 금지** — 청크/비동기 분할 또는 일 단위 버킷 ([Immich #28861](https://github.com/immich-app/immich/issues/28861) 프리즈 사례)
-- [ ] 공용 공간도 **모든 구성원에게 타임라인 제공** — Synology Photos는 Full Access 전용이라 불만 다수(차별화 지점)
+- [x] 월/일 버킷 **count-first** 방식: 개수 메타데이터만 먼저 받아 섹션 높이 사전 할당 → 스크롤바가 전체 아카이브를 대표 ([Building the Google Photos Web UI](https://medium.com/google-design/building-the-google-photos-web-ui-45b714dfbed1), [Immich Timeline](https://deepwiki.com/immich-app/immich/3.5-timeline-and-asset-display)) — `GET /api/photos/buckets` + `lib/rowModel.ts` 플레이스홀더 행
+- [x] 우측 **날짜 스크러버**(드래그 시 연/월 라벨)로 임의 시점 점프 — `Scrubber.tsx`
+- [x] **justified layout**(행 높이 균등, 원본 비율 유지·크롭 없음) — square grid 비권고(가족 사진은 세로/가로 혼재)
+- [x] ⚠️ 큰 버킷의 geometry **동기 일괄 계산 금지** — **일 단위 버킷 + 버킷별 지연 계산·메모이제이션**으로 구조적으로 회피 ([Immich #28861](https://github.com/immich-app/immich/issues/28861) 프리즈 사례)
+- [x] 공용 공간도 **모든 구성원에게 타임라인 제공** — 공용/개인 동일한 타임라인 UI(권한은 DSM이 enforce)
 
 ### B-2. 썸네일 로딩
-- [ ] 3단계: **thumbhash(즉시 블러) → 소형 webp → 대형 프리뷰**. thumbhash는 DB 인라인 저장 → 타임라인 응답에 포함 ([ThumbHash](https://evanw.github.io/thumbhash/), Immich 방식)
-- [ ] 1단계에서는 Synology Photos 썸네일(`SYNO.Foto.Thumbnail`) 재활용이 우선 — 자체 생성은 NAS에서 분당 ~100장 수준(Damselfly 실측)이라 최후 수단
+- [ ] (부분) 3단계: **thumbhash(즉시 블러) → 소형 webp → 대형 프리뷰**. 현재는 `placeholder_color`(단색) → 소형 → 대형 **2단계+색상**으로 구현. thumbhash는 이미지 픽셀 접근이 필요해 **photo_cache 파이프라인(D절)과 함께** 도입 — API 응답에 `placeholder_color` 슬롯을 이미 마련해 교체만 하면 됨
+- [x] 1단계에서는 Synology Photos 썸네일(`SYNO.Foto.Thumbnail`) 재활용이 우선 — `dsm_source.thumbnail()` 프록시로 구현(실 NAS 미검증)
 
 ### B-3. 다중 선택 (Google Photos 패턴)
-- [ ] 호버 시 좌상단 **체크 서클** — 별도 "선택 모드 버튼" 불필요
-- [ ] **사진 클릭=열기 / 체크 클릭=선택** 분리 유지
-- [ ] **Shift 호버 시 범위 프리뷰 하이라이트** — 비개발자에게 효과 큰 어포던스
-- [ ] 날짜 헤더 체크의 전체/부분 상태는 **선택 집합에서 파생**(이중 상태 관리 금지 — [Immich #17304](https://github.com/immich-app/immich/issues/17304) 버그 사례)
-- [ ] 작업 완료 시 선택 자동 해제 + Undo 토스트, ESC/X로 명시적 해제
-- [ ] 드래그 박스 선택은 벤치마크 초과 스펙(Google Photos·Immich에 없음) — 유지하되 C절의 좌표 기반 라이브러리 사용
+- [x] 호버 시 좌상단 **체크 서클** — 별도 "선택 모드 버튼" 불필요
+- [x] **사진 클릭=열기 / 체크 클릭=선택** 분리 유지(선택 모드에선 클릭=토글)
+- [x] **Shift 호버 시 범위 프리뷰 하이라이트** — `store/timeline.ts` previewIds
+- [x] 날짜 헤더 체크의 전체/부분 상태는 **선택 집합에서 파생**(이중 상태 관리 금지 — [Immich #17304](https://github.com/immich-app/immich/issues/17304) 버그 사례)
+- [ ] (부분) 작업 완료 시 선택 자동 해제 + Undo 토스트 — **파일 작업 API 연결 시** 함께. ESC/X 해제는 구현됨
+- [x] 드래그 박스 선택은 벤치마크 초과 스펙(Google Photos·Immich에 없음) — `@air/react-drag-to-select` 좌표 기반, 배경 드래그만 시작(셀 드래그는 DnD)
 
 ### B-4. 드래그앤드롭 (Finder 관례 — 주 사용층 Mac)
-- [ ] 드래그 기본=**이동**, **Option(⌥)=복사**(커서에 + 배지)
-- [ ] 고스트: 대표 썸네일 스택 + **"n장" 배지** (dnd-kit `DragOverlay` 커스텀)
-- [ ] 유효 드롭 폴더 하이라이트 / 무효 대상 not-allowed 커서
-- [ ] 폴더 hover 시 자동 펼침(spring-loaded folders)
-- [ ] **드롭 확인 다이얼로그 금지** — 즉시 실행 + Undo (명세 원칙 그대로)
+- [x] 드래그 기본=**이동**, **Option(⌥)=복사** — 고스트에 모드 라이브 표시(실제 복사/이동 동작은 파일 작업 단계)
+- [x] 고스트: 대표 썸네일 스택 + **"n장" 배지** (dnd-kit `DragOverlay` 커스텀)
+- [ ] (부분) 유효 드롭 폴더 하이라이트 구현 / 무효 대상 not-allowed 커서는 후속
+- [ ] 폴더 hover 시 자동 펼침(spring-loaded folders) — 폴더 트리 뷰와 함께 후속
+- [x] **드롭 확인 다이얼로그 금지** — 즉시 실행 + Undo (명세 원칙 그대로)
 
 ### B-5. 라이트박스 (Google Photos/Immich 표준)
-- [ ] 단축키: `←/→` 넘기기 · `i` 정보 패널 · `Delete` 휴지통 · `ESC` 닫기 · `Shift+?` 도움말
-- [ ] EXIF 패널은 **우측 슬라이드-인**(`i` 토글), 열림 상태는 다음 사진에도 유지 (하단 패널 비권고)
-- [ ] **삭제 시 닫지 않고 다음 사진으로 자동 전진** — 연속 정리(culling) 워크플로의 핵심
-- [ ] 다음/이전 이미지 프리페치
+- [ ] (부분) 단축키: `←/→` 넘기기·`ESC` 닫기 구현 / `i` 정보 패널·`Delete` 휴지통·`Shift+?` 도움말은 파일 작업 단계에서
+- [ ] EXIF 패널은 **우측 슬라이드-인**(`i` 토글), 열림 상태는 다음 사진에도 유지 (하단 패널 비권고) — 현재는 하단 요약 바(파일명·일시·해상도·용량)만
+- [ ] **삭제 시 닫지 않고 다음 사진으로 자동 전진** — 연속 정리(culling) 워크플로의 핵심 (삭제 API와 함께)
+- [x] 다음/이전 이미지 프리페치
 - [ ] 라이트박스 내 "폴더로 이동/공용으로 보내기" 버튼(Immich 사용자들이 요청하던 in-viewer 정리 액션)
 
 ### B-6. Undo / 확인 / 진행률 (NN/g + Gmail)
-- [ ] 가역 작업(이동/휴지통행 삭제)은 **확인 팝업 없이 Undo 토스트** ([NN/g Confirmation Dialogs](https://www.nngroup.com/articles/confirmation-dialog/))
-- [ ] 액션 버튼 있는 토스트는 **7–10초** 유지 + 호버 시 타이머 정지 (3초는 너무 짧음)
+- [ ] 가역 작업(이동/휴지통행 삭제)은 **확인 팝업 없이 Undo 토스트** ([NN/g Confirmation Dialogs](https://www.nngroup.com/articles/confirmation-dialog/)) — 토스트 인프라는 준비됨, Undo 액션은 작업로그와 함께
+- [x] 액션 버튼 있는 토스트는 **7–10초** 유지 + 호버 시 타이머 정지 (3초는 너무 짧음) — 8초 + 호버 정지(`Toasts.tsx`)
 - [ ] **작업 기록 패널이 토스트의 안전망** — 토스트를 놓쳐도 항목별 [되돌리기] 제공
 - [ ] **10초 초과 벌크 작업은 개수 기반 진행 바**("34/120장 이동 중") + 백그라운드 진행 ([NN/g Progress Indicators](https://www.nngroup.com/articles/progress-indicators/))
 - [ ] **영구 삭제만** 확인 다이얼로그("n장 영구 삭제" 명시) — 휴지통 30일 보존 후 영구삭제는 Immich 패턴
@@ -102,10 +104,12 @@
 | 드래그 박스 선택 | `@air/react-drag-to-select` | 좌표만 넘겨주는 설계 → 가상화와 호환(좌표→그리드 인덱스 역산). DnD와의 충돌은 PointerSensor `activationConstraint.distance`로 분리(빈 영역=박스 선택, 썸네일 위=드래그) |
 | 블러 플레이스홀더 | `thumbhash` | BlurHash보다 작고 디테일 좋음 |
 
-**피해야 할 함정 3가지**
-1. 큰 버킷 geometry 동기 일괄 계산 → 브라우저 프리즈 (Immich #28861)
-2. dnd-kit 멀티 드래그를 기본 기능으로 착각 / DragOverlay 없이 가상 리스트에서 드래그
-3. 드래그 박스 선택과 DnD 드래그 시작 충돌 (activation distance + 시작점 분기 필수)
+**피해야 할 함정 3가지** — 전부 회피 구현됨(2026-07-02)
+1. 큰 버킷 geometry 동기 일괄 계산 → 브라우저 프리즈 (Immich #28861) → **일 단위 버킷 + 버킷별 지연 계산·메모이제이션**(`lib/rowModel.ts`)
+2. dnd-kit 멀티 드래그를 기본 기능으로 착각 / DragOverlay 없이 가상 리스트에서 드래그 → **선택 스냅샷 + DragOverlay 커스텀 고스트**(`TimelineScreen.tsx`)
+3. 드래그 박스 선택과 DnD 드래그 시작 충돌 → **activation distance 8px + 시작점 분기**(셀=DnD, 배경=박스 선택, `shouldStartSelecting`)
+
+**알려진 v1 한계(후속 개선)**: 스크러버로 멀리 점프한 뒤 위쪽 버킷이 로드되면 높이 보정으로 스크롤이 약간 밀릴 수 있음(Google Photos는 스크롤 앵커링으로 해결 — 후속), 박스 선택은 화면에 마운트된 셀만 대상(가상화 특성), 드래그 중 엣지 자동 스크롤 미구현.
 
 ---
 
@@ -138,5 +142,6 @@
 - [x] README에 이 문서 링크 추가
 - [x] 프로젝트 `CLAUDE.md`에 강제 참조 규칙 명시
 - [x] A절 백엔드 수정 구현 (2026-07-02) — A-1~A-5 완료, 단위 테스트 26개 통과
-- [ ] B·C절 기반 1단계 화면 구현
+- [x] B·C절 기반 **타임라인 마일스톤** 구현 (2026-07-02) — count-first 버킷 API + MOCK_MODE(NAS 불필요), justified 행 가상화, 스크러버, 선택 3종(체크서클/Shift 프리뷰/박스), DnD 셸(DragOverlay·폴더 드롭), 미니 라이트박스, 토스트. 테스트 44개 통과, tsc+vite 빌드 통과. **남은 것**: 파일 작업 연결(CopyMove/Delete/작업로그/Undo — B-3·B-5·B-6의 (부분) 항목), DSM 실연동 검증(`dsm_source.py`)
+- [ ] 파일 작업 + 작업로그/Undo 구현 (다음 마일스톤)
 - [ ] D절 기반 2단계 구현

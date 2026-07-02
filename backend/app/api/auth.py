@@ -91,6 +91,26 @@ async def login(
             headers={"Retry-After": str(retry_after)},
         )
 
+    if settings.mock_mode:
+        # Dev-only path (no NAS): accept any credentials. "admin" account gets
+        # the admin role so both role variants of the UI can be exercised.
+        role = "admin" if body.account == "admin" else "member"
+        session = create_session(
+            settings.sqlite_path,
+            sid="mock-sid",
+            account=body.account,
+            role=role,
+            can_browse_homes=role == "admin",
+            ttl_seconds=settings.session_ttl_seconds,
+        )
+        _set_session_cookie(response, settings, session.token)
+        return UserInfo(
+            account=session.account,
+            role=session.role,
+            can_browse_homes=session.can_browse_homes,
+            mock_mode=True,
+        )
+
     try:
         result = await dsm.login(body.account, body.passwd, body.otp_code)
     except DsmError as exc:
@@ -119,15 +139,20 @@ async def login(
         account=session.account,
         role=session.role,
         can_browse_homes=session.can_browse_homes,
+        mock_mode=False,
     )
 
 
 @router.get("/me", response_model=UserInfo)
-async def me(session: Session = Depends(get_current_session)) -> UserInfo:
+async def me(
+    settings: Settings = Depends(get_settings),
+    session: Session = Depends(get_current_session),
+) -> UserInfo:
     return UserInfo(
         account=session.account,
         role=session.role,
         can_browse_homes=session.can_browse_homes,
+        mock_mode=settings.mock_mode,
     )
 
 
@@ -139,7 +164,7 @@ async def logout(
     session: Session = Depends(get_current_session),
 ) -> Response:
     sid = delete_session(settings.sqlite_path, session.token)
-    if sid:
+    if sid and not settings.mock_mode:
         await dsm.logout(sid)
     response.delete_cookie(settings.session_cookie_name, path="/")
     response.status_code = status.HTTP_204_NO_CONTENT

@@ -12,8 +12,12 @@ Synology NAS(DSM 7.2+) 위에서 Docker로 동작하는 가족 사진 정리 웹
 
 - [x] 리포 스캐폴딩 (backend / frontend / docker)
 - [x] DSM API 클라이언트 + 로그인 (`SYNO.API.Info` 프로브 → `SYNO.API.Auth`)
-- [ ] 타임라인 뷰 → 선택/DnD → CopyMove/Delete/CreateFolder → 작업로그/Undo
-- [ ] cross-space 이동 → 관리자 기능 → 라이트박스/EXIF → 폴더 뷰 → Docker 검증
+- [x] **타임라인 뷰 + 선택 + DnD 셸** — count-first 버킷, justified 가상 스크롤,
+      날짜 스크러버, 다중 선택(체크서클·Shift 범위·드래그 박스), 폴더 드롭 패널,
+      미니 라이트박스. NAS 없이 개발 가능한 **MOCK_MODE** 포함
+- [ ] CopyMove/Delete/CreateFolder + 작업로그/Undo (파일 작업 연결)
+- [ ] DSM Photos API 실연동 검증(`dsm_source.py`) — 실 NAS 필요
+- [ ] cross-space 이동 → 관리자 기능 → 라이트박스 EXIF 패널 → 폴더 뷰 → Docker 검증
 
 ## 아키텍처
 
@@ -38,6 +42,11 @@ Foto / FotoTeam)로만 수행합니다. 권한은 DSM이 enforce합니다.
 ## 로컬 개발 실행
 
 두 개의 터미널이 필요합니다.
+
+> **NAS가 없어도 개발할 수 있습니다.** `.env`에 `MOCK_MODE=true`를 설정하면
+> 아무 계정/비밀번호로 로그인되고(계정명 `admin` → 관리자 역할), 사진 API가
+> 결정적 가짜 데이터(18개월 타임라인 + SVG 썸네일)를 반환합니다.
+> 헤더에 "MOCK 데이터" 배지가 표시됩니다. **운영에서는 절대 켜지 마세요.**
 
 ### 1) 백엔드 (FastAPI)
 
@@ -83,23 +92,34 @@ docker compose up --build -d
 ```
 backend/
   app/
-    main.py            # FastAPI 진입점 (lifespan, CORS, 정적 서빙)
-    config.py          # 환경설정 (.env)
-    db.py              # SQLite 스키마 (session / operation / photo_cache)
+    main.py            # FastAPI 진입점 (lifespan, CORS, DsmError 핸들러, 정적 서빙)
+    config.py          # 환경설정 (.env, MOCK_MODE 포함)
+    db.py              # SQLite 스키마 (session / operation / photo_cache / login_attempt)
     session_store.py   # 쿠키 토큰 ↔ DSM sid 매핑 (서버측)
+    rate_limit.py      # 로그인 시도 제한 (DSM Auto Block 예방)
     schemas.py         # 요청/응답 모델
     dsm/
-      client.py        # DSM Web API 클라이언트 (Info 프로브 / 로그인)
+      client.py        # DSM Web API 클라이언트 (Info 프로브 / 로그인 / 바이너리)
       errors.py        # DSM 오류코드 → 한국어 메시지
+    photos/
+      source.py        # PhotoSource 프로토콜 (라우터가 보는 유일한 인터페이스)
+      mock.py          # NAS 없는 개발용 결정적 가짜 데이터 + SVG 썸네일
+      dsm_source.py    # SYNO.Foto/FotoTeam 실연동 (⚠️ 실 NAS 검증 전)
     api/
-      deps.py          # 공용 의존성 (현재 세션 등)
+      deps.py          # 공용 의존성 (세션, PhotoSource 등)
       auth.py          # /api/auth/login, /logout, /me
       system.py        # /api/system/info (API.Info 프로브)
+      photos.py        # /api/photos/buckets·items·folders·thumbnail
+  tests/               # pytest (44개)
 frontend/
   src/
     api/               # 백엔드 호출 클라이언트 + 타입
-    components/        # LoginForm, ApiInfoPanel
-    store/             # Zustand (auth UI 상태)
+    lib/               # rowModel(justified+count-first), dates
+    store/             # Zustand (auth / timeline 선택·라이트박스 / toast)
+    components/
+      timeline/        # TimelineView, PhotoCell, DateHeader, Scrubber, ActionBar…
+      TimelineScreen.tsx  # DnD 컨텍스트 + 폴더패널 + 라이트박스 조립
+      FolderPanel.tsx, Lightbox.tsx, Toasts.tsx, LoginForm, ApiInfoPanel
     App.tsx, main.tsx
 docker/Dockerfile
 docker-compose.yml

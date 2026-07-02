@@ -26,6 +26,19 @@ async def api_info(
     DSM failures propagate to the app-wide ``DsmError`` handler (session-invalid
     codes → 401, everything else → 502).
     """
+    if settings.mock_mode:
+        # No NAS to probe — report every core API as (mock) available so the
+        # panel stays meaningful during NAS-free development.
+        return ApiInfoResponse(
+            dsm_webapi_base="(mock)",
+            endpoints=[
+                EndpointInfo(
+                    api=api, path="(mock)", min_version=1, max_version=1, available=True
+                )
+                for api in DsmClient.CORE_APIS
+            ],
+        )
+
     resolved = await dsm.query_api_info(refresh=True)
 
     endpoints = [
