@@ -12,8 +12,9 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { useTimelineStore } from "../store/timeline";
-import { useToastStore } from "../store/toast";
+import { useFileOps } from "../hooks/useFileOps";
 import { FolderPanel } from "./FolderPanel";
+import { FolderView } from "./FolderView";
 import { Lightbox } from "./Lightbox";
 import { TimelineView } from "./timeline/TimelineView";
 import { DragOverlayContent } from "./timeline/DragOverlayContent";
@@ -30,7 +31,9 @@ import { SelectionActionBar } from "./timeline/SelectionActionBar";
  */
 export function TimelineScreen() {
   const space = useTimelineStore((s) => s.space);
+  const viewMode = useTimelineStore((s) => s.viewMode);
   const foldersQuery = useQuery({ queryKey: ["folders"], queryFn: api.folders });
+  const ops = useFileOps();
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -78,11 +81,8 @@ export function TimelineScreen() {
       (f) => `folder:${f.id}` === overId,
     );
     if (!folder) return;
-    useToastStore
-      .getState()
-      .push(
-        `${ids.length}장을 "${folder.name}" 폴더로 ${altHeld ? "복사" : "이동"} — 파일 작업 API는 다음 단계에서 연결됩니다.`,
-      );
+    // Finder convention: drag = move, ⌥ = copy. No confirmation — undo toast.
+    ops.move(ids, folder, altHeld);
   };
 
   return (
@@ -94,13 +94,17 @@ export function TimelineScreen() {
         onDragEnd={onDragEnd}
         onDragCancel={() => setDragIds(null)}
       >
-        <div className="flex h-full">
-          <FolderPanel />
-          <main className="relative min-w-0 flex-1">
-            {/* key=space: switching tabs resets lazy-load/selection state cleanly */}
-            <TimelineView key={space} />
-          </main>
-        </div>
+        {viewMode === "timeline" ? (
+          <div className="flex h-full">
+            <FolderPanel />
+            <main className="relative min-w-0 flex-1">
+              {/* key=space: switching tabs resets lazy-load/selection state cleanly */}
+              <TimelineView key={space} />
+            </main>
+          </div>
+        ) : (
+          <FolderView />
+        )}
         <DragOverlay dropAnimation={null}>
           {dragIds && <DragOverlayContent ids={dragIds} copyMode={altHeld} />}
         </DragOverlay>

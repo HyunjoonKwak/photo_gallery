@@ -45,8 +45,8 @@ export interface BucketLayoutCacheEntry {
   rows: TimelineRowModel[];
 }
 
-/** Justified rows for one loaded day bucket. */
-function layoutBucket(
+/** Justified rows for one item list (a day bucket, or a folder's contents). */
+export function layoutBucket(
   day: string,
   items: PhotoItem[],
   containerWidth: number,

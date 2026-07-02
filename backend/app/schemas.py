@@ -78,3 +78,65 @@ class PhotoFolder(BaseModel):
 
 class FoldersResponse(BaseModel):
     folders: list[PhotoFolder]
+
+
+# --- File operations (move/copy/delete + undo) ---
+
+
+class PlacedItem(BaseModel):
+    """One item's location at a point in time — the unit of undo payloads."""
+
+    id: str
+    space: str
+    folder_id: str | None = None
+    day: str  # YYYY-MM-DD (drives cache invalidation)
+
+
+class MoveRequest(BaseModel):
+    item_ids: list[str] = Field(min_length=1, max_length=500)
+    dest_folder_id: str
+    copy_mode: bool = False
+    # Set when an admin organizes another member's photos (audit trail).
+    target_user: str | None = Field(default=None, max_length=128)
+
+
+class DeleteRequest(BaseModel):
+    item_ids: list[str] = Field(min_length=1, max_length=500)
+    target_user: str | None = Field(default=None, max_length=128)
+
+
+class CreateFolderRequest(BaseModel):
+    space: str  # personal | team
+    name: str = Field(min_length=1, max_length=100)
+    target_user: str | None = Field(default=None, max_length=128)
+
+
+class AffectedDay(BaseModel):
+    space: str
+    day: str
+
+
+class OperationResponse(BaseModel):
+    operation_id: int
+    summary: str
+    affected: list[AffectedDay]
+    undoable: bool
+    folder: PhotoFolder | None = None  # populated by create_folder
+
+
+class OperationEntry(BaseModel):
+    id: int
+    type: str  # move | copy | delete | mkdir
+    summary: str
+    status: str  # done | undone | failed
+    created_at: str
+    can_undo: bool
+    target_user: str | None = None
+
+
+class OperationsResponse(BaseModel):
+    operations: list[OperationEntry]
+
+
+class MembersResponse(BaseModel):
+    members: list[str]

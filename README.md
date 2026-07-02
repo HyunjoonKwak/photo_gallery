@@ -12,12 +12,19 @@ Synology NAS(DSM 7.2+) 위에서 Docker로 동작하는 가족 사진 정리 웹
 
 - [x] 리포 스캐폴딩 (backend / frontend / docker)
 - [x] DSM API 클라이언트 + 로그인 (`SYNO.API.Info` 프로브 → `SYNO.API.Auth`)
-- [x] **타임라인 뷰 + 선택 + DnD 셸** — count-first 버킷, justified 가상 스크롤,
+- [x] **타임라인 뷰 + 선택 + DnD** — count-first 버킷, justified 가상 스크롤,
       날짜 스크러버, 다중 선택(체크서클·Shift 범위·드래그 박스), 폴더 드롭 패널,
-      미니 라이트박스. NAS 없이 개발 가능한 **MOCK_MODE** 포함
-- [ ] CopyMove/Delete/CreateFolder + 작업로그/Undo (파일 작업 연결)
-- [ ] DSM Photos API 실연동 검증(`dsm_source.py`) — 실 NAS 필요
-- [ ] cross-space 이동 → 관리자 기능 → 라이트박스 EXIF 패널 → 폴더 뷰 → Docker 검증
+      NAS 없이 개발 가능한 **MOCK_MODE** 포함
+- [x] **파일 작업 + 작업로그/Undo** — 이동/복사/삭제(휴지통)/폴더 생성이 실제 동작,
+      모든 작업이 기록되고 "되돌리기" 토스트 + 작업 기록 패널에서 undo 가능.
+      cross-space 이동(개인↔공용, 공용 보내기는 복사 기본) 포함
+- [x] **라이트박스 완성** — `i` EXIF 패널, `Delete` 휴지통+자동 전진, `Shift+?` 도움말
+- [x] **폴더 뷰** (타임라인↔폴더 토글) + **관리자 셸**(가족 구성원 선택, 주황 배너,
+      target_user 감사 로깅)
+- [x] **Docker 검증** — 이미지 빌드 + 컨테이너 기동(헬스체크·정적 서빙·non-root) 확인
+- [ ] **DSM Photos API 실연동 검증**(`backend/app/photos/dsm_source.py`) — 실 NAS 필요.
+      검증 전까지 파일 작업은 MOCK_MODE에서만 동작
+- [ ] 관리자의 타인 개인 폴더 실데이터 열람(FileStation `/homes` 경로) — 실 NAS 필요
 
 ## 아키텍처
 

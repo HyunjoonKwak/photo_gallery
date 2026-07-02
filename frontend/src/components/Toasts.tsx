@@ -25,6 +25,17 @@ function ToastItem({ toast }: { toast: Toast }) {
       className="pointer-events-auto flex items-center gap-3 rounded-xl bg-slate-900 px-4 py-3 text-sm text-white shadow-lg"
     >
       <span>{toast.message}</span>
+      {toast.action && (
+        <button
+          onClick={() => {
+            toast.action?.run();
+            dismiss(toast.id);
+          }}
+          className="shrink-0 rounded-lg px-2 py-1 font-semibold text-blue-300 hover:bg-slate-700 hover:text-blue-200"
+        >
+          {toast.action.label}
+        </button>
+      )}
       <button
         onClick={() => dismiss(toast.id)}
         className="shrink-0 rounded p-0.5 text-slate-400 hover:text-white"

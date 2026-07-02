@@ -2,8 +2,14 @@ import type {
   ApiInfoResponse,
   BucketItemsResponse,
   BucketsResponse,
+  CreateFolderRequest,
+  DeleteRequest,
   FoldersResponse,
   LoginRequest,
+  MembersResponse,
+  MoveRequest,
+  OperationResponse,
+  OperationsResponse,
   Space,
   UserInfo,
 } from "./types";
@@ -56,6 +62,29 @@ export const api = {
   bucketItems: (space: Space, day: string) =>
     request<BucketItemsResponse>(`/api/photos/items?space=${space}&day=${day}`),
   folders: () => request<FoldersResponse>("/api/photos/folders"),
+  folderItems: (folderId: string) =>
+    request<BucketItemsResponse>(
+      `/api/photos/folder-items?folder_id=${encodeURIComponent(folderId)}`,
+    ),
+  members: () => request<MembersResponse>("/api/photos/members"),
+  opMove: (body: MoveRequest) =>
+    request<OperationResponse>("/api/photos/ops/move", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  opDelete: (body: DeleteRequest) =>
+    request<OperationResponse>("/api/photos/ops/delete", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  createFolder: (body: CreateFolderRequest) =>
+    request<OperationResponse>("/api/photos/folders", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  listOps: () => request<OperationsResponse>("/api/ops"),
+  undoOp: (opId: number) =>
+    request<OperationResponse>(`/api/ops/${opId}/undo`, { method: "POST" }),
 };
 
 /** URL for a thumbnail <img> (session cookie rides along automatically). */

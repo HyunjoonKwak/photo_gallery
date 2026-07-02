@@ -62,7 +62,7 @@
 - [x] **사진 클릭=열기 / 체크 클릭=선택** 분리 유지(선택 모드에선 클릭=토글)
 - [x] **Shift 호버 시 범위 프리뷰 하이라이트** — `store/timeline.ts` previewIds
 - [x] 날짜 헤더 체크의 전체/부분 상태는 **선택 집합에서 파생**(이중 상태 관리 금지 — [Immich #17304](https://github.com/immich-app/immich/issues/17304) 버그 사례)
-- [ ] (부분) 작업 완료 시 선택 자동 해제 + Undo 토스트 — **파일 작업 API 연결 시** 함께. ESC/X 해제는 구현됨
+- [x] 작업 완료 시 선택 자동 해제 + Undo 토스트 (`useFileOps` afterOperation) + ESC/X 해제
 - [x] 드래그 박스 선택은 벤치마크 초과 스펙(Google Photos·Immich에 없음) — `@air/react-drag-to-select` 좌표 기반, 배경 드래그만 시작(셀 드래그는 DnD)
 
 ### B-4. 드래그앤드롭 (Finder 관례 — 주 사용층 Mac)
@@ -73,14 +73,14 @@
 - [x] **드롭 확인 다이얼로그 금지** — 즉시 실행 + Undo (명세 원칙 그대로)
 
 ### B-5. 라이트박스 (Google Photos/Immich 표준)
-- [ ] (부분) 단축키: `←/→` 넘기기·`ESC` 닫기 구현 / `i` 정보 패널·`Delete` 휴지통·`Shift+?` 도움말은 파일 작업 단계에서
-- [ ] EXIF 패널은 **우측 슬라이드-인**(`i` 토글), 열림 상태는 다음 사진에도 유지 (하단 패널 비권고) — 현재는 하단 요약 바(파일명·일시·해상도·용량)만
-- [ ] **삭제 시 닫지 않고 다음 사진으로 자동 전진** — 연속 정리(culling) 워크플로의 핵심 (삭제 API와 함께)
+- [x] 단축키: `←/→` 넘기기 · `i` 정보 패널 · `Delete` 휴지통 · `ESC` 닫기 · `Shift+?` 도움말
+- [x] EXIF 패널은 **우측 슬라이드-인**(`i` 토글), 열림 상태는 다음 사진에도 유지 (하단 패널 비권고)
+- [x] **삭제 시 닫지 않고 다음 사진으로 자동 전진** — 연속 정리(culling) 워크플로의 핵심
 - [x] 다음/이전 이미지 프리페치
-- [ ] 라이트박스 내 "폴더로 이동/공용으로 보내기" 버튼(Immich 사용자들이 요청하던 in-viewer 정리 액션)
+- [ ] 라이트박스 내 "폴더로 이동/공용으로 보내기" 버튼 — 삭제 버튼은 구현됨, 이동/보내기 버튼은 후속(액션바로 대체 가능)
 
 ### B-6. Undo / 확인 / 진행률 (NN/g + Gmail)
-- [ ] 가역 작업(이동/휴지통행 삭제)은 **확인 팝업 없이 Undo 토스트** ([NN/g Confirmation Dialogs](https://www.nngroup.com/articles/confirmation-dialog/)) — 토스트 인프라는 준비됨, Undo 액션은 작업로그와 함께
+- [x] 가역 작업(이동/휴지통행 삭제)은 **확인 팝업 없이 Undo 토스트** ([NN/g Confirmation Dialogs](https://www.nngroup.com/articles/confirmation-dialog/)) — 이동/복사/삭제/폴더생성 전부 즉시 실행 + "되돌리기" 액션 토스트
 - [x] 액션 버튼 있는 토스트는 **7–10초** 유지 + 호버 시 타이머 정지 (3초는 너무 짧음) — 8초 + 호버 정지(`Toasts.tsx`)
 - [ ] **작업 기록 패널이 토스트의 안전망** — 토스트를 놓쳐도 항목별 [되돌리기] 제공
 - [ ] **10초 초과 벌크 작업은 개수 기반 진행 바**("34/120장 이동 중") + 백그라운드 진행 ([NN/g Progress Indicators](https://www.nngroup.com/articles/progress-indicators/))
@@ -142,6 +142,10 @@
 - [x] README에 이 문서 링크 추가
 - [x] 프로젝트 `CLAUDE.md`에 강제 참조 규칙 명시
 - [x] A절 백엔드 수정 구현 (2026-07-02) — A-1~A-5 완료, 단위 테스트 26개 통과
-- [x] B·C절 기반 **타임라인 마일스톤** 구현 (2026-07-02) — count-first 버킷 API + MOCK_MODE(NAS 불필요), justified 행 가상화, 스크러버, 선택 3종(체크서클/Shift 프리뷰/박스), DnD 셸(DragOverlay·폴더 드롭), 미니 라이트박스, 토스트. 테스트 44개 통과, tsc+vite 빌드 통과. **남은 것**: 파일 작업 연결(CopyMove/Delete/작업로그/Undo — B-3·B-5·B-6의 (부분) 항목), DSM 실연동 검증(`dsm_source.py`)
-- [ ] 파일 작업 + 작업로그/Undo 구현 (다음 마일스톤)
+- [x] B·C절 기반 **타임라인 마일스톤** 구현 (2026-07-02) — count-first 버킷 API + MOCK_MODE(NAS 불필요), justified 행 가상화, 스크러버, 선택 3종(체크서클/Shift 프리뷰/박스), DnD 셸(DragOverlay·폴더 드롭), 미니 라이트박스, 토스트
+- [x] **파일 작업 + 작업로그/Undo 마일스톤** 구현 (2026-07-02) —
+  - 백엔드: PhotoSource 변이 프로토콜(move/copy/delete/undo 프리미티브), mock 상태 오버레이(cross-space 이동·복사·휴지통·복원이 실제로 동작), `operations.py` 작업로그 서비스(역연산 payload, 7일 undo 기한), `/api/photos/ops/*`·`/api/ops` 라우터, target_user 감사 로깅(관리자만 허용)
+  - 프론트: `useFileOps` 훅(선택 자동 해제 + 정밀 무효화 + **되돌리기 액션 토스트**), 폴더 드롭→실제 이동(⌥=복사), 액션바+폴더 피커(공용 보내기는 복사 기본 — spec ch.4), **작업 기록 패널**(항목별 되돌리기), 라이트박스 완성(`i` EXIF 패널·Delete 자동 전진·Shift+? 도움말), **폴더 뷰**(spec 9.3), 관리자 셸(멤버 선택 + 주황 배너 + 감사 로깅)
+  - 검증: pytest 56개 통과, tsc+vite 빌드 통과, mock 서버 e2e 스모크(이동→폴더→삭제→undo→복원), **Docker 이미지 빌드+컨테이너 기동 검증**(헬스체크·정적 프론트·non-root)
+- [ ] DSM 실연동 검증 (실 NAS 필요 — `dsm_source.py` 상단 검증 목록, 명세 13장)
 - [ ] D절 기반 2단계 구현

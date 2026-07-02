@@ -11,6 +11,11 @@ N4S4/synology-api) 기준의 최선 추정이며, 실제 NAS 검증 단계(명�
 - SYNO.Foto.Browse.Item `list` 의 start_time/end_time epoch 필터 지원 여부
 - additional 파라미터의 JSON 인코딩 방식 (["thumbnail","resolution"])
 - 썸네일 바이너리 응답 (SYNO.Foto.Thumbnail `get` + type/size 파라미터)
+- 파일 작업(이동/복사/삭제): Foto item id → 실제 파일 경로 매핑
+  (Browse.Item `get` + additional=["folder"]) 후 FileStation CopyMove/Delete.
+  FileStation 쪽은 공식 문서화된 API지만, 경로 매핑과 Photos 재인덱싱 지연은
+  실 NAS에서 확인 필요 (spec ch.4 '두 경로 모두 검증').
+- 휴지통 복원(undo delete): #recycle 경로 규칙 확인 필요.
 """
 
 from __future__ import annotations
@@ -19,7 +24,9 @@ import json
 from datetime import date, datetime, timedelta
 
 from ..dsm.client import DsmClient
-from ..schemas import PhotoBucket, PhotoFolder, PhotoItem
+from ..dsm.errors import DsmError
+from ..schemas import PhotoBucket, PhotoFolder, PhotoItem, PlacedItem
+from .source import Affected, DeleteOutcome, MoveOutcome
 
 
 def _ns(space: str, api: str) -> str:
@@ -121,6 +128,25 @@ class DsmPhotoSource:
                 )
         return out
 
+    async def folder_items(self, folder_id: str) -> list[PhotoItem]:
+        # 검증 필요: Browse.Item list 의 folder_id 필터. 공유/개인 네임스페이스는
+        # folder_id 프리픽스로 구분할 수 없어 실 NAS에서 규칙 확인 필요.
+        raise DsmError(100, "폴더 내용 조회는 실 NAS 검증 후 활성화됩니다.")
+
+    async def members(self) -> list[str]:
+        # 관리자 전용: /homes 하위 폴더명 = 구성원 계정 (user home 서비스 전제).
+        data = await self._dsm.call(
+            "SYNO.FileStation.List",
+            "list",
+            sid=self._sid,
+            extra={"folder_path": "/homes", "limit": 200},
+        )
+        return sorted(
+            f.get("name", "")
+            for f in data.get("files", [])
+            if f.get("isdir") and not f.get("name", "").startswith("@")
+        )
+
     async def thumbnail(
         self, space: str, item_id: str, cache_key: str, size: str
     ) -> tuple[bytes, str]:
@@ -135,3 +161,38 @@ class DsmPhotoSource:
                 "size": size,
             },
         )
+
+    # ------------------------------------------------------------ write side
+    #
+    # 구현 전략(spec ch.4, 실 NAS 검증 단계에서 활성화):
+    # 1) Foto item id → 파일 경로: Browse.Item `get` + additional=["folder"]
+    # 2) 이동/복사: SYNO.FileStation.CopyMove `start` → `status` 폴링(taskid,
+    #    finished 필드) — FileStation 쪽은 공식 문서화된 API
+    # 3) 삭제: SYNO.FileStation.Delete `start` → 폴링 (#recycle 활성 전제)
+    # 4) 이동 후 Photos 재인덱싱 지연 → 프론트는 낙관적 갱신 + 재조회 전제
+    # 검증 전에는 명확한 오류를 던져 MOCK_MODE 개발과 혼동을 막는다.
+
+    async def move(
+        self, item_ids: list[str], dest_folder_id: str, copy: bool
+    ) -> MoveOutcome:
+        # 검증 필요: PhotoFolder.name 이 실제 파일시스템 경로인지(현재 가정),
+        # cross-space 이동 시 재인덱싱 지연.
+        raise DsmError(100, "DSM 파일 이동은 실 NAS 검증 후 활성화됩니다 (MOCK_MODE로 개발).")
+
+    async def delete(self, item_ids: list[str]) -> DeleteOutcome:
+        raise DsmError(100, "DSM 삭제는 실 NAS 검증 후 활성화됩니다 (MOCK_MODE로 개발).")
+
+    async def place(self, placements: list[PlacedItem]) -> Affected:
+        raise DsmError(100, "DSM 되돌리기는 실 NAS 검증 후 활성화됩니다.")
+
+    async def restore(self, placements: list[PlacedItem]) -> Affected:
+        raise DsmError(100, "DSM 휴지통 복원은 실 NAS 검증 후 활성화됩니다.")
+
+    async def remove_items(self, item_ids: list[str]) -> Affected:
+        raise DsmError(100, "DSM 복사 취소는 실 NAS 검증 후 활성화됩니다.")
+
+    async def create_folder(self, space: str, name: str) -> PhotoFolder:
+        raise DsmError(100, "DSM 폴더 생성은 실 NAS 검증 후 활성화됩니다.")
+
+    async def remove_folder(self, folder_id: str) -> bool:
+        raise DsmError(100, "DSM 폴더 삭제는 실 NAS 검증 후 활성화됩니다.")

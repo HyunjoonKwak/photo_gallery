@@ -46,6 +46,57 @@ export interface FoldersResponse {
   folders: PhotoFolder[];
 }
 
+// --- file operations ---
+
+export interface MoveRequest {
+  item_ids: string[];
+  dest_folder_id: string;
+  copy_mode: boolean;
+  target_user?: string;
+}
+
+export interface DeleteRequest {
+  item_ids: string[];
+  target_user?: string;
+}
+
+export interface CreateFolderRequest {
+  space: Space;
+  name: string;
+  target_user?: string;
+}
+
+export interface AffectedDay {
+  space: Space;
+  day: string;
+}
+
+export interface OperationResponse {
+  operation_id: number;
+  summary: string;
+  affected: AffectedDay[];
+  undoable: boolean;
+  folder: PhotoFolder | null;
+}
+
+export interface OperationEntry {
+  id: number;
+  type: "move" | "copy" | "delete" | "mkdir";
+  summary: string;
+  status: "done" | "undone" | "failed";
+  created_at: string;
+  can_undo: boolean;
+  target_user: string | null;
+}
+
+export interface OperationsResponse {
+  operations: OperationEntry[];
+}
+
+export interface MembersResponse {
+  members: string[];
+}
+
 export interface EndpointInfo {
   api: string;
   path: string;

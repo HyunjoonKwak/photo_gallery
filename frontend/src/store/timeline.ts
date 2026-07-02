@@ -22,9 +22,16 @@ function rangeIds(orderedIds: string[], a: string, b: string): string[] {
   return orderedIds.slice(lo, hi + 1);
 }
 
+export type ViewMode = "timeline" | "folders";
+
 interface TimelineState {
   space: Space;
   setSpace: (space: Space) => void;
+  viewMode: ViewMode;
+  setViewMode: (mode: ViewMode) => void;
+  /** Admin only: the member whose photos are being organized (spec 4.5). */
+  viewedOwner: string | null;
+  setViewedOwner: (owner: string | null) => void;
 
   // --- selection ---
   selected: ReadonlySet<string>;
@@ -74,6 +81,11 @@ export const useTimelineStore = create<TimelineState>()((set, get) => ({
       itemsById: new Map(),
       lightboxId: null,
     }),
+  viewMode: "timeline",
+  setViewMode: (viewMode) =>
+    set({ viewMode, selected: EMPTY_SET, anchorId: null, lightboxId: null }),
+  viewedOwner: null,
+  setViewedOwner: (viewedOwner) => set({ viewedOwner }),
 
   selected: EMPTY_SET,
   anchorId: null,

@@ -14,14 +14,35 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
+from ..config import Settings, get_settings
+from ..operations import execute_create_folder, execute_delete, execute_move
 from ..photos.source import PhotoSource
-from ..schemas import BucketItemsResponse, BucketsResponse, FoldersResponse
-from .deps import get_photo_source
+from ..schemas import (
+    BucketItemsResponse,
+    BucketsResponse,
+    CreateFolderRequest,
+    DeleteRequest,
+    FoldersResponse,
+    MembersResponse,
+    MoveRequest,
+    OperationResponse,
+)
+from ..session_store import Session
+from .deps import get_current_session, get_photo_source
 
 router = APIRouter(prefix="/api/photos", tags=["photos"])
 
 Space = Literal["personal", "team"]
 ThumbSize = Literal["sm", "xl"]
+
+
+def _check_target_user(session: Session, target_user: str | None) -> None:
+    """Only admins may act on another member's behalf (audit-logged)."""
+    if target_user and target_user != session.account and session.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="관리자만 다른 구성원을 대상으로 작업할 수 있습니다.",
+        )
 
 
 @router.get("/buckets", response_model=BucketsResponse)
@@ -55,6 +76,78 @@ async def list_folders(
     source: PhotoSource = Depends(get_photo_source),
 ) -> FoldersResponse:
     return FoldersResponse(folders=await source.folders())
+
+
+@router.get("/folder-items", response_model=BucketItemsResponse)
+async def list_folder_items(
+    folder_id: str,
+    source: PhotoSource = Depends(get_photo_source),
+) -> BucketItemsResponse:
+    """Items assigned to one folder (folder view). Space rides on the folder."""
+    items = await source.folder_items(folder_id)
+    folders = {f.id: f for f in await source.folders()}
+    space = folders[folder_id].space if folder_id in folders else "team"
+    return BucketItemsResponse(space=space, day="", items=items)
+
+
+@router.get("/members", response_model=MembersResponse)
+async def list_members(
+    session: Session = Depends(get_current_session),
+    source: PhotoSource = Depends(get_photo_source),
+) -> MembersResponse:
+    if session.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="관리자만 가족 구성원 목록을 볼 수 있습니다.",
+        )
+    return MembersResponse(members=await source.members())
+
+
+# ------------------------------------------------------------ file operations
+
+
+@router.post("/ops/move", response_model=OperationResponse)
+async def op_move(
+    req: MoveRequest,
+    session: Session = Depends(get_current_session),
+    source: PhotoSource = Depends(get_photo_source),
+    settings: Settings = Depends(get_settings),
+) -> OperationResponse:
+    _check_target_user(session, req.target_user)
+    return await execute_move(
+        source, settings.sqlite_path, user=session.account, req=req
+    )
+
+
+@router.post("/ops/delete", response_model=OperationResponse)
+async def op_delete(
+    req: DeleteRequest,
+    session: Session = Depends(get_current_session),
+    source: PhotoSource = Depends(get_photo_source),
+    settings: Settings = Depends(get_settings),
+) -> OperationResponse:
+    _check_target_user(session, req.target_user)
+    return await execute_delete(
+        source, settings.sqlite_path, user=session.account, req=req
+    )
+
+
+@router.post("/folders", response_model=OperationResponse)
+async def op_create_folder(
+    req: CreateFolderRequest,
+    session: Session = Depends(get_current_session),
+    source: PhotoSource = Depends(get_photo_source),
+    settings: Settings = Depends(get_settings),
+) -> OperationResponse:
+    _check_target_user(session, req.target_user)
+    if req.space not in ("personal", "team"):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="space는 personal 또는 team 이어야 합니다.",
+        )
+    return await execute_create_folder(
+        source, settings.sqlite_path, user=session.account, req=req
+    )
 
 
 @router.get("/thumbnail")
