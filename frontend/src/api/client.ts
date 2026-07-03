@@ -84,6 +84,10 @@ export const api = {
     request<FolderCountsResponse>(
       `/api/photos/folder-counts?ids=${encodeURIComponent(ids.join(","))}`,
     ),
+  searchPhotos: (space: Space, q: string) =>
+    request<BucketItemsResponse>(
+      `/api/photos/search?space=${space}&q=${encodeURIComponent(q)}`,
+    ),
   itemDetail: (space: Space, id: string) =>
     request<ItemDetail>(
       `/api/photos/item-detail?space=${space}&id=${encodeURIComponent(id)}`,

@@ -16,6 +16,7 @@ import { ClassifyView } from "./ClassifyView";
 import { DedupView } from "./DedupView";
 import { FolderPanel } from "./FolderPanel";
 import { FolderView } from "./FolderView";
+import { SearchView } from "./SearchView";
 import { Lightbox } from "./Lightbox";
 import { TimelineView } from "./timeline/TimelineView";
 import { DragOverlayContent } from "./timeline/DragOverlayContent";
@@ -125,6 +126,15 @@ export function TimelineScreen() {
         )}
         {viewMode === "folders" && <FolderView />}
         {viewMode === "dedup" && <DedupView key={space} />}
+        {viewMode === "search" && (
+          <div className="flex h-full">
+            {/* Folder panel doubles as drop target for organizing results. */}
+            <FolderPanel />
+            <main className="relative min-w-0 flex-1">
+              <SearchView key={space} />
+            </main>
+          </div>
+        )}
         {viewMode === "classify" && (
           <div className="flex h-full">
             {/* Same folder panel as the timeline: drop target + quick jump,

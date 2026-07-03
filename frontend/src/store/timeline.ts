@@ -22,7 +22,7 @@ function rangeIds(orderedIds: string[], a: string, b: string): string[] {
   return orderedIds.slice(lo, hi + 1);
 }
 
-export type ViewMode = "timeline" | "folders" | "dedup" | "classify";
+export type ViewMode = "timeline" | "folders" | "dedup" | "classify" | "search";
 export type FolderDisplay = "grid" | "list";
 
 const FOLDER_DISPLAY_KEY = "nasphoto.folderDisplay";
@@ -48,6 +48,9 @@ interface TimelineState {
   /** Folder view: show sub-folders as icon cards or a list (persisted). */
   folderDisplay: FolderDisplay;
   setFolderDisplay: (d: FolderDisplay) => void;
+  /** Photo search: submitting a query switches to the search view. */
+  searchQuery: string;
+  runSearch: (query: string) => void;
   /** Admin only: the member whose photos are being organized (spec 4.5). */
   viewedOwner: string | null;
   setViewedOwner: (owner: string | null) => void;
@@ -113,6 +116,15 @@ export const useTimelineStore = create<TimelineState>()((set, get) => ({
       lightboxId: null,
     }),
   consumePendingFolderPath: () => set({ pendingFolderPath: null }),
+  searchQuery: "",
+  runSearch: (query) =>
+    set({
+      searchQuery: query,
+      viewMode: "search",
+      selected: EMPTY_SET,
+      anchorId: null,
+      lightboxId: null,
+    }),
   folderDisplay: initialFolderDisplay(),
   setFolderDisplay: (folderDisplay) => {
     try {

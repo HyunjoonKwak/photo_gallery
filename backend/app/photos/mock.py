@@ -370,6 +370,20 @@ class MockPhotoSource:
                 out[item_id] = None
         return out
 
+    async def search_items(self, space: str, keyword: str) -> list[PhotoItem]:
+        # Filename/folder-name substring match over the recent pool — enough
+        # to exercise the search UI without a NAS.
+        kw = keyword.strip().lower()
+        if not kw:
+            return []
+        out: list[PhotoItem] = []
+        for it in self._classify_pool(space):
+            _, folder_id = self._effective_loc(it.id)
+            folder = self._folder_name(folder_id) or ""
+            if kw in it.filename.lower() or kw in folder.lower():
+                out.append(it.model_copy(update={"folder": folder or None}))
+        return out
+
     # ------------------------------------------- AI classification (3단계)
     def _classify_pool(self, space: str) -> list[PhotoItem]:
         """Recent items of a space (base ids, trash excluded) to group over."""

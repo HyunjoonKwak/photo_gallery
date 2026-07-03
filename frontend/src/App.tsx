@@ -49,6 +49,32 @@ function ViewToggle() {
   );
 }
 
+/** 사진 검색창: 파일명·폴더명·태그 키워드 — Enter로 검색 뷰 진입. */
+function SearchBox() {
+  const runSearch = useTimelineStore((s) => s.runSearch);
+  const [value, setValue] = useState("");
+  const submit = () => {
+    const q = value.trim();
+    if (q) runSearch(q);
+  };
+  return (
+    <div className="flex items-center gap-1 rounded-xl bg-slate-100 px-2 py-1">
+      <span aria-hidden className="text-sm text-slate-400">
+        🔍
+      </span>
+      <input
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") submit();
+        }}
+        placeholder="사진 검색"
+        className="w-24 bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:w-40 sm:w-32 sm:focus:w-48 transition-[width]"
+      />
+    </div>
+  );
+}
+
 /** 스코프 전환: 현재 보기를 어느 저장소(공용/개인)에 적용할지. 보기 메뉴와
  * 성격이 다르므로 '범위:' 라벨 + 구분된 세그먼트로 위계를 드러낸다. 폴더 보기는
  * 공용·개인 트리를 동시에 보여줘 스코프가 무의미하므로 숨긴다. */
@@ -180,6 +206,7 @@ export default function App() {
           <div className="h-6 w-px bg-slate-200" aria-hidden />
           <ViewToggle />
           <ScopeSwitcher />
+          <SearchBox />
           {user.role === "admin" && <MemberSelect account={user.account} />}
           {user.mock_mode && (
             <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">

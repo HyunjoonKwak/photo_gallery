@@ -140,6 +140,20 @@ async def list_members(
     return MembersResponse(members=await source.members())
 
 
+@router.get("/search", response_model=BucketItemsResponse)
+async def search_photos(
+    q: str = Query(min_length=1, max_length=100),
+    space: Space = Query("team"),
+    source: PhotoSource = Depends(get_photo_source),
+    settings: Settings = Depends(get_settings),
+) -> BucketItemsResponse:
+    """Keyword search over DSM's own index (filename/folder/tag)."""
+    items = fill_thumbhashes(
+        settings.sqlite_path, await source.search_items(space, q)
+    )
+    return BucketItemsResponse(space=space, day="", items=items)
+
+
 @router.get("/item-detail", response_model=ItemDetail)
 async def get_item_detail(
     id: str,

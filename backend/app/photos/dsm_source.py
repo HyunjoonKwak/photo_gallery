@@ -368,6 +368,36 @@ class DsmPhotoSource:
                 )
         return out
 
+    # Search results are capped: a broad keyword on a 90k-photo archive could
+    # otherwise pull tens of thousands of items into one response.
+    SEARCH_CAP = 2000
+
+    async def search_items(self, space: str, keyword: str) -> list[PhotoItem]:
+        # SYNO.Foto(Team).Search.Search "list_item" — 실 NAS raw 검증
+        # (2026-07-03): 한국어 키워드·폴더명 매칭 동작 확인.
+        out: list[PhotoItem] = []
+        offset = 0
+        page_size = 500
+        while offset < self.SEARCH_CAP:
+            data = await self._dsm.call(
+                _ns(space, "SYNO.Foto.Search.Search"),
+                "list_item",
+                version=1,
+                sid=self._sid,
+                extra={
+                    "keyword": keyword,
+                    "offset": offset,
+                    "limit": page_size,
+                    "additional": json.dumps(["thumbnail", "resolution"]),
+                },
+            )
+            page = data.get("list", [])
+            out.extend(self._to_item(it) for it in page)
+            if len(page) < page_size:
+                break
+            offset += page_size
+        return out
+
     # ------------------------------------------- AI classification (3단계)
     # Synology Photos 내장 AI 결과 재활용 — SYNO.API.Info 프로브로 실 NAS 확인
     # (2026-07-02): (Foto|FotoTeam).Browse.Person v1~3, Browse.Geocoding v1.

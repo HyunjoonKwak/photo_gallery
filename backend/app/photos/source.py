@@ -85,6 +85,10 @@ class PhotoSource(Protocol):
         """id → folder path for a batch of items (dedup group cards)."""
         ...
 
+    async def search_items(self, space: str, keyword: str) -> list[PhotoItem]:
+        """Keyword search (filename/folder/tag — DSM's own index)."""
+        ...
+
     # ------------------------------------------- AI classification (3단계)
     # Synology Photos' own AI has already indexed faces (인물) and GPS places
     # (장소); we read those groups and reuse the move+undo pipeline to act on
