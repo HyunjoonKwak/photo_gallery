@@ -121,6 +121,16 @@ export function useFileOps() {
     onError,
   });
 
+  const rmdirMutation = useMutation({
+    mutationFn: api.removeFolder,
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ["folders"] });
+      queryClient.invalidateQueries({ queryKey: ["ops"] });
+      useToastStore.getState().push(`${res.summary}했습니다`);
+    },
+    onError,
+  });
+
   const targetUser = () => useTimelineStore.getState().viewedOwner ?? undefined;
   // Source space: prefer the items' own space (folder view can operate on
   // personal-folder photos while the global scope is team), else the scope.
@@ -160,8 +170,18 @@ export function useFileOps() {
         { onSuccess: () => onSuccess?.(), onSettled: p.stop },
       );
     },
-    createFolder: (space: Space, name: string) =>
-      mkdirMutation.mutate({ space, name, target_user: targetUser() }),
+    createFolder: (space: Space, name: string, parentId?: string) =>
+      mkdirMutation.mutate({
+        space,
+        name,
+        parent_id: parentId,
+        target_user: targetUser(),
+      }),
+    removeFolder: (space: Space, folderId: string, onSuccess?: () => void) =>
+      rmdirMutation.mutate(
+        { space, folder_id: folderId, target_user: targetUser() },
+        { onSuccess: () => onSuccess?.() },
+      ),
     undo: runUndo,
     isBusy:
       moveMutation.isPending || deleteMutation.isPending || mkdirMutation.isPending,

@@ -4,6 +4,7 @@ import { useDroppable } from "@dnd-kit/core";
 import { api } from "../api/client";
 import type { PhotoFolder } from "../api/types";
 import { layoutBucket } from "../lib/rowModel";
+import { useFileOps } from "../hooks/useFileOps";
 import { useTimelineStore } from "../store/timeline";
 import { PhotoCell } from "./timeline/PhotoCell";
 import { SPRING_MS, folderBasename } from "./FolderTree";
@@ -127,9 +128,37 @@ export function FolderPane({
 }: FolderPaneProps) {
   const current = path.length ? path[path.length - 1] : null;
   const setOrdered = useTimelineStore((s) => s.setOrdered);
+  const ops = useFileOps();
 
   const openFolder = (f: PhotoFolder) => onPathChange([...path, f]);
   const jumpTo = (index: number) => onPathChange(path.slice(0, index + 1));
+
+  // 폴더 생성: 현재 위치의 하위로 (루트면 선택 라이브러리의 최상위).
+  const onCreateFolder = () => {
+    const name = window.prompt(
+      current
+        ? `'${folderBasename(current.name)}' 아래 새 폴더 이름`
+        : "새 폴더 이름 (최상위에 생성)",
+    );
+    if (!name?.trim()) return;
+    const store = useTimelineStore.getState();
+    const space = current?.space ?? (store.viewedOwner ? "personal" : store.space);
+    ops.createFolder(space, name.trim(), current?.id);
+  };
+
+  // 폴더 삭제: 빈 폴더만 (백엔드가 검사 — 사진/하위 폴더 있으면 409 토스트).
+  const onRemoveFolder = () => {
+    if (!current) return;
+    if (
+      !window.confirm(
+        `'${folderBasename(current.name)}' 폴더를 삭제할까요?\n(빈 폴더만 삭제됩니다 — 사진이 있으면 거부)`,
+      )
+    )
+      return;
+    ops.removeFolder(current.space, current.id, () =>
+      onPathChange(path.slice(0, -1)),
+    );
+  };
 
   // Sub-folders of the current location. At ROOT, only the selected
   // library's top folders show (라이브러리 셀렉터 스코프) — mixing both
@@ -245,6 +274,27 @@ export function FolderPane({
             </button>
           </span>
         ))}
+        {/* 폴더 관리: 생성(현재 위치 하위) / 삭제(빈 폴더만) */}
+        <span className="ml-auto flex shrink-0 items-center gap-1">
+          <button
+            onClick={onCreateFolder}
+            disabled={ops.isBusy}
+            title={current ? "이 폴더 아래 새 폴더" : "최상위에 새 폴더"}
+            className="rounded-lg border border-dashed border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:border-slate-400 hover:text-slate-700 disabled:opacity-40"
+          >
+            ＋ 새 폴더
+          </button>
+          {current && (
+            <button
+              onClick={onRemoveFolder}
+              disabled={ops.isBusy}
+              title="빈 폴더만 삭제됩니다"
+              className="rounded-lg border border-red-200 px-2 py-0.5 text-xs text-red-500 hover:bg-red-50 disabled:opacity-40"
+            >
+              폴더 삭제
+            </button>
+          )}
+        </span>
       </div>
 
       {/* width ref on the unpadded inner box — measuring the padded box makes

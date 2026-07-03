@@ -129,6 +129,14 @@ export interface ProgressResponse {
 export interface CreateFolderRequest {
   space: Space;
   name: string;
+  /** None → 최상위, 지정 시 해당 폴더의 하위로 생성 */
+  parent_id?: string;
+  target_user?: string;
+}
+
+export interface RemoveFolderRequest {
+  space: Space;
+  folder_id: string;
   target_user?: string;
 }
 

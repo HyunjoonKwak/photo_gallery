@@ -184,7 +184,10 @@ class PhotoSource(Protocol):
         """Remove copies made by a copy operation (undo of a copy)."""
         ...
 
-    async def create_folder(self, space: str, name: str) -> PhotoFolder:
+    async def create_folder(
+        self, space: str, name: str, parent_id: str | None = None
+    ) -> PhotoFolder:
+        """Create a folder — top-level when parent_id is None, else nested."""
         ...
 
     async def purge_trash(self) -> None:

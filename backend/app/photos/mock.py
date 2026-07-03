@@ -643,14 +643,25 @@ class MockPhotoSource:
         self._touch(result)
         return result
 
-    async def create_folder(self, space: str, name: str) -> PhotoFolder:
+    async def create_folder(
+        self, space: str, name: str, parent_id: str | None = None
+    ) -> PhotoFolder:
+        # Mock folders are flat — a sub-folder shows the parent in its name.
+        if parent_id is not None:
+            parent = self._folder_by_id(parent_id)
+            name = f"{parent.name}/{name}"
         if any(f.space == space and f.name == name for f in self._all_folders()):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="같은 이름의 폴더가 이미 있습니다.",
             )
         self._folder_seq += 1
-        folder = PhotoFolder(id=f"f-{space}-c{self._folder_seq}", name=name, space=space)
+        folder = PhotoFolder(
+            id=f"f-{space}-c{self._folder_seq}",
+            name=name,
+            space=space,
+            parent_id=parent_id,
+        )
         self._custom_folders.append(folder)
         return folder
 

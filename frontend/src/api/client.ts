@@ -18,6 +18,7 @@ import type {
   PersonsResponse,
   PlacesResponse,
   ProgressResponse,
+  RemoveFolderRequest,
   Space,
   TrashStatsResponse,
   UserInfo,
@@ -130,7 +131,12 @@ export const api = {
       body: JSON.stringify(body),
     }),
   createFolder: (body: CreateFolderRequest) =>
-    request<OperationResponse>("/api/photos/folders", {
+    request<OperationResponse>(`/api/photos/folders${ownerQS("?")}`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  removeFolder: (body: RemoveFolderRequest) =>
+    request<OperationResponse>(`/api/photos/folders/delete${ownerQS("?")}`, {
       method: "POST",
       body: JSON.stringify(body),
     }),

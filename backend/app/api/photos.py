@@ -18,7 +18,12 @@ from fastapi.responses import StreamingResponse
 
 from ..config import Settings, get_settings
 from ..dedup import fill_thumbhashes
-from ..operations import execute_create_folder, execute_delete, execute_move
+from ..operations import (
+    execute_create_folder,
+    execute_delete,
+    execute_move,
+    execute_remove_folder,
+)
 from ..photos.source import PhotoSource
 from .. import progress
 from ..schemas import (
@@ -34,6 +39,7 @@ from ..schemas import (
     OperationResponse,
     PersonsResponse,
     PlacesResponse,
+    RemoveFolderRequest,
 )
 from ..session_store import Session
 from .deps import get_current_session, get_photo_source
@@ -299,6 +305,20 @@ async def stream_video(
 
     return StreamingResponse(
         body(), status_code=upstream.status_code, headers=passthrough
+    )
+
+
+@router.post("/folders/delete", response_model=OperationResponse)
+async def op_remove_folder(
+    req: RemoveFolderRequest,
+    session: Session = Depends(get_current_session),
+    source: PhotoSource = Depends(get_photo_source),
+    settings: Settings = Depends(get_settings),
+) -> OperationResponse:
+    """빈 폴더 삭제 (분할 뷰 정리) — 비어 있지 않으면 409."""
+    _check_target_user(session, req.target_user)
+    return await execute_remove_folder(
+        source, settings.sqlite_path, user=session.account, req=req
     )
 
 

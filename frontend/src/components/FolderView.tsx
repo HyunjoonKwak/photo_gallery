@@ -81,7 +81,6 @@ export function FolderView() {
   const [pathA, setPathA] = useState<PhotoFolder[]>([]);
   const [pathB, setPathB] = useState<PhotoFolder[]>([]);
   const [activePane, setActivePane] = useState<0 | 1>(0);
-  const ops = useFileOps();
   const clearSelection = useTimelineStore((s) => s.clearSelection);
 
   // Whose photos we're organizing changed → old breadcrumbs point into the
@@ -121,11 +120,6 @@ export function FolderView() {
     clearSelection();
     setActivePane(0);
     setDual(on);
-  };
-
-  const onCreateFolder = () => {
-    const name = window.prompt("새 폴더 이름 (공용 최상위에 생성)");
-    if (name?.trim()) ops.createFolder(activeCurrent?.space ?? "team", name.trim());
   };
 
   return (
@@ -169,12 +163,7 @@ export function FolderView() {
             style={{ width: aside.width }}
             className="hidden shrink-0 overflow-y-auto border-r border-slate-200 bg-white px-2 py-2 md:block"
           >
-            <button
-              onClick={onCreateFolder}
-              className="mx-2 mt-1 mb-1 w-[calc(100%-1rem)] rounded-lg border border-dashed border-slate-300 px-2 py-1.5 text-sm text-slate-500 hover:border-slate-400 hover:text-slate-700"
-            >
-              + 새 폴더
-            </button>
+            {/* 새 폴더/삭제는 우측 페인 브레드크럼으로 통합(단일·분할 공용) */}
             {/* 선택 라이브러리 트리만 펼침; 반대쪽은 접힌 헤더(펼치기 가능) */}
             {(viewedOwner || useTimelineStore.getState().space === "personal"
               ? (["personal", "team"] as const)

@@ -218,6 +218,32 @@ class HomesPhotoSource(DsmPhotoSource):
             return []
         return await super().search_items(space, keyword)
 
+    async def create_folder(
+        self, space: str, name: str, parent_id: str | None = None
+    ):
+        if parent_id is None or not _is_path_id(parent_id):
+            return await super().create_folder(space, name, parent_id)
+        await self._dsm.call(
+            "SYNO.FileStation.CreateFolder",
+            "create",
+            version=2,
+            sid=self._sid,
+            extra={"folder_path": parent_id, "name": name},
+        )
+        path = f"{parent_id}/{name}"
+        return self._fs_folder({"path": path}, parent_id)
+
+    async def remove_folder(self, folder_id: str) -> bool:
+        if not _is_path_id(folder_id):
+            return await super().remove_folder(folder_id)
+        entries = await self._fs_list(folder_id, files=False) + await self._fs_list(
+            folder_id, files=True
+        )
+        if any(e.get("name") != "@eaDir" for e in entries):
+            return False  # not empty
+        await self._delete_paths([folder_id])
+        return True
+
     # ---------------------------------------------------------- file ops
     # move/delete/undo are INHERITED — only the id→path translation differs.
     async def _item_meta(self, space: str, item_ids: list[str]) -> dict[str, dict]:

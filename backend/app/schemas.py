@@ -187,6 +187,14 @@ class DeleteRequest(BaseModel):
 class CreateFolderRequest(BaseModel):
     space: str  # personal | team
     name: str = Field(min_length=1, max_length=100)
+    # None → top-level; otherwise create inside this folder (분할 뷰 등).
+    parent_id: str | None = Field(default=None, max_length=512)
+    target_user: str | None = Field(default=None, max_length=128)
+
+
+class RemoveFolderRequest(BaseModel):
+    space: str = "team"
+    folder_id: str = Field(min_length=1, max_length=512)
     target_user: str | None = Field(default=None, max_length=128)
 
 

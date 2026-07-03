@@ -819,7 +819,30 @@ class DsmPhotoSource:
             except DsmError:
                 pass  # already exists → fine
 
-    async def create_folder(self, space: str, name: str) -> PhotoFolder:
+    async def create_folder(
+        self, space: str, name: str, parent_id: str | None = None
+    ) -> PhotoFolder:
+        if parent_id is not None:
+            # 하위 폴더 생성: Browse.Folder create + target_id — 실 NAS raw
+            # 검증(2026-07-03). Foto id를 즉시 돌려줘 재탐색이 필요 없다.
+            data = await self._dsm.call(
+                _ns(space, "SYNO.Foto.Browse.Folder"),
+                "create",
+                version=1,
+                sid=self._sid,
+                extra={"target_id": int(parent_id), "name": json.dumps(name)},
+            )
+            folder = data.get("folder") or {}
+            invalidate_folder_cache(self._sid)
+            pf = PhotoFolder(
+                id=str(folder.get("id")),
+                name=folder.get("name", f"/{name}"),
+                space=space,
+                parent_id=parent_id,
+                depth=max(0, str(folder.get("name", "")).strip("/").count("/")),
+            )
+            _FOLDER_META.setdefault(self._sid, {})[pf.id] = (space, pf.name)
+            return pf
         prefix = self._share_prefix(space)
         await self._dsm.call(
             "SYNO.FileStation.CreateFolder", "create", version=2, sid=self._sid,
@@ -834,7 +857,13 @@ class DsmPhotoSource:
         return PhotoFolder(id=f"{prefix}/{name}", name=f"/{name}", space=space)
 
     async def remove_folder(self, folder_id: str) -> bool:
+        # SAFETY: only EMPTY folders are removable — this also backs the
+        # folder-view 삭제 버튼, so a photo-bearing folder must never vanish.
         try:
+            if await self.folder_count(folder_id) > 0:
+                return False
+            if await self.folders(folder_id):
+                return False
             dest_dir, _ = await self._dest_dir(folder_id)
         except DsmError:
             return False

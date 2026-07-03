@@ -99,21 +99,84 @@ export function Lightbox() {
     }
   }, [item, space]);
 
-  // Mobile gestures (표준 사진앱 관례): 좌우 스와이프 = 이전/다음,
-  // 아래로 쓸어내리기 = 닫기. 비디오 컨트롤 위 터치는 건드리지 않는다.
+  // Mobile gestures (표준 사진앱 관례): 좌우 스와이프 = 이전/다음, 아래로
+  // 쓸어내리기 = 닫기, 핀치/더블탭 = 확대(확대 중 한 손가락 = 이동).
+  // 비디오 컨트롤 위 터치는 건드리지 않는다.
+  const [zoom, setZoom] = useState({ scale: 1, tx: 0, ty: 0 });
   const touchStart = useRef<{ x: number; y: number } | null>(null);
+  const pinchStart = useRef<{ dist: number; scale: number } | null>(null);
+  const panStart = useRef<{ x: number; y: number; tx: number; ty: number } | null>(
+    null,
+  );
+  const lastTap = useRef(0);
+
+  // 사진이 바뀌면 확대 상태 초기화
+  useEffect(() => {
+    setZoom({ scale: 1, tx: 0, ty: 0 });
+  }, [item?.id]);
+
+  const dist2 = (e: React.TouchEvent) => {
+    const [a, b] = [e.touches[0], e.touches[1]];
+    return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+  };
+
   const onTouchStart = (e: React.TouchEvent) => {
     if ((e.target as HTMLElement).closest("video")) return;
+    if (e.touches.length === 2) {
+      pinchStart.current = { dist: dist2(e), scale: zoom.scale };
+      touchStart.current = null;
+      return;
+    }
     const t = e.touches[0];
     touchStart.current = { x: t.clientX, y: t.clientY };
+    if (zoom.scale > 1) {
+      panStart.current = { x: t.clientX, y: t.clientY, tx: zoom.tx, ty: zoom.ty };
+    }
   };
+
+  const onTouchMove = (e: React.TouchEvent) => {
+    if (e.touches.length === 2 && pinchStart.current) {
+      const next = Math.min(
+        4,
+        Math.max(1, (pinchStart.current.scale * dist2(e)) / pinchStart.current.dist),
+      );
+      setZoom((z) => ({ scale: next, tx: next === 1 ? 0 : z.tx, ty: next === 1 ? 0 : z.ty }));
+      return;
+    }
+    if (zoom.scale > 1 && panStart.current && e.touches.length === 1) {
+      const t = e.touches[0];
+      setZoom((z) => ({
+        ...z,
+        tx: panStart.current!.tx + (t.clientX - panStart.current!.x),
+        ty: panStart.current!.ty + (t.clientY - panStart.current!.y),
+      }));
+    }
+  };
+
   const onTouchEnd = (e: React.TouchEvent) => {
+    pinchStart.current = null;
+    panStart.current = null;
     const start = touchStart.current;
     touchStart.current = null;
-    if (!start || (e.target as HTMLElement).closest("video")) return;
+    if ((e.target as HTMLElement).closest("video")) return;
+    if (!start) return;
     const t = e.changedTouches[0];
     const dx = t.clientX - start.x;
     const dy = t.clientY - start.y;
+    // 더블탭: 300ms 안에 제자리 두 번 → 2.5배 확대 ↔ 원래대로
+    if (Math.abs(dx) < 12 && Math.abs(dy) < 12) {
+      const now = Date.now();
+      if (now - lastTap.current < 300) {
+        setZoom((z) =>
+          z.scale > 1 ? { scale: 1, tx: 0, ty: 0 } : { scale: 2.5, tx: 0, ty: 0 },
+        );
+        lastTap.current = 0;
+        return;
+      }
+      lastTap.current = now;
+      return;
+    }
+    if (zoom.scale > 1) return; // 확대 중엔 스와이프 넘김/닫기 비활성
     const s = useTimelineStore.getState();
     if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) {
       s.stepLightbox(dx < 0 ? 1 : -1);
@@ -135,7 +198,9 @@ export function Lightbox() {
       className="fixed inset-0 z-50 flex bg-black/95"
       onClick={close}
       onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
+      style={{ touchAction: "none" }}
     >
       <div className="relative flex min-w-0 flex-1 items-center justify-center">
         {item.type === "video" ? (
@@ -156,6 +221,10 @@ export function Lightbox() {
             alt={item.filename}
             onClick={(e) => e.stopPropagation()}
             className="max-h-[90vh] max-w-[94%] object-contain"
+            style={{
+              transform: `translate(${zoom.tx}px, ${zoom.ty}px) scale(${zoom.scale})`,
+              transition: zoom.scale === 1 ? "transform 150ms" : undefined,
+            }}
           />
         )}
         <button

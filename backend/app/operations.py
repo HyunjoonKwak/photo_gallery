@@ -29,6 +29,7 @@ from .schemas import (
     OperationEntry,
     OperationResponse,
     PlacedItem,
+    RemoveFolderRequest,
 )
 
 UNDOABLE_TYPES = frozenset({"move", "copy", "delete", "mkdir"})
@@ -151,7 +152,7 @@ async def execute_delete(
 async def execute_create_folder(
     source: PhotoSource, sqlite_path: str, *, user: str, req: CreateFolderRequest
 ) -> OperationResponse:
-    folder = await source.create_folder(req.space, req.name)
+    folder = await source.create_folder(req.space, req.name, req.parent_id)
     summary = f"'{folder.name}' 폴더 생성"
     op_id = _record(
         sqlite_path,
@@ -168,6 +169,39 @@ async def execute_create_folder(
         affected=[],
         undoable=True,
         folder=folder,
+    )
+
+
+async def execute_remove_folder(
+    source: PhotoSource,
+    sqlite_path: str,
+    *,
+    user: str,
+    req: "RemoveFolderRequest",
+) -> OperationResponse:
+    """Delete an EMPTY folder (분할 뷰 폴더 정리). Non-empty → 409.
+
+    Not undoable: nothing is lost (the folder had no photos), and recreating
+    a Foto folder id on undo is not meaningful.
+    """
+    removed = await source.remove_folder(req.folder_id)
+    if not removed:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "비어 있는 폴더만 삭제할 수 있습니다 (사진/하위 폴더 확인).",
+        )
+    summary = "빈 폴더 삭제"
+    op_id = _record(
+        sqlite_path,
+        user=user,
+        target_user=req.target_user,
+        type_="rmdir",
+        space_from=req.space,
+        space_to=None,
+        payload={"summary": summary, "folder_id": req.folder_id},
+    )
+    return OperationResponse(
+        operation_id=op_id, summary=summary, affected=[], undoable=False
     )
 
 
