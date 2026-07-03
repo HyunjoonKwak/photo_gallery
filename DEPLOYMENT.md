@@ -44,7 +44,14 @@ IMAGE_TAG=latest ./deploy.sh update   # pull + 배포
   - Domain: 사용할 도메인 / Scheme: `http` / Forward IP: NAS IP / Port: `9800`
   - SSL 탭에서 인증서 발급(Let's Encrypt) + `Force SSL` 권장
   - Websockets 불필요(사용 안 함), `Block Common Exploits` 켜도 무방
-  - 등록 후 NAS의 `.env`에서 `COOKIE_SECURE=true`로 바꾸고 `./deploy.sh restart`
+  - **Advanced 탭에 타임아웃 연장 필수** — 대량 이동/삭제/되돌리기 요청은
+    수 분까지 걸리는데 NPM 기본(60s)이 중간에 끊어버림:
+    ```nginx
+    proxy_read_timeout 600s;
+    proxy_send_timeout 600s;
+    ```
+  - HTTPS 접속·로그인 확인 **후** NAS `.env`에서 `COOKIE_SECURE=true`로
+    바꾸고 `./deploy.sh restart` (순서 주의 — 먼저 바꾸면 HTTP로 검증 불가)
   - 이후 접속은 HTTPS 도메인으로만; `http://IP:9800` 직접 접속은 쿠키가
     Secure라 로그인 불가(정상)
 - **타임존**: 이미지에 `TZ=Asia/Seoul` 내장(타임라인 날짜 그룹핑 기준). 다른
