@@ -93,11 +93,15 @@ class HomesPhotoSource(DsmPhotoSource):
             depth=max(0, rel.strip("/").count("/")),
         )
 
+    _VIDEO_EXT = (".mp4", ".mov", ".m4v", ".avi", ".mkv")
+
     def _fs_item(self, f: dict) -> PhotoItem:
         t = (f.get("additional") or {}).get("time") or {}
         mtime = int(t.get("mtime", 0))
         size = (f.get("additional") or {}).get("size")
+        is_video = f.get("name", "").lower().endswith(self._VIDEO_EXT)
         return PhotoItem(
+            type="video" if is_video else "photo",
             id=f["path"],
             filename=f.get("name", ""),
             taken_at=datetime.fromtimestamp(mtime or 0).isoformat(),
@@ -160,6 +164,21 @@ class HomesPhotoSource(DsmPhotoSource):
                 "path": item_id,
                 "size": "small" if size == "sm" else "large",
             },
+        )
+
+    async def video_stream(
+        self, space: str, item_id: str, range_header: str | None
+    ):
+        if not _is_path_id(item_id):
+            return await super().video_stream(space, item_id, range_header)
+        # 타인 개인 공간(경로형 id)은 FileStation Download 로 스트리밍.
+        return await self._dsm.stream_binary(
+            "SYNO.FileStation.Download",
+            "download",
+            version=2,
+            sid=self._sid,
+            extra={"path": item_id, "mode": "download"},
+            range_header=range_header,
         )
 
     async def item_detail(self, space: str, item_id: str) -> ItemDetail:

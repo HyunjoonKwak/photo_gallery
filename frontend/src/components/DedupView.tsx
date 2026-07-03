@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, thumbnailUrl } from "../api/client";
 import type { DedupGroup, DedupItem } from "../api/types";
-import { formatBytes } from "../lib/dates";
+import { formatBytes, formatDuration } from "../lib/dates";
 import { useTimelineStore } from "../store/timeline";
 import { useFileOps } from "../hooks/useFileOps";
 
@@ -351,6 +351,11 @@ function DedupThumb({
         <span className="absolute bottom-1.5 right-1.5 rounded-full bg-black/50 px-1.5 py-0.5 text-[10px] text-white opacity-0 transition-opacity group-hover:opacity-100">
           🔍 크게 보기
         </span>
+        {item.type === "video" && (
+          <span className="pointer-events-none absolute left-1.5 top-1.5 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">
+            ▶{item.duration_ms != null && ` ${formatDuration(item.duration_ms)}`}
+          </span>
+        )}
       </button>
       {/* 보관 여부는 사진 열기와 분리된 명시적 배지 토글 (멀티 보관 가능) */}
       <button

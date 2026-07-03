@@ -31,3 +31,14 @@ export function formatBytes(n: number | null): string {
   if (n < 1024 * 1024) return `${Math.round(n / 1024)}KB`;
   return `${(n / (1024 * 1024)).toFixed(1)}MB`;
 }
+
+
+/** Video duration for badges: "0:34", "12:05", "1:02:33". */
+export function formatDuration(ms: number): string {
+  const total = Math.round(ms / 1000);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const mm = h > 0 ? String(m).padStart(2, "0") : String(m);
+  return `${h > 0 ? `${h}:` : ""}${mm}:${String(s).padStart(2, "0")}`;
+}

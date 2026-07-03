@@ -26,6 +26,10 @@ export interface PhotoItem {
   height: number;
   size: number | null;
   cache_key: string;
+  /** "photo" | "video" — 영상은 ▶ 배지 + 라이트박스 재생 */
+  type: "photo" | "video";
+  /** 영상 길이(ms), 사진은 null */
+  duration_ms: number | null;
   placeholder_color: string | null;
   /** base64 thumbhash (blur placeholder) — present once the dedup scan has
    * hashed the item; decoded client-side. */

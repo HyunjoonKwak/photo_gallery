@@ -159,7 +159,7 @@ class DsmPhotoSource:
                     "end_time": end,
                     "sort_by": "takentime",
                     "sort_direction": "asc",
-                    "additional": json.dumps(["thumbnail", "resolution"]),
+                    "additional": json.dumps(["thumbnail", "resolution", "video_meta"]),
                 },
             )
             page = data.get("list", [])
@@ -174,6 +174,7 @@ class DsmPhotoSource:
         additional = it.get("additional", {})
         resolution = additional.get("resolution", {})
         thumb = additional.get("thumbnail", {})
+        video_meta = additional.get("video_meta") or {}
         return PhotoItem(
             id=str(it.get("id")),
             filename=it.get("filename", ""),
@@ -182,6 +183,8 @@ class DsmPhotoSource:
             height=int(resolution.get("height", 3)) or 3,
             size=it.get("filesize"),
             cache_key=thumb.get("cache_key", ""),
+            type="video" if it.get("type") == "video" else "photo",
+            duration_ms=video_meta.get("duration"),
             placeholder_color=None,  # thumbhash lands with photo_cache (phase 2)
             folder=None,
         )
@@ -269,7 +272,7 @@ class DsmPhotoSource:
                     **filters,
                     "offset": offset,
                     "limit": page_size,
-                    "additional": json.dumps(["thumbnail", "resolution"]),
+                    "additional": json.dumps(["thumbnail", "resolution", "video_meta"]),
                 },
             )
             page = data.get("list", [])
@@ -389,7 +392,7 @@ class DsmPhotoSource:
                     "keyword": keyword,
                     "offset": offset,
                     "limit": page_size,
-                    "additional": json.dumps(["thumbnail", "resolution"]),
+                    "additional": json.dumps(["thumbnail", "resolution", "video_meta"]),
                 },
             )
             page = data.get("list", [])
@@ -530,6 +533,20 @@ class DsmPhotoSource:
                 "type": "unit",
                 "size": size,
             },
+        )
+
+    async def video_stream(
+        self, space: str, item_id: str, range_header: str | None
+    ):
+        # SYNO.Foto(Team).Download 는 Range 요청에 206 + Content-Range 로
+        # 응답한다 (실 NAS raw 확인 2026-07-03) — 시킹까지 그대로 프록시.
+        return await self._dsm.stream_binary(
+            _ns(space, "SYNO.Foto.Download"),
+            "download",
+            version=1,
+            sid=self._sid,
+            extra={"unit_id": f"[{int(item_id)}]"},
+            range_header=range_header,
         )
 
     async def item_hashes(self, space: str, item: PhotoItem) -> tuple[str, str, str]:

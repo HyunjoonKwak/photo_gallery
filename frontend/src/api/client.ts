@@ -167,6 +167,14 @@ export const api = {
 };
 
 /** URL for a thumbnail <img> (session cookie rides along automatically). */
+/** URL for the <video> tag (Range-passthrough proxy; session cookie rides). */
+export function videoUrl(space: Space, id: string): string {
+  const q = new URLSearchParams({ space, id });
+  const owner = useTimelineStore.getState().viewedOwner;
+  if (owner) q.set("target_user", owner);
+  return `/api/photos/video?${q.toString()}`;
+}
+
 export function thumbnailUrl(
   space: Space,
   id: string,

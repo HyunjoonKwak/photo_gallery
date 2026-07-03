@@ -121,6 +121,16 @@ class PhotoSource(Protocol):
         """Thumbnail bytes + content type. ``size`` is ``sm`` (grid) or ``xl``."""
         ...
 
+    async def video_stream(
+        self, space: str, item_id: str, range_header: str | None
+    ):
+        """Streaming response for video playback (Range passthrough).
+
+        Returns an httpx.Response opened in streaming mode; the API layer
+        forwards status/headers/chunks to the browser ``<video>`` tag.
+        """
+        ...
+
     async def item_hashes(self, space: str, item: PhotoItem) -> tuple[str, str, str]:
         """(sha256, phash-hex, thumbhash-base64) — dedup (D절) + blur
         placeholder (B-2).

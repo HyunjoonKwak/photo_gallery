@@ -13,7 +13,8 @@ import asyncio
 from datetime import date
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi.responses import StreamingResponse
 
 from ..config import Settings, get_settings
 from ..dedup import fill_thumbhashes
@@ -270,6 +271,34 @@ async def op_create_folder(
         )
     return await execute_create_folder(
         source, settings.sqlite_path, user=session.account, req=req
+    )
+
+
+@router.get("/video")
+async def stream_video(
+    id: str,
+    request: Request,
+    space: Space = Query("team"),
+    source: PhotoSource = Depends(get_photo_source),
+) -> StreamingResponse:
+    """Video playback proxy — Range passthrough so <video> seeking works."""
+    upstream = await source.video_stream(space, id, request.headers.get("range"))
+    passthrough = {
+        k: v
+        for k, v in upstream.headers.items()
+        if k.lower() in ("content-type", "content-length", "content-range")
+    }
+    passthrough.setdefault("Accept-Ranges", "bytes")
+
+    async def body():
+        try:
+            async for chunk in upstream.aiter_bytes(64 * 1024):
+                yield chunk
+        finally:
+            await upstream.aclose()
+
+    return StreamingResponse(
+        body(), status_code=upstream.status_code, headers=passthrough
     )
 
 

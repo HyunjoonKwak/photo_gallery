@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { api, thumbnailUrl } from "../api/client";
+import { api, thumbnailUrl, videoUrl } from "../api/client";
 import { useTimelineStore } from "../store/timeline";
 import { useFileOps } from "../hooks/useFileOps";
-import { formatBytes } from "../lib/dates";
+import { formatBytes, formatDuration } from "../lib/dates";
 import { FolderPickerDialog } from "./timeline/FolderPickerDialog";
 
 /** EXIF field order + Korean labels for the info panel. */
@@ -80,14 +80,15 @@ export function Lightbox() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item]);
 
-  // Prefetch neighbors so stepping feels instant.
+  // Prefetch neighbors so stepping feels instant (photos only — videos are
+  // streamed on demand).
   useEffect(() => {
     if (!item) return;
     const s = useTimelineStore.getState();
     const idx = s.orderedIds.indexOf(item.id);
     for (const i of [idx - 1, idx + 1]) {
       const neighbor = s.itemsById.get(s.orderedIds[i] ?? "");
-      if (neighbor) {
+      if (neighbor && neighbor.type !== "video") {
         new Image().src = thumbnailUrl(
           neighbor.space ?? space,
           neighbor.id,
@@ -111,12 +112,26 @@ export function Lightbox() {
       onClick={close}
     >
       <div className="relative flex min-w-0 flex-1 items-center justify-center">
-        <img
-          src={thumbnailUrl(space, item.id, item.cache_key, "xl")}
-          alt={item.filename}
-          onClick={(e) => e.stopPropagation()}
-          className="max-h-[90vh] max-w-[94%] object-contain"
-        />
+        {item.type === "video" ? (
+          // key=id: stepping to another video swaps the source cleanly.
+          <video
+            key={item.id}
+            src={videoUrl(space, item.id)}
+            poster={thumbnailUrl(space, item.id, item.cache_key, "xl")}
+            controls
+            autoPlay
+            playsInline
+            onClick={(e) => e.stopPropagation()}
+            className="max-h-[90vh] max-w-[94%]"
+          />
+        ) : (
+          <img
+            src={thumbnailUrl(space, item.id, item.cache_key, "xl")}
+            alt={item.filename}
+            onClick={(e) => e.stopPropagation()}
+            className="max-h-[90vh] max-w-[94%] object-contain"
+          />
+        )}
         <button
           aria-label="이전 사진"
           className={`${navBtn} left-4`}
@@ -199,6 +214,9 @@ export function Lightbox() {
             <InfoRow label="해상도" value={`${item.width} × ${item.height}`} />
             {item.size != null && (
               <InfoRow label="용량" value={formatBytes(item.size)} />
+            )}
+            {item.type === "video" && item.duration_ms != null && (
+              <InfoRow label="길이" value={formatDuration(item.duration_ms)} />
             )}
             <InfoRow label="공간" value={space === "team" ? "공용" : "개인"} />
             <InfoRow

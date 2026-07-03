@@ -90,14 +90,19 @@ def _build_item(space: str, day: str, idx: int, r: Random) -> PhotoItem:
     hue = r.randint(0, 359)
     hour = 8 + (idx * 7) % 12
     minute = r.randint(0, 59)
+    # Sprinkle videos in (~1 in 19) so the ▶ badge/duration UI is exercisable.
+    is_video = idx % 19 == 4
+    ext = "mp4" if is_video else "jpg"
     return PhotoItem(
         id=f"m-{space}-{day}-{idx}",
-        filename=f"IMG_{day.replace('-', '')}_{idx:04d}.jpg",
+        filename=f"IMG_{day.replace('-', '')}_{idx:04d}.{ext}",
         taken_at=f"{day}T{hour:02d}:{minute:02d}:00",
         width=aw * base,
         height=ah * base,
         size=r.randint(800_000, 8_000_000),
         cache_key="mock",
+        type="video" if is_video else "photo",
+        duration_ms=r.randint(4_000, 185_000) if is_video else None,
         placeholder_color=f"hsl({hue} 45% 78%)",
         folder=None,
     )
@@ -483,6 +488,12 @@ class MockPhotoSource:
         self, space: str, item_id: str, cache_key: str, size: str
     ) -> tuple[bytes, str]:
         return _svg_thumbnail(self._resolve_item(item_id), size), "image/svg+xml"
+
+    async def video_stream(self, space: str, item_id: str, range_header):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="MOCK 모드에서는 동영상 재생을 지원하지 않습니다.",
+        )
 
     async def item_hashes(self, space: str, item: PhotoItem) -> tuple[str, str, str]:
         """Simulated hashes with planted duplicate clusters (deterministic).

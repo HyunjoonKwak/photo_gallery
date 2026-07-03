@@ -187,6 +187,48 @@ class DsmClient:
 
         return resp.content, content_type or "image/jpeg"
 
+    async def stream_binary(
+        self,
+        api: str,
+        method: str,
+        *,
+        version: int | None = None,
+        sid: str | None = None,
+        extra: dict[str, Any] | None = None,
+        range_header: str | None = None,
+    ) -> httpx.Response:
+        """Open a STREAMING GET for large binary payloads (video playback).
+
+        The Range header passes through so browser ``<video>`` seeking works
+        (DSM answers 206 + Content-Range — 실 NAS 확인 2026-07-03). The caller
+        must ``aclose()`` the returned response after consuming the stream.
+        """
+        endpoint = await self._endpoint(api)
+        params: dict[str, Any] = {
+            "api": api,
+            "version": str(endpoint.pick_version(version)),
+            "method": method,
+        }
+        if extra:
+            params.update({k: v for k, v in extra.items() if v is not None})
+        if sid:
+            params["_sid"] = sid
+        url = f"{self._base}/{endpoint.path}"
+        headers = {"Range": range_header} if range_header else {}
+        try:
+            req = self._http.build_request("GET", url, params=params, headers=headers)
+            resp = await self._http.send(req, stream=True)
+        except httpx.HTTPError as exc:
+            raise DsmError(
+                100, f"NAS에 연결할 수 없습니다: {type(exc).__name__}", api=api
+            ) from exc
+        # DSM signals errors as a JSON envelope even here.
+        if resp.headers.get("content-type", "").startswith("application/json"):
+            await resp.aread()
+            await resp.aclose()
+            raise DsmError(100, message_for(api, 100), api=api)
+        return resp
+
     # ------------------------------------------------------------------ auth
     async def login(
         self, account: str, passwd: str, otp_code: str | None = None

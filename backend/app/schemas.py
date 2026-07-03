@@ -53,6 +53,10 @@ class PhotoItem(BaseModel):
     height: int
     size: int | None = None  # bytes
     cache_key: str
+    # "photo" | "video" — videos get a ▶ badge and play in the lightbox.
+    type: str = "photo"
+    # Video duration in milliseconds (video_meta), None for photos.
+    duration_ms: int | None = None
     # Solid placeholder color shown before the thumbnail loads (fallback when
     # no thumbhash is cached yet).
     placeholder_color: str | None = None

@@ -1,6 +1,7 @@
 import { memo, useState } from "react";
 import { useDraggable } from "@dnd-kit/core";
 import { thumbnailUrl } from "../../api/client";
+import { formatDuration } from "../../lib/dates";
 import { thumbhashToUrl } from "../../lib/thumbhash";
 import { useTimelineStore } from "../../store/timeline";
 import type { CellLayout } from "../../lib/rowModel";
@@ -81,6 +82,11 @@ export const PhotoCell = memo(function PhotoCell({ cell }: { cell: CellLayout })
           loaded ? "opacity-100" : "opacity-0"
         } ${selected ? "scale-90 rounded" : ""}`}
       />
+      {item.type === "video" && (
+        <span className="pointer-events-none absolute bottom-1.5 right-1.5 flex items-center gap-1 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">
+          ▶{item.duration_ms != null && ` ${formatDuration(item.duration_ms)}`}
+        </span>
+      )}
       <button
         onClick={onCheckClick}
         aria-label={selected ? "선택 해제" : "선택"}
