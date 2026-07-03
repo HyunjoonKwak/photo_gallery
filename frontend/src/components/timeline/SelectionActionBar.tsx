@@ -22,9 +22,10 @@ export function SelectionActionBar() {
 
   return (
     <>
+      {/* max-w + flex-wrap: 폰 폭에서도 화면 밖으로 넘치지 않게 줄바꿈 */}
       <div
         data-no-boxselect
-        className="fixed bottom-4 left-1/2 z-40 flex -translate-x-1/2 items-center gap-1 rounded-2xl bg-slate-800 px-3 py-2 shadow-xl"
+        className="fixed bottom-4 left-1/2 z-40 flex max-w-[95vw] -translate-x-1/2 flex-wrap items-center justify-center gap-1 rounded-2xl bg-slate-800 px-3 py-2 shadow-xl"
       >
         <button
           onClick={clear}

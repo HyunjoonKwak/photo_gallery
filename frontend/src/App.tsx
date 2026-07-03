@@ -25,24 +25,26 @@ const VIEWS: { mode: ViewMode; label: string; icon: string }[] = [
   { mode: "dedup", label: "중복 정리", icon: "🔁" },
 ];
 
-/** 주 메뉴: 보기 방식(타임라인/폴더/중복 정리) 전환. */
+/** 주 메뉴: 보기 방식(타임라인/폴더/중복 정리) 전환.
+ * 모바일: 아이콘만(라벨은 sm 이상) — 좁은 화면에서 텍스트가 꺾이지 않게. */
 function ViewToggle() {
   const viewMode = useTimelineStore((s) => s.viewMode);
   const setViewMode = useTimelineStore((s) => s.setViewMode);
   return (
-    <nav className="flex gap-1">
+    <nav className="flex shrink-0 gap-0.5 sm:gap-1">
       {VIEWS.map((v) => (
         <button
           key={v.mode}
           onClick={() => setViewMode(v.mode)}
-          className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+          title={v.label}
+          className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-2 py-1.5 text-sm font-medium transition-colors sm:px-3 ${
             viewMode === v.mode
               ? "bg-slate-800 text-white"
               : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
           }`}
         >
           <span className="text-base leading-none">{v.icon}</span>
-          {v.label}
+          <span className="hidden md:inline">{v.label}</span>
         </button>
       ))}
     </nav>
@@ -84,15 +86,17 @@ function ScopeSwitcher() {
   const viewMode = useTimelineStore((s) => s.viewMode);
   if (viewMode === "folders") return null;
   return (
-    <div className="flex items-center gap-2">
-      <div className="h-6 w-px bg-slate-200" aria-hidden />
-      <span className="text-xs font-medium text-slate-400">범위</span>
+    <div className="flex shrink-0 items-center gap-2">
+      <div className="hidden h-6 w-px bg-slate-200 sm:block" aria-hidden />
+      <span className="hidden text-xs font-medium text-slate-400 sm:inline">
+        범위
+      </span>
       <nav className="flex gap-1 rounded-xl bg-slate-100 p-1">
         {SCOPES.map((s) => (
           <button
             key={s.space}
             onClick={() => setSpace(s.space)}
-            className={`rounded-lg px-3 py-1 text-sm font-medium transition-colors ${
+            className={`whitespace-nowrap rounded-lg px-2 py-1 text-sm font-medium transition-colors sm:px-3 ${
               space === s.space
                 ? "bg-white text-slate-800 shadow-sm"
                 : "text-slate-500 hover:text-slate-700"
@@ -201,22 +205,25 @@ export default function App() {
         data-no-boxselect
         className="shrink-0 border-b border-slate-200 bg-white"
       >
-        <div className="flex items-center gap-3 px-4 py-2">
-          <h1 className="text-sm font-bold text-slate-800">NAS 사진 정리</h1>
-          <div className="h-6 w-px bg-slate-200" aria-hidden />
+        {/* flex-wrap: 좁은 화면에서 두 줄로 자연 배치 (가로 스크롤 금지) */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-2 py-2 sm:px-4">
+          <h1 className="hidden text-sm font-bold text-slate-800 lg:block">
+            NAS 사진 정리
+          </h1>
+          <div className="hidden h-6 w-px bg-slate-200 lg:block" aria-hidden />
           <ViewToggle />
           <ScopeSwitcher />
           <SearchBox />
           {user.role === "admin" && <MemberSelect account={user.account} />}
           {user.mock_mode && (
             <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
-              MOCK 데이터
+              MOCK
             </span>
           )}
-          <div className="ml-auto flex items-center gap-3 text-sm">
+          <div className="ml-auto flex shrink-0 items-center gap-2 text-sm sm:gap-3">
             <button
               onClick={() => setShowOps((v) => !v)}
-              className={`rounded-lg px-2 py-1 text-xs ${
+              className={`whitespace-nowrap rounded-lg px-2 py-1 text-xs ${
                 showOps
                   ? "bg-slate-200 text-slate-700"
                   : "text-slate-500 hover:text-slate-700"
@@ -227,7 +234,7 @@ export default function App() {
             <button
               onClick={() => setShowApiInfo((v) => !v)}
               title="DSM API 연결 정보"
-              className={`rounded-lg px-2 py-1 text-xs ${
+              className={`hidden whitespace-nowrap rounded-lg px-2 py-1 text-xs lg:block ${
                 showApiInfo
                   ? "bg-slate-200 text-slate-700"
                   : "text-slate-400 hover:text-slate-600"
@@ -235,7 +242,7 @@ export default function App() {
             >
               DSM 정보
             </button>
-            <span className="text-slate-600">
+            <span className="hidden text-slate-600 md:inline">
               {user.account}
               <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">
                 {user.role === "admin" ? "관리자" : "일반"}
@@ -243,7 +250,7 @@ export default function App() {
             </span>
             <button
               onClick={() => logout.mutate()}
-              className="rounded-lg border border-slate-300 px-3 py-1 hover:bg-slate-50"
+              className="whitespace-nowrap rounded-lg border border-slate-300 px-2 py-1 hover:bg-slate-50 sm:px-3"
             >
               로그아웃
             </button>
