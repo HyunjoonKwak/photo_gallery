@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import {
   DndContext,
   DragOverlay,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   pointerWithin,
   useSensor,
   useSensors,
@@ -36,8 +37,14 @@ export function TimelineScreen() {
   const viewMode = useTimelineStore((s) => s.viewMode);
   const ops = useFileOps();
 
+  // Mouse: 8px 이동이면 드래그 (클릭과 구분). Touch: 300ms 길게 누른 뒤
+  // 끌 때만 드래그 — 일반 스와이프는 브라우저 스크롤로 넘어가야 한다
+  // (PointerSensor 하나로 합치면 터치 스크롤이 드래그로 잡혀 선택돼 버림).
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 300, tolerance: 8 },
+    }),
   );
   const [dragIds, setDragIds] = useState<string[] | null>(null);
   const [altHeld, setAltHeld] = useState(false);

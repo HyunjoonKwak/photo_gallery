@@ -60,6 +60,8 @@ export const PhotoCell = memo(function PhotoCell({ cell }: { cell: CellLayout })
         left: cell.left,
         width: cell.width,
         height: cell.height,
+        // iOS: long-press starts our drag, not the image save callout.
+        WebkitTouchCallout: "none",
         backgroundColor: item.placeholder_color ?? "#e2e8f0",
         backgroundImage:
           !loaded && item.thumbhash

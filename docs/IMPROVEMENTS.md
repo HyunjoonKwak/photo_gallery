@@ -101,7 +101,7 @@
 |---|---|---|
 | justified 계산 | `flickr/justified-layout` | 순수 계산 라이브러리(렌더 무관). 가상화 단위는 사진 1장이 아니라 **justified 행/일(day) 섹션** |
 | 가상 스크롤 | `@tanstack/react-virtual` | [공식 sticky 예제](https://tanstack.com/virtual/v3/docs/framework/react/examples/sticky)가 날짜 헤더 패턴 그대로. 행 높이를 `estimateSize`에 사전 주입 |
-| DnD | `@dnd-kit/core` | **멀티 드래그 네이티브 미지원**([#120](https://github.com/clauderic/dnd-kit/issues/120)) → 선택 상태 + `DragOverlay` 커스텀. **가상 리스트에선 DragOverlay 필수**(원본 언마운트 대비). 폴더 드롭은 `useDroppable`만으로 충분 — SortableContext 트리 구현 금지 |
+| DnD | `@dnd-kit/core` | **멀티 드래그 네이티브 미지원**([#120](https://github.com/clauderic/dnd-kit/issues/120)) → 선택 상태 + `DragOverlay` 커스텀. **가상 리스트에선 DragOverlay 필수**(원본 언마운트 대비). 폴더 드롭은 `useDroppable`만으로 충분 — SortableContext 트리 구현 금지. **터치 주의(2026-07-03 실기기 발견)**: PointerSensor 하나로 쓰면 터치 스크롤이 8px 이동 드래그로 잡혀 onDragStart의 선택 규칙이 오발동 → MouseSensor(distance 8) + TouchSensor(**delay 300ms + tolerance 8** = 길게 눌러야 드래그) 분리 + 셀에 `-webkit-touch-callout: none`(iOS 저장 시트 충돌 방지) |
 | 드래그 박스 선택 | `@air/react-drag-to-select` | 좌표만 넘겨주는 설계 → 가상화와 호환(좌표→그리드 인덱스 역산). DnD와의 충돌은 PointerSensor `activationConstraint.distance`로 분리(빈 영역=박스 선택, 썸네일 위=드래그) |
 | 블러 플레이스홀더 | `thumbhash` | BlurHash보다 작고 디테일 좋음 |
 
