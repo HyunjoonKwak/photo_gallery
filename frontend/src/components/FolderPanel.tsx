@@ -1,6 +1,6 @@
 import { useTimelineStore } from "../store/timeline";
 import { useResizableWidth } from "../hooks/useResizableWidth";
-import { FolderTree } from "./FolderTree";
+import { TreeSection } from "./FolderTree";
 
 /** Left folder panel for the timeline with two roles:
  * - drop target: drag photos onto a folder to move (⌥ = copy). Team folders
@@ -11,7 +11,24 @@ import { FolderTree } from "./FolderTree";
  */
 export function FolderPanel() {
   const openFolderView = useTimelineStore((s) => s.openFolderView);
+  const space = useTimelineStore((s) => s.space);
+  const viewedOwner = useTimelineStore((s) => s.viewedOwner);
   const aside = useResizableWidth("nasphoto.timelineAsideWidth", 224);
+  // 선택 라이브러리의 트리만 펼치고, 반대쪽은 접힌 헤더로(펼치면 드롭 가능
+  // — 개인→공용 드래그 이동은 스펙 핵심이라 접근은 유지).
+  const personalOpen = viewedOwner != null || space === "personal";
+  const sections = [
+    {
+      space: "team" as const,
+      label: "공용 폴더",
+      open: !personalOpen,
+    },
+    {
+      space: "personal" as const,
+      label: viewedOwner ? `${viewedOwner}의 개인 폴더` : "내 개인 폴더",
+      open: personalOpen,
+    },
+  ].sort((a, b) => Number(b.open) - Number(a.open));
 
   return (
     <>
@@ -23,18 +40,16 @@ export function FolderPanel() {
         <p className="px-2 pt-1 text-[11px] leading-snug text-slate-400">
           클릭하면 폴더 보기로 열기 · 사진을 끌어다 놓으면 이동 (⌥ 누르면 복사)
         </p>
-        <h4 className="px-2 pb-1 pt-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
-          공용 폴더
-        </h4>
-        <FolderTree space="team" droppable onSelect={(f) => openFolderView([f])} />
-        <h4 className="px-2 pb-1 pt-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
-          내 개인 폴더
-        </h4>
-        <FolderTree
-          space="personal"
-          droppable
-          onSelect={(f) => openFolderView([f])}
-        />
+        {sections.map((s) => (
+          <TreeSection
+            key={s.space}
+            space={s.space}
+            label={s.label}
+            defaultOpen={s.open}
+            droppable
+            onSelect={(f) => openFolderView([f])}
+          />
+        ))}
       </aside>
       <div
         {...aside.handleProps}

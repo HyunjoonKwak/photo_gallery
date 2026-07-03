@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
+import { libraryLabel } from "../lib/library";
 import { layoutBucket } from "../lib/rowModel";
 import { useTimelineStore } from "../store/timeline";
 import { PhotoCell } from "./timeline/PhotoCell";
@@ -53,6 +54,9 @@ export function SearchView() {
         <span className="font-semibold text-slate-800">
           🔍 "{query}" 검색 결과
           {!resultQuery.isPending && ` (${items.length.toLocaleString()}장)`}
+        </span>
+        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">
+          {libraryLabel(space, useTimelineStore.getState().viewedOwner)}
         </span>
         <button
           onClick={() => replaceSelection(items.map((i) => i.id))}

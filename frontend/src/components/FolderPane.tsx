@@ -131,12 +131,20 @@ export function FolderPane({
   const openFolder = (f: PhotoFolder) => onPathChange([...path, f]);
   const jumpTo = (index: number) => onPathChange(path.slice(0, index + 1));
 
-  // Sub-folders of the current location (root → top-level of both spaces).
+  // Sub-folders of the current location. At ROOT, only the selected
+  // library's top folders show (라이브러리 셀렉터 스코프) — mixing both
+  // spaces there was confusing; the other library stays reachable via the
+  // collapsed tree section on the left.
+  const librarySpace = useTimelineStore((s) =>
+    s.viewedOwner ? "personal" : s.space,
+  );
   const subQuery = useQuery({
     queryKey: ["folders", current?.id ?? null],
     queryFn: () => api.folders(current?.id),
   });
-  const subFolders = subQuery.data?.folders ?? [];
+  const subFolders = (subQuery.data?.folders ?? []).filter(
+    (f) => current != null || f.space === librarySpace,
+  );
 
   // Direct photo counts for the visible sub-folders (badge). One batched
   // request per level; failures just hide the badge.

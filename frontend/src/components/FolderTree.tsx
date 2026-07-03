@@ -99,6 +99,48 @@ function FolderTreeNode({
   );
 }
 
+/** Collapsible tree section for the side panels: the SELECTED library stays
+ * open; the other one collapses to a header (still expandable — dragging
+ * personal→team needs the team tree reachable, spec ch.4). */
+export function TreeSection({
+  label,
+  defaultOpen,
+  space,
+  onSelect,
+  selectedId,
+  droppable = false,
+}: {
+  label: string;
+  defaultOpen: boolean;
+  space: Space;
+  onSelect?: (f: PhotoFolder) => void;
+  selectedId?: string;
+  droppable?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  // Library switch re-decides which section is open.
+  useEffect(() => setOpen(defaultOpen), [defaultOpen]);
+  return (
+    <div>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-1 px-2 pb-1 pt-3 text-xs font-semibold uppercase tracking-wide text-slate-400 hover:text-slate-600"
+      >
+        <span className="text-[9px]">{open ? "▾" : "▸"}</span>
+        {label}
+      </button>
+      {open && (
+        <FolderTree
+          space={space}
+          droppable={droppable}
+          onSelect={onSelect}
+          selectedId={selectedId}
+        />
+      )}
+    </div>
+  );
+}
+
 export function FolderTree({
   space,
   onSelect,

@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, thumbnailUrl } from "../api/client";
 import type { PersonInfo, PlaceInfo } from "../api/types";
+import { libraryLabel } from "../lib/library";
 import { layoutBucket } from "../lib/rowModel";
 import { useTimelineStore } from "../store/timeline";
 import { PhotoCell } from "./timeline/PhotoCell";
@@ -152,6 +153,10 @@ export function ClassifyView() {
         >
           ✨ 분류
         </button>
+        {/* 어느 라이브러리의 인물/장소인지 명시 (공용·개인 별도 분류) */}
+        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">
+          {libraryLabel(space, useTimelineStore.getState().viewedOwner)}
+        </span>
         {group && (
           <>
             <span className="text-slate-300">/</span>

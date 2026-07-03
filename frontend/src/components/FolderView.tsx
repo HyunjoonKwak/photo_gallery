@@ -4,7 +4,7 @@ import { useFileOps } from "../hooks/useFileOps";
 import { useResizableWidth } from "../hooks/useResizableWidth";
 import type { PhotoFolder } from "../api/types";
 import { FolderPane } from "./FolderPane";
-import { FolderTree, folderBasename } from "./FolderTree";
+import { TreeSection, folderBasename } from "./FolderTree";
 
 /** Center action bar of the dual-pane mode: move/copy the active pane's
  * selection into the other pane's folder, or trash it. Buttons mirror the
@@ -174,26 +174,26 @@ export function FolderView() {
             >
               + 새 폴더
             </button>
-            {/* 선택한 라이브러리(A안 셀렉터)의 트리를 먼저 보여준다 */}
+            {/* 선택 라이브러리 트리만 펼침; 반대쪽은 접힌 헤더(펼치기 가능) */}
             {(viewedOwner || useTimelineStore.getState().space === "personal"
               ? (["personal", "team"] as const)
               : (["team", "personal"] as const)
-            ).map((sp) => (
-              <div key={sp}>
-                <h4 className="px-2 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
-                  {sp === "team"
+            ).map((sp, i) => (
+              <TreeSection
+                key={sp}
+                space={sp}
+                label={
+                  sp === "team"
                     ? "공용"
                     : viewedOwner
                       ? `${viewedOwner}의 개인`
-                      : "개인"}
-                </h4>
-                <FolderTree
-                  space={sp}
-                  droppable
-                  selectedId={currentA?.id}
-                  onSelect={(f) => setPathA([f])}
-                />
-              </div>
+                      : "개인"
+                }
+                defaultOpen={i === 0}
+                droppable
+                selectedId={currentA?.id}
+                onSelect={(f) => setPathA([f])}
+              />
             ))}
           </aside>
           <div
