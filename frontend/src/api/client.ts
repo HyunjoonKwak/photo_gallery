@@ -146,9 +146,9 @@ export const api = {
     request<DedupJobResponse>(`/api/dedup/cancel?space=${space}`, {
       method: "POST",
     }),
-  dedupGroups: (space: Space, threshold: number) =>
+  dedupGroups: (space: Space, threshold: number, limit = 100) =>
     request<DedupGroupsResponse>(
-      `/api/dedup/groups?space=${space}&threshold=${threshold}`,
+      `/api/dedup/groups?space=${space}&threshold=${threshold}&limit=${limit}`,
     ),
 };
 

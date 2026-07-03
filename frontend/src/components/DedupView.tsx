@@ -18,6 +18,11 @@ export function DedupView() {
   const queryClient = useQueryClient();
   const ops = useFileOps();
   const [threshold, setThreshold] = useState(5);
+  // "정확 중복만": sha 동일(파일 자체가 같은) 그룹만 — 연속촬영 오판 없이
+  // 안전하게 일괄 정리할 때 사용.
+  const [exactOnly, setExactOnly] = useState(false);
+  // 상위 절약량 100개씩 노출, [더 보기]로 확장 (서버 상한 500).
+  const [limit, setLimit] = useState(100);
   // Per-group keep set (default: the suggested reference only).
   const [keepOverride, setKeepOverride] = useState<Map<string, Set<string>>>(
     new Map(),
@@ -33,11 +38,17 @@ export function DedupView() {
   const running = job?.status === "running";
 
   const groupsQuery = useQuery({
-    queryKey: ["dedup-groups", space, threshold],
-    queryFn: () => api.dedupGroups(space, threshold),
+    queryKey: ["dedup-groups", space, threshold, limit],
+    queryFn: () => api.dedupGroups(space, threshold, limit),
     enabled: !running,
   });
   const data = groupsQuery.data;
+  // Visible groups after the exact-only filter (summary/일괄 정리도 이 기준).
+  const visibleGroups = useMemo(
+    () =>
+      (data?.groups ?? []).filter((g) => !exactOnly || g.kind === "exact"),
+    [data, exactOnly],
+  );
 
   const scanMutation = useMutation({
     mutationFn: () => api.dedupScan(space),
@@ -88,8 +99,7 @@ export function DedupView() {
   };
 
   const cleanupAll = () => {
-    if (!data) return;
-    const victims = data.groups.flatMap((g) => {
+    const victims = visibleGroups.flatMap((g) => {
       const keep = keepSetOf(g);
       return g.items.filter((i) => !keep.has(i.id)).map((i) => i.id);
     });
@@ -140,17 +150,31 @@ export function DedupView() {
             </button>
           )}
 
-          <label className="ml-auto flex items-center gap-2 text-xs text-slate-600">
-            유사 기준 (Hamming ≤ {threshold})
-            <input
-              type="range"
-              min={0}
-              max={7}
-              value={threshold}
-              onChange={(e) => setThreshold(Number(e.target.value))}
-              className="w-32"
-            />
-          </label>
+          <div className="ml-auto flex flex-wrap items-center gap-3">
+            <button
+              onClick={() => setExactOnly((v) => !v)}
+              title="파일 자체가 동일한(이중 저장) 그룹만 — 연속촬영 오판 없이 안전"
+              className={`whitespace-nowrap rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors ${
+                exactOnly
+                  ? "border-red-300 bg-red-50 text-red-700"
+                  : "border-slate-200 text-slate-500 hover:bg-slate-50"
+              }`}
+            >
+              {exactOnly ? "✓ " : ""}정확 중복만
+            </button>
+            <label className="flex items-center gap-2 text-xs text-slate-600">
+              유사 기준 (Hamming ≤ {threshold})
+              <input
+                type="range"
+                min={0}
+                max={7}
+                value={threshold}
+                onChange={(e) => setThreshold(Number(e.target.value))}
+                className="w-32"
+                disabled={exactOnly}
+              />
+            </label>
+          </div>
         </div>
 
         {job?.status === "failed" && (
@@ -160,11 +184,13 @@ export function DedupView() {
         )}
 
         {/* Summary + bulk action — the list below is the dry-run preview */}
-        {data?.scanned && data.groups.length > 0 && (
-          <div className="mt-4 flex items-center justify-between rounded-2xl bg-slate-800 px-4 py-3 text-sm text-white">
+        {data?.scanned && visibleGroups.length > 0 && (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-slate-800 px-4 py-3 text-sm text-white">
             <span>
-              중복 그룹 <b>{data.total_groups}개</b>
-              {data.total_groups > data.groups.length &&
+              {exactOnly ? "정확 중복" : "중복"} 그룹{" "}
+              <b>{exactOnly ? visibleGroups.length : data.total_groups}개</b>
+              {!exactOnly &&
+                data.total_groups > data.groups.length &&
                 ` (절약량 상위 ${data.groups.length}개 표시)`}{" "}
               · 전체 정리 시 <b>{formatBytes(data.total_wasted_bytes)}</b> 절약
               (그룹마다 보관본 1장은 유지)
@@ -174,7 +200,7 @@ export function DedupView() {
               disabled={ops.isBusy}
               className="rounded-lg bg-red-500 px-3 py-1.5 text-xs font-semibold hover:bg-red-600 disabled:opacity-50"
             >
-              표시된 {data.groups.length}개 그룹 정리 (휴지통 + 되돌리기)
+              표시된 {visibleGroups.length}개 그룹 정리 (휴지통 + 되돌리기)
             </button>
           </div>
         )}
@@ -190,9 +216,15 @@ export function DedupView() {
           </p>
         )}
 
+        {data?.scanned && exactOnly && visibleGroups.length === 0 && !running && (
+          <p className="mt-8 text-center text-sm text-slate-400">
+            표시 중인 그룹에 정확 중복이 없습니다.
+          </p>
+        )}
+
         {/* Group cards */}
         <div className="mt-4 space-y-4 pb-16">
-          {data?.groups.map((g) => (
+          {visibleGroups.map((g) => (
             <GroupCard
               key={g.id}
               group={g}
@@ -202,6 +234,17 @@ export function DedupView() {
               busy={ops.isBusy}
             />
           ))}
+          {data && data.total_groups > data.groups.length && limit < 500 && (
+            <button
+              onClick={() => setLimit((v) => Math.min(500, v + 100))}
+              disabled={groupsQuery.isFetching}
+              className="w-full rounded-2xl border border-dashed border-slate-300 py-3 text-sm text-slate-500 hover:border-slate-400 hover:text-slate-700 disabled:opacity-50"
+            >
+              {groupsQuery.isFetching
+                ? "불러오는 중…"
+                : `그룹 더 보기 (${data.groups.length}/${data.total_groups.toLocaleString()})`}
+            </button>
+          )}
         </div>
       </div>
     </div>

@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { PhotoFolder } from "../../api/types";
-import { FolderTree } from "../FolderTree";
+import { recentFolders, rememberFolder } from "../../lib/recentFolders";
+import { FolderTree, folderBasename } from "../FolderTree";
 
 export type PickerMode = "move" | "copy" | "toTeam";
 
@@ -21,6 +22,12 @@ export function FolderPickerDialog({
 }) {
   const [copyMode, setCopyMode] = useState(mode !== "move");
   const [selected, setSelected] = useState<PhotoFolder | null>(null);
+  // Recent destinations — 반복 정리 시 트리 탐색 없이 원클릭 선택.
+  const recents = useMemo(
+    () =>
+      recentFolders().filter((f) => mode !== "toTeam" || f.space === "team"),
+    [mode],
+  );
 
   const title =
     mode === "toTeam"
@@ -44,6 +51,32 @@ export function FolderPickerDialog({
           <p className="mt-1 truncate text-xs text-blue-700">
             선택됨: {selected.name}
           </p>
+        )}
+        {recents.length > 0 && (
+          <div className="mt-2">
+            <h4 className="px-1 pb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
+              최근 사용
+            </h4>
+            <div className="flex flex-wrap gap-1">
+              {recents.map((f) => (
+                <button
+                  key={f.id}
+                  onClick={() => setSelected(f)}
+                  title={f.name}
+                  className={`max-w-full truncate rounded-full border px-2.5 py-1 text-xs transition-colors ${
+                    selected?.id === f.id
+                      ? "border-blue-400 bg-blue-50 text-blue-700"
+                      : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  📁 {folderBasename(f.name)}
+                  <span className="ml-1 text-[10px] text-slate-400">
+                    {f.space === "team" ? "공용" : "개인"}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
         )}
         <div className="mt-1 max-h-72 overflow-y-auto">
           <h4 className="px-1 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
@@ -86,6 +119,7 @@ export function FolderPickerDialog({
             disabled={!selected}
             onClick={() => {
               if (selected) {
+                rememberFolder(selected);
                 onConfirm(selected, mode === "copy" ? true : copyMode && mode === "toTeam");
               }
             }}
