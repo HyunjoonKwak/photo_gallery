@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import Depends, HTTPException, Query, Request, status
 
 from ..config import Settings, get_settings
 from ..dsm.client import DsmClient
 from ..photos.dsm_source import DsmPhotoSource
+from ..photos.homes_source import HomesPhotoSource
 from ..photos.mock import mock_source
 from ..photos.source import PhotoSource
 from ..session_store import Session, get_session
@@ -45,8 +46,22 @@ def get_photo_source(
     settings: Settings = Depends(get_settings),
     session: Session = Depends(get_current_session),
     dsm: DsmClient = Depends(get_dsm_client),
+    # Admin impersonation (spec 4.5): ?target_user= reroutes the PERSONAL
+    # space to /homes/<user>/Photos via FileStation. Rides on the dependency
+    # so every photo endpoint accepts it without per-route plumbing.
+    target_user: str | None = Query(default=None, max_length=128),
 ) -> PhotoSource:
     """The photo data source for this request: mock (dev) or real DSM."""
+    impersonating = bool(target_user) and target_user != session.account
+    # Permission first — the rule must not depend on mock vs real mode.
+    if impersonating and session.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="관리자만 다른 구성원의 사진을 볼 수 있습니다.",
+        )
     if settings.mock_mode:
         return mock_source
+    if impersonating:
+        assert target_user is not None
+        return HomesPhotoSource(dsm, session.sid, target_user)
     return DsmPhotoSource(dsm, session.sid)

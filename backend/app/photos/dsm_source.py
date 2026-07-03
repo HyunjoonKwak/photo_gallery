@@ -487,17 +487,34 @@ class DsmPhotoSource:
 
     async def members(self) -> list[str]:
         # 관리자 전용: /homes 하위 폴더명 = 구성원 계정 (user home 서비스 전제).
+        # 개인 사진 공간(/homes/<u>/Photos)이 실제로 있는 계정만 노출 —
+        # tmbackup 같은 시스템 계정이 드롭다운에 섞이지 않게 (2026-07-03).
         data = await self._dsm.call(
             "SYNO.FileStation.List",
             "list",
             sid=self._sid,
             extra={"folder_path": "/homes", "limit": 200},
         )
-        return sorted(
+        names = [
             f.get("name", "")
             for f in data.get("files", [])
             if f.get("isdir") and not f.get("name", "").startswith("@")
-        )
+        ]
+
+        async def has_photos(name: str) -> str | None:
+            try:
+                await self._dsm.call(
+                    "SYNO.FileStation.List",
+                    "list",
+                    sid=self._sid,
+                    extra={"folder_path": f"/homes/{name}/Photos", "limit": 1},
+                )
+                return name
+            except Exception:  # no Photos dir (408) → not a photo member
+                return None
+
+        results = await asyncio.gather(*(has_photos(n) for n in names))
+        return sorted(n for n in results if n)
 
     async def thumbnail(
         self, space: str, item_id: str, cache_key: str, size: str

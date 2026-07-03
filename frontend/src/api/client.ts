@@ -23,6 +23,16 @@ import type {
   UserInfo,
 } from "./types";
 
+import { useTimelineStore } from "../store/timeline";
+
+/** Admin impersonation (spec 4.5): while 보는 중 다른 구성원, every photo API
+ * call carries target_user so the backend reroutes the personal space to
+ * that member's home. Centralized here — call sites stay unchanged. */
+function ownerQS(prefix: "&" | "?" = "&"): string {
+  const owner = useTimelineStore.getState().viewedOwner;
+  return owner ? `${prefix}target_user=${encodeURIComponent(owner)}` : "";
+}
+
 /** Error carrying the backend's friendly message + HTTP status. */
 export class ApiError extends Error {
   status: number;
@@ -67,51 +77,55 @@ export const api = {
   me: () => request<UserInfo>("/api/auth/me"),
   systemInfo: () => request<ApiInfoResponse>("/api/system/info"),
   photoBuckets: (space: Space) =>
-    request<BucketsResponse>(`/api/photos/buckets?space=${space}`),
+    request<BucketsResponse>(`/api/photos/buckets?space=${space}${ownerQS()}`),
   bucketItems: (space: Space, day: string) =>
-    request<BucketItemsResponse>(`/api/photos/items?space=${space}&day=${day}`),
+    request<BucketItemsResponse>(
+      `/api/photos/items?space=${space}&day=${day}${ownerQS()}`,
+    ),
   folders: (parentId?: string) =>
     request<FoldersResponse>(
       parentId
-        ? `/api/photos/folders?parent_id=${encodeURIComponent(parentId)}`
-        : "/api/photos/folders",
+        ? `/api/photos/folders?parent_id=${encodeURIComponent(parentId)}${ownerQS()}`
+        : `/api/photos/folders${ownerQS("?")}`,
     ),
   folderItems: (folderId: string) =>
     request<BucketItemsResponse>(
-      `/api/photos/folder-items?folder_id=${encodeURIComponent(folderId)}`,
+      `/api/photos/folder-items?folder_id=${encodeURIComponent(folderId)}${ownerQS()}`,
     ),
   folderCounts: (ids: string[]) =>
     request<FolderCountsResponse>(
-      `/api/photos/folder-counts?ids=${encodeURIComponent(ids.join(","))}`,
+      `/api/photos/folder-counts?ids=${encodeURIComponent(ids.join(","))}${ownerQS()}`,
     ),
   searchPhotos: (space: Space, q: string) =>
     request<BucketItemsResponse>(
-      `/api/photos/search?space=${space}&q=${encodeURIComponent(q)}`,
+      `/api/photos/search?space=${space}&q=${encodeURIComponent(q)}${ownerQS()}`,
     ),
   itemDetail: (space: Space, id: string) =>
     request<ItemDetail>(
-      `/api/photos/item-detail?space=${space}&id=${encodeURIComponent(id)}`,
+      `/api/photos/item-detail?space=${space}&id=${encodeURIComponent(id)}${ownerQS()}`,
     ),
   persons: (space: Space) =>
-    request<PersonsResponse>(`/api/photos/persons?space=${space}`),
+    request<PersonsResponse>(`/api/photos/persons?space=${space}${ownerQS()}`),
   personItems: (space: Space, id: string) =>
     request<BucketItemsResponse>(
-      `/api/photos/person-items?space=${space}&id=${encodeURIComponent(id)}`,
+      `/api/photos/person-items?space=${space}&id=${encodeURIComponent(id)}${ownerQS()}`,
     ),
   places: (space: Space) =>
-    request<PlacesResponse>(`/api/photos/places?space=${space}`),
+    request<PlacesResponse>(`/api/photos/places?space=${space}${ownerQS()}`),
   placeItems: (space: Space, id: string) =>
     request<BucketItemsResponse>(
-      `/api/photos/place-items?space=${space}&id=${encodeURIComponent(id)}`,
+      `/api/photos/place-items?space=${space}&id=${encodeURIComponent(id)}${ownerQS()}`,
     ),
   members: () => request<MembersResponse>("/api/photos/members"),
+  // ops carry target_user in the query too: the backend picks the photo
+  // source (homes vs own) from the dependency, which reads query params.
   opMove: (body: MoveRequest) =>
-    request<OperationResponse>("/api/photos/ops/move", {
+    request<OperationResponse>(`/api/photos/ops/move${ownerQS("?")}`, {
       method: "POST",
       body: JSON.stringify(body),
     }),
   opDelete: (body: DeleteRequest) =>
-    request<OperationResponse>("/api/photos/ops/delete", {
+    request<OperationResponse>(`/api/photos/ops/delete${ownerQS("?")}`, {
       method: "POST",
       body: JSON.stringify(body),
     }),
@@ -160,5 +174,7 @@ export function thumbnailUrl(
   size: "sm" | "xl",
 ): string {
   const q = new URLSearchParams({ space, id, cache_key: cacheKey, size });
+  const owner = useTimelineStore.getState().viewedOwner;
+  if (owner) q.set("target_user", owner);
   return `/api/photos/thumbnail?${q.toString()}`;
 }

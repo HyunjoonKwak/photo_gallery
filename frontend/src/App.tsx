@@ -116,15 +116,18 @@ function ScopeSwitcher() {
 function MemberSelect({ account }: { account: string }) {
   const viewedOwner = useTimelineStore((s) => s.viewedOwner);
   const setViewedOwner = useTimelineStore((s) => s.setViewedOwner);
+  const queryClient = useQueryClient();
   const membersQuery = useQuery({ queryKey: ["members"], queryFn: api.members });
   const members = membersQuery.data?.members ?? [];
 
   return (
     <select
       value={viewedOwner ?? account}
-      onChange={(e) =>
-        setViewedOwner(e.target.value === account ? null : e.target.value)
-      }
+      onChange={(e) => {
+        setViewedOwner(e.target.value === account ? null : e.target.value);
+        // 사진 데이터가 통째로 다른 사람 것으로 바뀜 — 캐시 전체 무효화
+        queryClient.clear();
+      }}
       title="가족 구성원 선택"
       className="rounded-lg border border-slate-300 px-2 py-1 text-sm text-slate-700"
     >
@@ -150,7 +153,10 @@ function ImpersonationBanner() {
   if (!viewedOwner) return null;
   return (
     <div className="flex items-center justify-center gap-3 bg-amber-500 px-4 py-1.5 text-sm font-medium text-white">
-      <span>보는 중: {viewedOwner}의 개인 폴더 — 모든 작업이 기록됩니다</span>
+      <span>
+        보는 중: {viewedOwner}의 개인 폴더 (폴더 보기에서 지원 · 타임라인/분류/
+        검색 제외) — 모든 작업이 기록됩니다
+      </span>
       <button
         onClick={() => setViewedOwner(null)}
         className="rounded-lg bg-amber-600 px-2 py-0.5 text-xs hover:bg-amber-700"

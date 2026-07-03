@@ -137,3 +137,24 @@ def test_places_and_place_items(logged_in):
         f"/api/photos/place-items?space=team&id={places[0]['id']}"
     ).json()["items"]
     assert len(items) == places[0]["item_count"]
+
+
+# ------------------------------------------- admin impersonation (spec 4.5)
+
+
+def test_member_cannot_read_another_users_photos(logged_in):
+    # target_user on a READ endpoint requires admin.
+    resp = logged_in.get("/api/photos/folders?target_user=mom")
+    assert resp.status_code == 403
+
+
+def test_admin_can_read_with_target_user(client):
+    client.post("/api/auth/login", json={"account": "admin", "passwd": "x"})
+    resp = client.get("/api/photos/folders?target_user=mom")
+    assert resp.status_code == 200
+
+
+def test_target_user_self_is_allowed_for_member(logged_in):
+    # Passing your own account is not impersonation.
+    resp = logged_in.get("/api/photos/folders?target_user=tester")
+    assert resp.status_code == 200

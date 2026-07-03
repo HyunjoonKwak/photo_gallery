@@ -135,7 +135,17 @@ export const useTimelineStore = create<TimelineState>()((set, get) => ({
     set({ folderDisplay });
   },
   viewedOwner: null,
-  setViewedOwner: (viewedOwner) => set({ viewedOwner }),
+  // Switching whose photos we organize: another member's personal space is
+  // folder-view only (Photos' timeline/AI index is per-session), so jump
+  // there and reset selection state.
+  setViewedOwner: (viewedOwner) =>
+    set({
+      viewedOwner,
+      viewMode: "folders",
+      selected: EMPTY_SET,
+      anchorId: null,
+      lightboxId: null,
+    }),
 
   selected: EMPTY_SET,
   anchorId: null,
