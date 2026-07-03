@@ -162,11 +162,12 @@ export function FolderView() {
 
       {!dual && (
         <div className="flex min-h-0 flex-1">
-          {/* Left: quick-jump tree. Selecting resets the breadcrumb. */}
+          {/* Left: quick-jump tree — 모바일은 메인 페인 카드 탐색으로 충분해
+           * 숨김 (390px에서 트리가 화면 60%를 차지하던 문제). */}
           <aside
             data-no-boxselect
             style={{ width: aside.width }}
-            className="shrink-0 overflow-y-auto border-r border-slate-200 bg-white px-2 py-2"
+            className="hidden shrink-0 overflow-y-auto border-r border-slate-200 bg-white px-2 py-2 md:block"
           >
             <button
               onClick={onCreateFolder}
@@ -198,7 +199,7 @@ export function FolderView() {
           </aside>
           <div
             {...aside.handleProps}
-            className="w-1 shrink-0 cursor-col-resize bg-transparent transition-colors hover:bg-blue-300 active:bg-blue-400"
+            className="hidden w-1 shrink-0 cursor-col-resize bg-transparent transition-colors hover:bg-blue-300 active:bg-blue-400 md:block"
           />
           <main className="flex min-w-0 flex-1">
             <FolderPane

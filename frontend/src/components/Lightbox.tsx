@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, thumbnailUrl, videoUrl } from "../api/client";
 import { useTimelineStore } from "../store/timeline";
@@ -99,17 +99,43 @@ export function Lightbox() {
     }
   }, [item, space]);
 
+  // Mobile gestures (표준 사진앱 관례): 좌우 스와이프 = 이전/다음,
+  // 아래로 쓸어내리기 = 닫기. 비디오 컨트롤 위 터치는 건드리지 않는다.
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
+  const onTouchStart = (e: React.TouchEvent) => {
+    if ((e.target as HTMLElement).closest("video")) return;
+    const t = e.touches[0];
+    touchStart.current = { x: t.clientX, y: t.clientY };
+  };
+  const onTouchEnd = (e: React.TouchEvent) => {
+    const start = touchStart.current;
+    touchStart.current = null;
+    if (!start || (e.target as HTMLElement).closest("video")) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+    const s = useTimelineStore.getState();
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      s.stepLightbox(dx < 0 ? 1 : -1);
+    } else if (dy > 90 && Math.abs(dy) > Math.abs(dx) * 1.5) {
+      s.closeLightbox();
+    }
+  };
+
   if (!item) return null;
 
   const close = () => useTimelineStore.getState().closeLightbox();
+  // 모바일은 스와이프로 넘기므로 화살표 버튼은 sm 이상에서만.
   const navBtn =
-    "absolute top-1/2 -translate-y-1/2 rounded-full bg-black/50 p-3 text-2xl text-white/80 hover:text-white hover:bg-black/70";
+    "absolute top-1/2 hidden -translate-y-1/2 rounded-full bg-black/50 p-3 text-2xl text-white/80 hover:text-white hover:bg-black/70 sm:block";
 
   return (
     <div
       data-no-boxselect
       className="fixed inset-0 z-50 flex bg-black/95"
       onClick={close}
+      onTouchStart={onTouchStart}
+      onTouchEnd={onTouchEnd}
     >
       <div className="relative flex min-w-0 flex-1 items-center justify-center">
         {item.type === "video" ? (
