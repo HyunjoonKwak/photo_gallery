@@ -44,8 +44,10 @@ IMAGE_TAG=latest ./deploy.sh update   # pull + 배포
   - Domain: 사용할 도메인 / Scheme: `http` / Forward IP: NAS IP / Port: `9800`
   - SSL 탭에서 인증서 발급(Let's Encrypt) + `Force SSL` 권장
   - Websockets 불필요(사용 안 함), `Block Common Exploits` 켜도 무방
-  - **Advanced 탭에 타임아웃 연장 필수** — 대량 이동/삭제/되돌리기 요청은
-    수 분까지 걸리는데 NPM 기본(60s)이 중간에 끊어버림:
+  - **Custom Nginx Configuration에 타임아웃 연장 필수** — 대량 이동/삭제/
+    되돌리기 요청은 수 분까지 걸리는데 NPM 기본(60s)이 중간에 끊어버림.
+    편집 창의 Advanced 탭(구버전) 또는 **우측 톱니바퀴(⚙) 아이콘**(v2.13+)
+    에서 입력:
     ```nginx
     proxy_read_timeout 600s;
     proxy_send_timeout 600s;
