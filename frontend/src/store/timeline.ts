@@ -54,6 +54,8 @@ interface TimelineState {
   /** Admin only: the member whose photos are being organized (spec 4.5). */
   viewedOwner: string | null;
   setViewedOwner: (owner: string | null) => void;
+  /** Library selector (A안): 공용 / 내 사진 / 타인 사진을 한 축으로 전환. */
+  selectLibrary: (lib: { space: Space; owner: string | null }) => void;
 
   // --- selection ---
   selected: ReadonlySet<string>;
@@ -144,6 +146,20 @@ export const useTimelineStore = create<TimelineState>()((set, get) => ({
       viewMode: "folders",
       selected: EMPTY_SET,
       anchorId: null,
+      lightboxId: null,
+    }),
+  selectLibrary: ({ space, owner }) =>
+    set({
+      space,
+      viewedOwner: owner,
+      // 타인 라이브러리는 폴더 보기 전용 → 자동 전환; 그 외엔 현재 뷰 유지
+      ...(owner ? { viewMode: "folders" as ViewMode } : {}),
+      selected: EMPTY_SET,
+      anchorId: null,
+      previewIds: EMPTY_SET,
+      hoverId: null,
+      orderedIds: [],
+      itemsById: new Map(),
       lightboxId: null,
     }),
 

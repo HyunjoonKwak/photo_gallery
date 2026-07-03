@@ -174,24 +174,27 @@ export function FolderView() {
             >
               + 새 폴더
             </button>
-            <h4 className="px-2 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
-              공용
-            </h4>
-            <FolderTree
-              space="team"
-              droppable
-              selectedId={currentA?.id}
-              onSelect={(f) => setPathA([f])}
-            />
-            <h4 className="px-2 pb-1 pt-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
-              개인
-            </h4>
-            <FolderTree
-              space="personal"
-              droppable
-              selectedId={currentA?.id}
-              onSelect={(f) => setPathA([f])}
-            />
+            {/* 선택한 라이브러리(A안 셀렉터)의 트리를 먼저 보여준다 */}
+            {(viewedOwner || useTimelineStore.getState().space === "personal"
+              ? (["personal", "team"] as const)
+              : (["team", "personal"] as const)
+            ).map((sp) => (
+              <div key={sp}>
+                <h4 className="px-2 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  {sp === "team"
+                    ? "공용"
+                    : viewedOwner
+                      ? `${viewedOwner}의 개인`
+                      : "개인"}
+                </h4>
+                <FolderTree
+                  space={sp}
+                  droppable
+                  selectedId={currentA?.id}
+                  onSelect={(f) => setPathA([f])}
+                />
+              </div>
+            ))}
           </aside>
           <div
             {...aside.handleProps}

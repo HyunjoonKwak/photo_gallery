@@ -11,12 +11,6 @@ import { OperationsPanel } from "./components/OperationsPanel";
 import { BulkProgress } from "./components/BulkProgress";
 import { Toasts } from "./components/Toasts";
 
-// 범위(어느 저장소) — '폴더'라는 단어와 충돌하지 않도록 스코프 이름만 사용.
-const SCOPES: { space: Space; label: string }[] = [
-  { space: "team", label: "공용" },
-  { space: "personal", label: "개인" },
-];
-
 // 보기(무엇을 볼지) — 주 메뉴. 아이콘으로 성격을 구분.
 const VIEWS: { mode: ViewMode; label: string; icon: string }[] = [
   { mode: "timeline", label: "타임라인", icon: "📅" },
@@ -77,69 +71,100 @@ function SearchBox() {
   );
 }
 
-/** 스코프 전환: 현재 보기를 어느 저장소(공용/개인)에 적용할지. 보기 메뉴와
- * 성격이 다르므로 '범위:' 라벨 + 구분된 세그먼트로 위계를 드러낸다. 폴더 보기는
- * 공용·개인 트리를 동시에 보여줘 스코프가 무의미하므로 숨긴다. */
-function ScopeSwitcher() {
-  const space = useTimelineStore((s) => s.space);
-  const setSpace = useTimelineStore((s) => s.setSpace);
-  const viewMode = useTimelineStore((s) => s.viewMode);
-  if (viewMode === "folders") return null;
-  return (
-    <div className="flex shrink-0 items-center gap-2">
-      <div className="hidden h-6 w-px bg-slate-200 sm:block" aria-hidden />
-      <span className="hidden text-xs font-medium text-slate-400 sm:inline">
-        범위
-      </span>
-      <nav className="flex gap-1 rounded-xl bg-slate-100 p-1">
-        {SCOPES.map((s) => (
-          <button
-            key={s.space}
-            onClick={() => setSpace(s.space)}
-            className={`whitespace-nowrap rounded-lg px-2 py-1 text-sm font-medium transition-colors sm:px-3 ${
-              space === s.space
-                ? "bg-white text-slate-800 shadow-sm"
-                : "text-slate-500 hover:text-slate-700"
-            }`}
-          >
-            {s.label}
-          </button>
-        ))}
-      </nav>
-    </div>
-  );
-}
-
-/** Admin-only member picker (spec 4.5): choose whose photos to organize.
- * Actions taken while impersonating are audit-logged with target_user.
+/** 라이브러리 셀렉터 (메뉴 재편 A안): "무엇을 볼지"를 한 축으로 —
+ * 공용 사진 / 내 사진 / (관리자) 타인 사진. 기존의 범위(공용/개인) 칩과
+ * 사용자 드롭다운을 통합해, 뷰에 따라 컨트롤이 사라지는 어색함을 없앤다.
+ * 타인 라이브러리 선택 시 버튼이 주황색으로 바뀌어 배너와 함께 상태를 알린다.
  */
-function MemberSelect({ account }: { account: string }) {
+function LibrarySelector({ account, isAdmin }: { account: string; isAdmin: boolean }) {
+  const space = useTimelineStore((s) => s.space);
   const viewedOwner = useTimelineStore((s) => s.viewedOwner);
-  const setViewedOwner = useTimelineStore((s) => s.setViewedOwner);
+  const selectLibrary = useTimelineStore((s) => s.selectLibrary);
   const queryClient = useQueryClient();
-  const membersQuery = useQuery({ queryKey: ["members"], queryFn: api.members });
-  const members = membersQuery.data?.members ?? [];
+  const [open, setOpen] = useState(false);
+  const membersQuery = useQuery({
+    queryKey: ["members"],
+    queryFn: api.members,
+    enabled: isAdmin,
+  });
+  const members = (membersQuery.data?.members ?? []).filter(
+    (m) => m.name !== account,
+  );
+
+  const label = viewedOwner
+    ? `👥 ${viewedOwner}의 사진`
+    : space === "team"
+      ? "📚 공용 사진"
+      : "👤 내 사진";
+
+  const pick = (lib: { space: Space; owner: string | null }) => {
+    setOpen(false);
+    selectLibrary(lib);
+    // 라이브러리가 통째로 바뀜 — 캐시 전체 무효화
+    queryClient.clear();
+  };
+
+  const itemCls = (active: boolean) =>
+    `flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-sm ${
+      active ? "bg-slate-100 font-semibold text-slate-800" : "text-slate-600 hover:bg-slate-50"
+    }`;
 
   return (
-    <select
-      value={viewedOwner ?? account}
-      onChange={(e) => {
-        setViewedOwner(e.target.value === account ? null : e.target.value);
-        // 사진 데이터가 통째로 다른 사람 것으로 바뀜 — 캐시 전체 무효화
-        queryClient.clear();
-      }}
-      title="가족 구성원 선택"
-      className="rounded-lg border border-slate-300 px-2 py-1 text-sm text-slate-700"
-    >
-      <option value={account}>내 사진</option>
-      {members
-        .filter((m) => m.name !== account)
-        .map((m) => (
-          <option key={m.name} value={m.name}>
-            {m.name}의 사진{m.has_photos ? "" : " (사진 없음)"}
-          </option>
-        ))}
-    </select>
+    <div className="relative shrink-0">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className={`flex items-center gap-1.5 whitespace-nowrap rounded-xl px-3 py-1.5 text-sm font-semibold transition-colors ${
+          viewedOwner
+            ? "bg-amber-500 text-white hover:bg-amber-600"
+            : "bg-slate-100 text-slate-800 hover:bg-slate-200"
+        }`}
+      >
+        {label}
+        <span className="text-xs opacity-60">▾</span>
+      </button>
+      {open && (
+        <>
+          {/* click-away layer */}
+          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
+          <div className="absolute left-0 top-full z-40 mt-1 w-56 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg">
+            <button
+              onClick={() => pick({ space: "team", owner: null })}
+              className={itemCls(!viewedOwner && space === "team")}
+            >
+              📚 공용 사진
+              <span className="ml-auto text-[10px] text-slate-400">가족 공유</span>
+            </button>
+            <button
+              onClick={() => pick({ space: "personal", owner: null })}
+              className={itemCls(!viewedOwner && space === "personal")}
+            >
+              👤 내 사진
+            </button>
+            {isAdmin && members.length > 0 && (
+              <>
+                <p className="px-3 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                  관리자 · 구성원 사진
+                </p>
+                {members.map((m) => (
+                  <button
+                    key={m.name}
+                    onClick={() => pick({ space: "personal", owner: m.name })}
+                    className={itemCls(viewedOwner === m.name)}
+                  >
+                    👥 {m.name}의 사진
+                    {!m.has_photos && (
+                      <span className="ml-auto text-[10px] text-slate-400">
+                        사진 없음
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </>
+            )}
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -149,7 +174,7 @@ function MemberSelect({ account }: { account: string }) {
  */
 function ImpersonationBanner() {
   const viewedOwner = useTimelineStore((s) => s.viewedOwner);
-  const setViewedOwner = useTimelineStore((s) => s.setViewedOwner);
+  const selectLibrary = useTimelineStore((s) => s.selectLibrary);
   const queryClient = useQueryClient();
   if (!viewedOwner) return null;
   return (
@@ -160,14 +185,13 @@ function ImpersonationBanner() {
       </span>
       <button
         onClick={() => {
-          setViewedOwner(null);
-          // 타인 데이터가 캐시에 남아 내 폴더가 사라져 보이는 문제 방지 —
-          // 드롭다운 전환과 동일하게 캐시 전체를 비운다.
+          selectLibrary({ space: "personal", owner: null });
+          // 타인 데이터가 캐시에 남아 내 폴더가 사라져 보이는 문제 방지.
           queryClient.clear();
         }}
         className="rounded-lg bg-amber-600 px-2 py-0.5 text-xs hover:bg-amber-700"
       >
-        내 보기로 돌아가기
+        내 사진으로 돌아가기
       </button>
     </div>
   );
@@ -223,10 +247,10 @@ export default function App() {
             NAS 사진 정리
           </h1>
           <div className="hidden h-6 w-px bg-slate-200 lg:block" aria-hidden />
+          <LibrarySelector account={user.account} isAdmin={user.role === "admin"} />
+          <div className="hidden h-6 w-px bg-slate-200 sm:block" aria-hidden />
           <ViewToggle />
-          <ScopeSwitcher />
           <SearchBox />
-          {user.role === "admin" && <MemberSelect account={user.account} />}
           {user.mock_mode && (
             <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
               MOCK
