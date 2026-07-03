@@ -53,7 +53,7 @@ export function Toasts() {
   return (
     <div
       data-no-boxselect
-      className="pointer-events-none fixed bottom-20 left-1/2 z-50 flex -translate-x-1/2 flex-col gap-2"
+      className="pointer-events-none fixed bottom-32 left-1/2 z-50 flex -translate-x-1/2 flex-col gap-2 md:bottom-20"
     >
       {toasts.map((t) => (
         <ToastItem key={t.id} toast={t} />

@@ -27,7 +27,7 @@ export function BulkProgress() {
     <div
       data-no-boxselect
       role="status"
-      className="fixed bottom-20 left-1/2 z-40 w-72 -translate-x-1/2 rounded-xl bg-slate-800/95 px-4 py-3 text-white shadow-lg backdrop-blur"
+      className="fixed bottom-32 left-1/2 z-40 w-72 -translate-x-1/2 rounded-xl bg-slate-800/95 px-4 py-3 text-white shadow-lg backdrop-blur md:bottom-20"
     >
       <p className="mb-2 text-sm font-medium">
         {total > 0 ? `${done}/${total}장 ${label} 중…` : `${label} 중…`}

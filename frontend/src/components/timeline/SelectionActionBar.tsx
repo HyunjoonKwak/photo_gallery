@@ -22,10 +22,11 @@ export function SelectionActionBar() {
 
   return (
     <>
-      {/* max-w + flex-wrap: 폰 폭에서도 화면 밖으로 넘치지 않게 줄바꿈 */}
+      {/* max-w + flex-wrap: 폰 폭에서도 화면 밖으로 넘치지 않게 줄바꿈.
+       * 모바일은 하단 탭 바 위(bottom-16)에 뜬다. */}
       <div
         data-no-boxselect
-        className="fixed bottom-4 left-1/2 z-40 flex max-w-[95vw] -translate-x-1/2 flex-wrap items-center justify-center gap-1 rounded-2xl bg-slate-800 px-3 py-2 shadow-xl"
+        className="fixed bottom-16 left-1/2 z-40 flex max-w-[95vw] -translate-x-1/2 flex-wrap items-center justify-center gap-1 rounded-2xl bg-slate-800 px-3 py-2 shadow-xl md:bottom-4"
       >
         <button
           onClick={clear}

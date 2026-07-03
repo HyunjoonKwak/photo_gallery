@@ -8,6 +8,7 @@ import { LoginForm } from "./components/LoginForm";
 import { ApiInfoPanel } from "./components/ApiInfoPanel";
 import { TimelineScreen } from "./components/TimelineScreen";
 import { OperationsPanel } from "./components/OperationsPanel";
+import { BottomTabBar } from "./components/BottomTabBar";
 import { BulkProgress } from "./components/BulkProgress";
 import { Toasts } from "./components/Toasts";
 
@@ -20,12 +21,12 @@ const VIEWS: { mode: ViewMode; label: string; icon: string }[] = [
 ];
 
 /** 주 메뉴: 보기 방식(타임라인/폴더/중복 정리) 전환.
- * 모바일: 아이콘만(라벨은 sm 이상) — 좁은 화면에서 텍스트가 꺾이지 않게. */
+ * 모바일은 하단 탭 바(BottomTabBar)가 대신하므로 md 이상에서만 표시. */
 function ViewToggle() {
   const viewMode = useTimelineStore((s) => s.viewMode);
   const setViewMode = useTimelineStore((s) => s.setViewMode);
   return (
-    <nav className="flex shrink-0 gap-0.5 sm:gap-1">
+    <nav className="hidden shrink-0 gap-0.5 sm:gap-1 md:flex">
       {VIEWS.map((v) => (
         <button
           key={v.mode}
@@ -301,9 +302,11 @@ export default function App() {
 
       <ImpersonationBanner />
 
-      <div className="min-h-0 flex-1">
+      {/* pb-14: 모바일 하단 탭 바 높이만큼 콘텐츠 영역 확보 */}
+      <div className="min-h-0 flex-1 pb-14 md:pb-0">
         <TimelineScreen />
       </div>
+      <BottomTabBar />
       {showOps && <OperationsPanel onClose={() => setShowOps(false)} />}
       <BulkProgress />
       <Toasts />
