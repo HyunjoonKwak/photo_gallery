@@ -16,6 +16,7 @@ from typing import Protocol
 from ..progress import ProgressFn
 from ..schemas import (
     ItemDetail,
+    MemberInfo,
     PersonInfo,
     PhotoBucket,
     PhotoFolder,
@@ -110,8 +111,8 @@ class PhotoSource(Protocol):
         """All items taken at a place."""
         ...
 
-    async def members(self) -> list[str]:
-        """Family member accounts (admin: cross-user organizing)."""
+    async def members(self) -> list[MemberInfo]:
+        """Family member accounts + 개인 사진 공간 유무 (admin: cross-user)."""
         ...
 
     async def thumbnail(

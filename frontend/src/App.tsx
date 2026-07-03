@@ -133,10 +133,10 @@ function MemberSelect({ account }: { account: string }) {
     >
       <option value={account}>내 사진</option>
       {members
-        .filter((m) => m !== account)
+        .filter((m) => m.name !== account)
         .map((m) => (
-          <option key={m} value={m}>
-            {m}의 사진
+          <option key={m.name} value={m.name}>
+            {m.name}의 사진{m.has_photos ? "" : " (사진 없음)"}
           </option>
         ))}
     </select>

@@ -220,8 +220,15 @@ class OperationsResponse(BaseModel):
     operations: list[OperationEntry]
 
 
+class MemberInfo(BaseModel):
+    name: str
+    # 개인 사진 공간(/homes/<u>/Photos) 존재 여부 — 없어도 선택은 가능하되
+    # 드롭다운에 "(사진 없음)"으로 표기 (2026-07-03 컨셉 결정).
+    has_photos: bool = True
+
+
 class MembersResponse(BaseModel):
-    members: list[str]
+    members: list[MemberInfo]
 
 
 # --- Duplicate detection (phase 2) ---

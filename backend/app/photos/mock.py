@@ -25,6 +25,7 @@ from fastapi import HTTPException, status
 
 from ..schemas import (
     ItemDetail,
+    MemberInfo,
     PersonInfo,
     PhotoBucket,
     PhotoFolder,
@@ -472,8 +473,11 @@ class MockPhotoSource:
             if fid == folder_id and item_id not in self._deleted
         )
 
-    async def members(self) -> list[str]:
-        return list(_MEMBERS)
+    async def members(self) -> list[MemberInfo]:
+        # 마지막 한 명은 "사진 없음" 케이스 데모용.
+        return [
+            MemberInfo(name=m, has_photos=(m != "jimin")) for m in _MEMBERS
+        ]
 
     async def thumbnail(
         self, space: str, item_id: str, cache_key: str, size: str

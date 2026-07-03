@@ -161,8 +161,14 @@ export interface OperationsResponse {
   operations: OperationEntry[];
 }
 
+export interface MemberInfo {
+  name: string;
+  /** 개인 사진 공간(/homes/<u>/Photos) 존재 여부 — 없어도 선택은 가능 */
+  has_photos: boolean;
+}
+
 export interface MembersResponse {
-  members: string[];
+  members: MemberInfo[];
 }
 
 // --- duplicate detection (phase 2) ---

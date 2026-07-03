@@ -32,6 +32,7 @@ from ..dsm.errors import DsmError
 from ..progress import ProgressFn
 from ..schemas import (
     ItemDetail,
+    MemberInfo,
     PersonInfo,
     PhotoBucket,
     PhotoFolder,
@@ -485,10 +486,10 @@ class DsmPhotoSource:
         )
         return int(data.get("count", 0))
 
-    async def members(self) -> list[str]:
+    async def members(self) -> list[MemberInfo]:
         # 관리자 전용: /homes 하위 폴더명 = 구성원 계정 (user home 서비스 전제).
-        # 개인 사진 공간(/homes/<u>/Photos)이 실제로 있는 계정만 노출 —
-        # tmbackup 같은 시스템 계정이 드롭다운에 섞이지 않게 (2026-07-03).
+        # 전부 노출하되 개인 사진 공간(/homes/<u>/Photos) 유무를 표기 —
+        # Photos를 안 써본 가족도 선택은 가능해야 한다 (2026-07-03 컨셉 결정).
         data = await self._dsm.call(
             "SYNO.FileStation.List",
             "list",
@@ -501,7 +502,7 @@ class DsmPhotoSource:
             if f.get("isdir") and not f.get("name", "").startswith("@")
         ]
 
-        async def has_photos(name: str) -> str | None:
+        async def probe(name: str) -> MemberInfo:
             try:
                 await self._dsm.call(
                     "SYNO.FileStation.List",
@@ -509,12 +510,12 @@ class DsmPhotoSource:
                     sid=self._sid,
                     extra={"folder_path": f"/homes/{name}/Photos", "limit": 1},
                 )
-                return name
-            except Exception:  # no Photos dir (408) → not a photo member
-                return None
+                return MemberInfo(name=name, has_photos=True)
+            except Exception:  # no Photos dir yet (408)
+                return MemberInfo(name=name, has_photos=False)
 
-        results = await asyncio.gather(*(has_photos(n) for n in names))
-        return sorted(n for n in results if n)
+        results = await asyncio.gather(*(probe(n) for n in names))
+        return sorted(results, key=lambda m: (not m.has_photos, m.name))
 
     async def thumbnail(
         self, space: str, item_id: str, cache_key: str, size: str
