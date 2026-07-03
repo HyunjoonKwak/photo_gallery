@@ -84,6 +84,15 @@ export function FolderView() {
   const ops = useFileOps();
   const clearSelection = useTimelineStore((s) => s.clearSelection);
 
+  // Whose photos we're organizing changed → old breadcrumbs point into the
+  // previous owner's tree (path-style ids) — reset to root.
+  const viewedOwner = useTimelineStore((s) => s.viewedOwner);
+  useEffect(() => {
+    setPathA([]);
+    setPathB([]);
+    setActivePane(0);
+  }, [viewedOwner]);
+
   // Cross-view jump (e.g. timeline's folder panel): open the requested folder
   // in pane A and make it the active pane.
   const pendingPath = useTimelineStore((s) => s.pendingFolderPath);

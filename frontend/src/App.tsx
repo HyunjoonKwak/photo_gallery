@@ -150,6 +150,7 @@ function MemberSelect({ account }: { account: string }) {
 function ImpersonationBanner() {
   const viewedOwner = useTimelineStore((s) => s.viewedOwner);
   const setViewedOwner = useTimelineStore((s) => s.setViewedOwner);
+  const queryClient = useQueryClient();
   if (!viewedOwner) return null;
   return (
     <div className="flex items-center justify-center gap-3 bg-amber-500 px-4 py-1.5 text-sm font-medium text-white">
@@ -158,7 +159,12 @@ function ImpersonationBanner() {
         검색 제외) — 모든 작업이 기록됩니다
       </span>
       <button
-        onClick={() => setViewedOwner(null)}
+        onClick={() => {
+          setViewedOwner(null);
+          // 타인 데이터가 캐시에 남아 내 폴더가 사라져 보이는 문제 방지 —
+          // 드롭다운 전환과 동일하게 캐시 전체를 비운다.
+          queryClient.clear();
+        }}
         className="rounded-lg bg-amber-600 px-2 py-0.5 text-xs hover:bg-amber-700"
       >
         내 보기로 돌아가기
