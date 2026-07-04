@@ -7,11 +7,23 @@ codes or credentials. Unknown codes fall back to a generic message + the code.
 
 
 class DsmError(Exception):
-    """Raised when a DSM Web API call returns success=false or transport fails."""
+    """Raised when a DSM Web API call returns success=false or transport fails.
 
-    def __init__(self, code: int, message: str, api: str | None = None):
+    ``http_status`` is set when the failure was an HTTP-level status (e.g. DSM
+    answering 404 for a thumbnail it never generated) so callers can tell a
+    "not found" apart from a DSM error envelope or a transport failure.
+    """
+
+    def __init__(
+        self,
+        code: int,
+        message: str,
+        api: str | None = None,
+        http_status: int | None = None,
+    ):
         self.code = code
         self.api = api
+        self.http_status = http_status
         super().__init__(message)
 
 

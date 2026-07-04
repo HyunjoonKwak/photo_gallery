@@ -89,6 +89,39 @@ def test_thumbnail_serves_svg(logged_in):
     assert "max-age" in resp.headers.get("cache-control", "")
 
 
+def test_missing_thumbnail_returns_404_not_502(logged_in, monkeypatch):
+    """Synology가 생성하지 않은 썸네일(DSM 404)은 502가 아니라 깔끔한 404여야
+    프론트 <img> onError가 조용히 폴백한다 (2026-07-04 실 NAS: 개인 동영상 38%)."""
+    from app.dsm.errors import DsmError
+    from app.photos.mock import mock_source
+
+    async def boom(space, item_id, cache_key, size):
+        raise DsmError(100, "NAS 응답 오류 (HTTP 404)", http_status=404)
+
+    monkeypatch.setattr(mock_source, "thumbnail", boom)
+    resp = logged_in.get(
+        "/api/photos/thumbnail",
+        params={"space": "personal", "id": "x", "size": "sm"},
+    )
+    assert resp.status_code == 404
+
+
+def test_thumbnail_transport_error_still_502(logged_in, monkeypatch):
+    """404가 아닌 실제 연결 실패는 계속 502 (폴백으로 감추면 안 되는 오류)."""
+    from app.dsm.errors import DsmError
+    from app.photos.mock import mock_source
+
+    async def boom(space, item_id, cache_key, size):
+        raise DsmError(100, "NAS에 연결할 수 없습니다: ConnectError")
+
+    monkeypatch.setattr(mock_source, "thumbnail", boom)
+    resp = logged_in.get(
+        "/api/photos/thumbnail",
+        params={"space": "personal", "id": "x", "size": "sm"},
+    )
+    assert resp.status_code == 502
+
+
 def test_folders_listed(logged_in):
     resp = logged_in.get("/api/photos/folders")
     assert resp.status_code == 200

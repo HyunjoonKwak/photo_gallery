@@ -27,20 +27,10 @@ export const PhotoCell = memo(function PhotoCell({ cell }: { cell: CellLayout })
     id: item.id,
   });
   const [loaded, setLoaded] = useState(false);
-  // Synology는 사이즈별로 썸네일을 따로 만든다 — 동영상은 작은(sm) 프레임이
-  // "broken"인데 중간(m)은 있는 경우가 흔하다. sm 실패 시 m으로 한 번 승격,
-  // 그래도 없으면(또는 cache_key 자체가 없으면) 폴백 타일 표시.
-  const [size, setSize] = useState<"sm" | "m">("sm");
+  // Synology가 poster를 생성하지 않은 아이템(개인 공간 동영상의 38%가 이렇다 —
+  // 2026-07-04 실 NAS 확인)은 썸네일 요청이 404다. 빈 회색칸 대신 폴백 타일로.
   const [failed, setFailed] = useState(false);
   const noThumb = failed || !item.cache_key;
-  const onImgError = () => {
-    if (size === "sm") {
-      setSize("m");
-      setLoaded(false);
-    } else {
-      setFailed(true);
-    }
-  };
 
   const onCellClick = (e: React.MouseEvent) => {
     const store = useTimelineStore.getState();
@@ -99,12 +89,12 @@ export const PhotoCell = memo(function PhotoCell({ cell }: { cell: CellLayout })
         </div>
       ) : (
         <img
-          src={thumbnailUrl(space, item.id, item.cache_key, size)}
+          src={thumbnailUrl(space, item.id, item.cache_key, "sm")}
           alt={item.filename}
           loading="lazy"
           draggable={false}
           onLoad={() => setLoaded(true)}
-          onError={onImgError}
+          onError={() => setFailed(true)}
           className={`h-full w-full object-cover transition-all duration-200 ${
             loaded ? "opacity-100" : "opacity-0"
           } ${selected ? "scale-90 rounded" : ""}`}

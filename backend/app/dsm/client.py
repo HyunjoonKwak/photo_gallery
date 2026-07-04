@@ -167,6 +167,16 @@ class DsmClient:
         try:
             resp = await self._http.get(url, params=params)
             resp.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            # DSM answered with an HTTP error status (commonly 404 for a
+            # thumbnail Synology never generated). Preserve the status so the
+            # caller can return a clean 404 instead of a scary 502.
+            raise DsmError(
+                100,
+                f"NAS 응답 오류 (HTTP {exc.response.status_code})",
+                api=api,
+                http_status=exc.response.status_code,
+            ) from exc
         except httpx.HTTPError as exc:
             raise DsmError(
                 100, f"NAS에 연결할 수 없습니다: {type(exc).__name__}", api=api

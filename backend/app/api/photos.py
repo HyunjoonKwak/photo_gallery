@@ -18,6 +18,7 @@ from fastapi.responses import StreamingResponse
 
 from ..config import Settings, get_settings
 from ..dedup import fill_thumbhashes
+from ..dsm.errors import SESSION_INVALID_CODES, DsmError
 from ..operations import (
     execute_create_folder,
     execute_delete,
@@ -356,7 +357,18 @@ async def get_thumbnail(
     size: ThumbSize = Query("sm"),
     source: PhotoSource = Depends(get_photo_source),
 ) -> Response:
-    content, media_type = await source.thumbnail(space, id, cache_key, size)
+    try:
+        content, media_type = await source.thumbnail(space, id, cache_key, size)
+    except DsmError as exc:
+        # Session problems still need a 401 so the client re-auths; a genuinely
+        # missing thumbnail (DSM 404 — Synology never generated a poster for
+        # this item, common for videos) is a clean 404, not a 502. The frontend
+        # <img> onError then shows its fallback tile without noisy errors.
+        if exc.code in SESSION_INVALID_CODES:
+            raise
+        if exc.http_status == 404:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "썸네일이 없습니다.") from exc
+        raise
     return Response(
         content=content,
         media_type=media_type,
