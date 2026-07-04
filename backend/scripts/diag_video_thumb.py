@@ -103,43 +103,66 @@ async def main() -> None:
         print(f"  sm broken → 전부 broken   : {sm_broken_all_broken}  ← 폴백 타일 표시")
         print(f"  cache_key 없음            : {no_cache_key}\n")
 
-        for label, it in (("VIDEO", video), ("PHOTO", photo)):
+        # 앱이 실제로 쓰는 Thumbnail API 버전 확인 (앱은 pick_version(None)=max).
+        info = await dsm.query_api_info(
+            ("SYNO.Foto.Thumbnail", "SYNO.FotoTeam.Thumbnail")
+        )
+        for api_name, ep in info.items():
+            print(f"[api] {api_name}: path={ep.path} "
+                  f"min={ep.min_version} max={ep.max_version} "
+                  f"→ 앱이 쓰는 version={ep.pick_version(None)}")
+        print()
+
+        thumb_api = _ns(space, "SYNO.Foto.Thumbnail")
+
+        # 특정 아이템 직접 지정(실패한 그 항목) — DIAG_ITEM_ID/DIAG_CACHE_KEY.
+        probe_id = os.environ.get("DIAG_ITEM_ID")
+        probe_ck = os.environ.get("DIAG_CACHE_KEY")
+        targets = [("VIDEO", video), ("PHOTO", photo)]
+        if probe_id and probe_ck:
+            targets.insert(0, ("TARGET", {
+                "id": int(probe_id), "type": "?", "filename": "(지정)",
+                "additional": {"thumbnail": {"cache_key": probe_ck}},
+            }))
+
+        for label, it in targets:
             if not it:
                 print(f"[{label}] 목록에서 찾지 못함 (limit 200 내)\n")
                 continue
             add = it.get("additional", {}) or {}
             thumb = add.get("thumbnail", {}) or {}
+            ck = thumb.get("cache_key", "")
             print(f"[{label}] id={it.get('id')} type={it.get('type')} "
                   f"filename={it.get('filename')!r}")
-            print(f"  additional keys: {sorted(add.keys())}")
             print(f"  thumbnail dict : {json.dumps(thumb, ensure_ascii=False)}")
-            ck = thumb.get("cache_key", "")
-            print(f"  cache_key      : {ck!r}")
-
-            # 실제 sm 썸네일 요청 결과 확인.
-            if ck:
-                url = f"{base}:{port}/webapi/entry.cgi"
-                params = {
-                    "api": _ns(space, "SYNO.Foto.Thumbnail"),
-                    "version": "1",
-                    "method": "get",
-                    "id": it.get("id"),
-                    "cache_key": ck,
-                    "type": "unit",
-                    "size": "sm",
-                    "_sid": sid,
+            if not ck:
+                print("  (cache_key 없음 → 썸네일 요청 자체 불가)\n")
+                continue
+            # 사이즈별로 (1) 앱 경로(pick_version=max) (2) version=1 직접호출을
+            # 각각 시도해 어느 조합이 200을 주는지 대조한다.
+            for sz in ("sm", "m", "xl"):
+                # (1) 앱과 동일: endpoint.pick_version(None) + entry.cgi path
+                app_params = {
+                    "api": thumb_api, "version": str(info[thumb_api].pick_version(None)),
+                    "method": "get", "id": it.get("id"), "cache_key": ck,
+                    "type": "unit", "size": sz, "_sid": sid,
                 }
-                r = await http.get(url, params=params)
-                ct = r.headers.get("content-type", "")
-                head = r.content[:120]
-                print(f"  GET thumb sm   : status={r.status_code} content-type={ct!r} "
-                      f"bytes={len(r.content)}")
-                if ct.startswith("application/json"):
-                    print(f"    JSON error → {head!r}")
-                else:
-                    print(f"    image head  → {head[:16]!r}...")
-            else:
-                print("  (cache_key 없음 → 썸네일 요청 자체 불가)")
+                ra = await http.get(f"{base}:{port}/webapi/{info[thumb_api].path}",
+                                    params=app_params)
+                # (2) version=1 직접
+                v1_params = {**app_params, "version": "1"}
+                rv = await http.get(f"{base}:{port}/webapi/entry.cgi", params=v1_params)
+
+                def _tag(r):
+                    ct = r.headers.get("content-type", "")
+                    if r.status_code != 200:
+                        return f"HTTP {r.status_code}"
+                    if ct.startswith("application/json"):
+                        return f"JSON에러 {r.content[:80]!r}"
+                    return f"OK image {len(r.content)}B"
+
+                print(f"  size={sz:>2}: 앱경로(v{app_params['version']})={_tag(ra)}  |  "
+                      f"직접(v1)={_tag(rv)}")
             print()
 
         # 앱의 실제 읽기 경로 검증 — raw DSM이 아니라 DsmPhotoSource.items()가
