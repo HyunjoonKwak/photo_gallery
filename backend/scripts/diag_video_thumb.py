@@ -142,6 +142,28 @@ async def main() -> None:
                 print("  (cache_key 없음 → 썸네일 요청 자체 불가)")
             print()
 
+        # 앱의 실제 읽기 경로 검증 — raw DSM이 아니라 DsmPhotoSource.items()가
+        # 프론트로 넘기는 PhotoItem.cache_key/type을 그대로 확인한다. 여기서
+        # 동영상 cache_key가 비면 프론트 <img>가 실패하는 진짜 원인이 잡힌다.
+        if video is not None:
+            from datetime import date
+
+            from app.photos.dsm_source import DsmPhotoSource
+
+            src = DsmPhotoSource(dsm, sid)
+            day = date.fromtimestamp(video.get("time", 0)).isoformat()
+            day_items = await src.items(space, day)
+            vid_id = str(video.get("id"))
+            pi = next((i for i in day_items if i.id == vid_id), None)
+            print(f"[app.items()] {space} {day} → {len(day_items)}개")
+            if pi is None:
+                print(f"  ⚠️ 동영상 {vid_id}가 items()에 없음 "
+                      f"(taken_at 그룹핑/휴지통 필터 확인 필요)\n")
+            else:
+                print(f"  동영상 PhotoItem: id={pi.id} type={pi.type!r} "
+                      f"cache_key={pi.cache_key!r}")
+                print(f"  → 프론트 URL cache_key {'있음(정상)' if pi.cache_key else '비어있음(원인!)'}\n")
+
         await dsm.logout(sid)
 
 
