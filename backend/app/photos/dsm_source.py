@@ -94,7 +94,12 @@ def invalidate_bucket_cache(sid: str, space: str | None = None) -> None:
 
 
 def invalidate_folder_cache(sid: str) -> None:
-    _FOLDER_META.pop(sid, None)
+    # Only drop the top-level LISTING cache (its membership changed on a write).
+    # _FOLDER_META (folder_id → (space, path)) is a stable path-resolution map:
+    # nested folders(id) 조회가 여기에 의존하고, folders() 가 목록을 낼 때마다
+    # 스스로 갱신한다. 이걸 통째로 지우면 쓰기 직후 프론트의 폴더 목록 재조회가
+    # "경로 캐시 없음"으로 실패해 새 폴더/이동 결과가 새로고침 전엔 안 보였다
+    # (2026-07-05 실 NAS 보고). 그래서 여기서 비우지 않는다.
     _TOP_FOLDER_CACHE.pop(sid, None)
 
 

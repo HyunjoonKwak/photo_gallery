@@ -121,6 +121,7 @@ export function useFileOps() {
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ["folders"] });
       queryClient.invalidateQueries({ queryKey: ["ops"] });
+      resettleFolders(); // 최상위 생성(FileStation)은 재색인 지연이 있어 지연 재조회
       useToastStore.getState().push(
         `${res.summary}했습니다`,
         res.undoable
