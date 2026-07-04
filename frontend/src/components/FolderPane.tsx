@@ -29,11 +29,15 @@ function FolderCard({
   count,
   dndPrefix,
   onOpen,
+  checked = false,
+  onToggleCheck,
 }: {
   folder: PhotoFolder;
   count: number | undefined;
   dndPrefix: string;
   onOpen: (f: PhotoFolder) => void;
+  checked?: boolean;
+  onToggleCheck?: (f: PhotoFolder) => void;
 }) {
   const { isOver, setNodeRef } = useDroppable({
     id: `${dndPrefix}folder:${folder.id}`,
@@ -45,10 +49,31 @@ function FolderCard({
       ref={setNodeRef}
       onClick={() => onOpen(folder)}
       title={folder.name}
-      className={`flex w-32 flex-col items-center gap-1 rounded-xl p-3 text-center transition-colors ${
-        isOver ? "bg-blue-100 ring-2 ring-blue-400" : "hover:bg-slate-100"
+      className={`relative flex w-32 flex-col items-center gap-1 rounded-xl p-3 text-center transition-colors ${
+        isOver
+          ? "bg-blue-100 ring-2 ring-blue-400"
+          : checked
+            ? "bg-blue-50 ring-1 ring-blue-400"
+            : "hover:bg-slate-100"
       }`}
     >
+      {onToggleCheck && (
+        <span
+          role="checkbox"
+          aria-checked={checked}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleCheck(folder);
+          }}
+          className={`absolute left-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold ${
+            checked
+              ? "bg-blue-600 text-white"
+              : "bg-slate-200 text-slate-400 hover:bg-slate-300"
+          }`}
+        >
+          ✓
+        </span>
+      )}
       <span className="text-4xl leading-none">📁</span>
       <span className="w-full truncate text-xs text-slate-700">
         {folderBasename(folder.name)}
@@ -66,11 +91,15 @@ function FolderRow({
   count,
   dndPrefix,
   onOpen,
+  checked = false,
+  onToggleCheck,
 }: {
   folder: PhotoFolder;
   count: number | undefined;
   dndPrefix: string;
   onOpen: (f: PhotoFolder) => void;
+  checked?: boolean;
+  onToggleCheck?: (f: PhotoFolder) => void;
 }) {
   const { isOver, setNodeRef } = useDroppable({
     id: `${dndPrefix}folder:${folder.id}`,
@@ -83,9 +112,30 @@ function FolderRow({
       onClick={() => onOpen(folder)}
       title={folder.name}
       className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors ${
-        isOver ? "bg-blue-100 ring-2 ring-blue-400" : "hover:bg-slate-100"
+        isOver
+          ? "bg-blue-100 ring-2 ring-blue-400"
+          : checked
+            ? "bg-blue-50 ring-1 ring-blue-400"
+            : "hover:bg-slate-100"
       }`}
     >
+      {onToggleCheck && (
+        <span
+          role="checkbox"
+          aria-checked={checked}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleCheck(folder);
+          }}
+          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${
+            checked
+              ? "bg-blue-600 text-white"
+              : "bg-slate-200 text-slate-400 hover:bg-slate-300"
+          }`}
+        >
+          ✓
+        </span>
+      )}
       <span aria-hidden>📁</span>
       <span className="min-w-0 flex-1 truncate text-slate-700">
         {folderBasename(folder.name)}
@@ -112,6 +162,10 @@ export interface FolderPaneProps {
   /** Accept photo drops on the pane background into the current folder
    * (enabled on the inactive pane only — drags start from the active one). */
   dropTarget?: boolean;
+  /** 폴더째 이동/복사(분할 뷰): 체크된 폴더 id 집합 + 토글 콜백.
+   * 미전달 시(단일 뷰) 체크박스 자체를 렌더하지 않는다. */
+  checkedFolderIds?: Set<string>;
+  onToggleFolderCheck?: (f: PhotoFolder) => void;
 }
 
 /** One Finder-style folder pane: breadcrumb + sub-folder cards (drill-in) +
@@ -125,6 +179,8 @@ export function FolderPane({
   onActivate,
   dndPrefix,
   dropTarget = false,
+  checkedFolderIds,
+  onToggleFolderCheck,
 }: FolderPaneProps) {
   const current = path.length ? path[path.length - 1] : null;
   const setOrdered = useTimelineStore((s) => s.setOrdered);
@@ -345,6 +401,8 @@ export function FolderPane({
                     count={counts[f.id]}
                     dndPrefix={dndPrefix}
                     onOpen={openFolder}
+                    checked={checkedFolderIds?.has(f.id) ?? false}
+                    onToggleCheck={onToggleFolderCheck}
                   />
                 ))}
               </div>
@@ -357,6 +415,8 @@ export function FolderPane({
                     count={counts[f.id]}
                     dndPrefix={dndPrefix}
                     onOpen={openFolder}
+                    checked={checkedFolderIds?.has(f.id) ?? false}
+                    onToggleCheck={onToggleFolderCheck}
                   />
                 ))}
               </div>

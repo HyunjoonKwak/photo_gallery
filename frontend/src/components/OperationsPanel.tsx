@@ -11,6 +11,9 @@ const TYPE_ICON: Record<OperationEntry["type"], string> = {
   copy: "📄",
   delete: "🗑",
   mkdir: "📁",
+  rmdir: "📁",
+  move_folder: "📁",
+  copy_folder: "📁",
   empty_trash: "🧹",
 };
 

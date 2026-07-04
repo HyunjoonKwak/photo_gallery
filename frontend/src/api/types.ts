@@ -140,6 +140,15 @@ export interface RemoveFolderRequest {
   target_user?: string;
 }
 
+export interface MoveFoldersRequest {
+  space: Space;
+  folder_ids: string[];
+  dest_folder_id: string;
+  copy_mode: boolean;
+  target_user?: string;
+  progress_key?: string;
+}
+
 export interface AffectedDay {
   space: Space;
   day: string;
@@ -155,7 +164,15 @@ export interface OperationResponse {
 
 export interface OperationEntry {
   id: number;
-  type: "move" | "copy" | "delete" | "mkdir" | "empty_trash";
+  type:
+    | "move"
+    | "copy"
+    | "delete"
+    | "mkdir"
+    | "rmdir"
+    | "move_folder"
+    | "copy_folder"
+    | "empty_trash";
   summary: string;
   /** purged = 휴지통 비우기로 undo 소멸 */
   status: "done" | "undone" | "failed" | "purged";

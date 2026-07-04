@@ -150,6 +150,89 @@ def test_create_folder_and_undo(client):
     assert not any(f["name"] == "테스트폴더" for f in folders)
 
 
+def _folder_names(client):
+    return {f["name"] for f in client.get("/api/photos/folders").json()["folders"]}
+
+
+def test_move_folders_and_undo(client):
+    op = client.post(
+        "/api/photos/ops/move-folders",
+        json={
+            "space": "team",
+            "folder_ids": ["f-team-2"],
+            "dest_folder_id": "f-team-1",
+            "copy_mode": False,
+        },
+    ).json()
+    assert op["summary"] == "'행사' 폴더를 이동"
+    assert op["undoable"] is True
+    assert "가족앨범/행사" in _folder_names(client)
+    assert "행사" not in _folder_names(client)
+
+    assert client.post(f"/api/ops/{op['operation_id']}/undo").status_code == 200
+    assert "행사" in _folder_names(client)
+    assert "가족앨범/행사" not in _folder_names(client)
+
+
+def test_copy_folders_and_undo(client):
+    op = client.post(
+        "/api/photos/ops/move-folders",
+        json={
+            "space": "team",
+            "folder_ids": ["f-team-2", "f-team-3"],
+            "dest_folder_id": "f-team-1",
+            "copy_mode": True,
+        },
+    ).json()
+    assert op["summary"] == "'행사' 외 1개 폴더를 복사"
+    names = _folder_names(client)
+    # Originals stay, copies appear under the destination.
+    assert {"행사", "인화용", "가족앨범/행사", "가족앨범/인화용"} <= names
+
+    assert client.post(f"/api/ops/{op['operation_id']}/undo").status_code == 200
+    names = _folder_names(client)
+    assert "행사" in names and "가족앨범/행사" not in names
+
+
+def test_move_folders_all_noop_returns_conflict(tmp_path):
+    """DSM source skips folders already inside the destination — if ALL were
+    skipped there is nothing to record; the API must 409, not crash."""
+    import asyncio
+
+    from fastapi import HTTPException
+
+    from app.operations import execute_move_folders
+    from app.schemas import MoveFoldersRequest
+
+    class _NoopSource:
+        async def move_folders(self, *args, **kwargs):
+            return {"names": [], "undo": []}
+
+    req = MoveFoldersRequest(
+        space="team", folder_ids=["f-1"], dest_folder_id="f-2", copy_mode=False
+    )
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(
+            execute_move_folders(
+                _NoopSource(), str(tmp_path / "op.db"), user="tester", req=req
+            )
+        )
+    assert exc.value.status_code == 409
+
+
+def test_move_folder_into_itself_is_rejected(client):
+    resp = client.post(
+        "/api/photos/ops/move-folders",
+        json={
+            "space": "team",
+            "folder_ids": ["f-team-1"],
+            "dest_folder_id": "f-team-1",
+            "copy_mode": False,
+        },
+    )
+    assert resp.status_code == 409
+
+
 def test_mkdir_undo_fails_when_folder_not_empty(client):
     _, items = _first_day_items(client)
     op = client.post(

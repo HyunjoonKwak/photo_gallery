@@ -121,6 +121,25 @@ export function useFileOps() {
     onError,
   });
 
+  const moveFoldersMutation = useMutation({
+    mutationFn: api.moveFolders,
+    onSuccess: (res) => {
+      // 폴더 구조가 통째로 바뀜 — 폴더/사진 캐시 광범위 무효화.
+      queryClient.invalidateQueries({ queryKey: ["folders"] });
+      queryClient.invalidateQueries({ queryKey: ["folder-items"] });
+      queryClient.invalidateQueries({ queryKey: ["folder-counts"] });
+      queryClient.invalidateQueries({ queryKey: ["buckets"] });
+      queryClient.invalidateQueries({ queryKey: ["ops"] });
+      useToastStore.getState().push(
+        `${res.summary}했습니다`,
+        res.undoable
+          ? { label: "되돌리기", run: () => runUndo(res.operation_id) }
+          : undefined,
+      );
+    },
+    onError,
+  });
+
   const rmdirMutation = useMutation({
     mutationFn: api.removeFolder,
     onSuccess: (res) => {
@@ -177,6 +196,26 @@ export function useFileOps() {
         parent_id: parentId,
         target_user: targetUser(),
       }),
+    moveFolders: (
+      space: Space,
+      folderIds: string[],
+      destFolderId: string,
+      copyMode: boolean,
+      onSuccess?: () => void,
+    ) => {
+      const p = startProgress(copyMode ? "폴더 복사" : "폴더 이동");
+      moveFoldersMutation.mutate(
+        {
+          space,
+          folder_ids: folderIds,
+          dest_folder_id: destFolderId,
+          copy_mode: copyMode,
+          target_user: targetUser(),
+          progress_key: p.key,
+        },
+        { onSuccess: () => onSuccess?.(), onSettled: p.stop },
+      );
+    },
     removeFolder: (space: Space, folderId: string, onSuccess?: () => void) =>
       rmdirMutation.mutate(
         { space, folder_id: folderId, target_user: targetUser() },
@@ -184,6 +223,10 @@ export function useFileOps() {
       ),
     undo: runUndo,
     isBusy:
-      moveMutation.isPending || deleteMutation.isPending || mkdirMutation.isPending,
+      moveMutation.isPending ||
+      deleteMutation.isPending ||
+      mkdirMutation.isPending ||
+      moveFoldersMutation.isPending ||
+      rmdirMutation.isPending,
   };
 }

@@ -198,6 +198,17 @@ class RemoveFolderRequest(BaseModel):
     target_user: str | None = Field(default=None, max_length=128)
 
 
+class MoveFoldersRequest(BaseModel):
+    """폴더째(하위 전체 포함) 이동/복사 — 여러 폴더 한 번에."""
+
+    space: str = "team"  # source space of the folders
+    folder_ids: list[str] = Field(min_length=1, max_length=100)
+    dest_folder_id: str = Field(min_length=1, max_length=512)
+    copy_mode: bool = False
+    target_user: str | None = Field(default=None, max_length=128)
+    progress_key: str | None = Field(default=None, max_length=64)
+
+
 class AffectedDay(BaseModel):
     space: str
     day: str

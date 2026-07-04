@@ -22,6 +22,7 @@ from ..operations import (
     execute_create_folder,
     execute_delete,
     execute_move,
+    execute_move_folders,
     execute_remove_folder,
 )
 from ..photos.source import PhotoSource
@@ -35,6 +36,7 @@ from ..schemas import (
     FoldersResponse,
     ItemDetail,
     MembersResponse,
+    MoveFoldersRequest,
     MoveRequest,
     OperationResponse,
     PersonsResponse,
@@ -306,6 +308,28 @@ async def stream_video(
     return StreamingResponse(
         body(), status_code=upstream.status_code, headers=passthrough
     )
+
+
+@router.post("/ops/move-folders", response_model=OperationResponse)
+async def op_move_folders(
+    req: MoveFoldersRequest,
+    session: Session = Depends(get_current_session),
+    source: PhotoSource = Depends(get_photo_source),
+    settings: Settings = Depends(get_settings),
+) -> OperationResponse:
+    """폴더째(하위 포함) 이동/복사 — 여러 폴더 한 번에."""
+    _check_target_user(session, req.target_user)
+    verb = "복사" if req.copy_mode else "이동"
+    try:
+        return await execute_move_folders(
+            source,
+            settings.sqlite_path,
+            user=session.account,
+            req=req,
+            on_progress=progress.callback(req.progress_key, f"폴더 {verb}"),
+        )
+    finally:
+        progress.clear(req.progress_key)
 
 
 @router.post("/folders/delete", response_model=OperationResponse)

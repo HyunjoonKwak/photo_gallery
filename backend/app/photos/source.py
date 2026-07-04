@@ -201,3 +201,23 @@ class PhotoSource(Protocol):
     async def remove_folder(self, folder_id: str) -> bool:
         """Remove an empty folder (undo of mkdir). False if not empty/removable."""
         ...
+
+    # -------------------------------------------------- folder-level move
+    async def move_folders(
+        self,
+        space: str,
+        folder_ids: list[str],
+        dest_folder_id: str,
+        copy: bool,
+        on_progress: ProgressFn | None = None,
+    ) -> dict:
+        """Move/copy whole folders (subtree 포함) into a destination folder.
+
+        Returns ``{"names": [표시명...], "undo": <source-specific payload>}`` —
+        the undo payload feeds ``revert_move_folders``.
+        """
+        ...
+
+    async def revert_move_folders(self, undo_payload: list, copy: bool) -> None:
+        """Undo of move_folders: move back (move) / delete copies (copy)."""
+        ...

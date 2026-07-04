@@ -229,10 +229,20 @@ class MockPhotoSource:
         self._touched: set[tuple[str, str]] = set()
         self._copy_seq = 0
         self._folder_seq = 0
+        # 폴더 이동 시뮬레이션: id → 바뀐 이름 (mock 폴더는 flat이라 이름만)
+        self._folder_renames: dict[str, str] = {}
 
     # ------------------------------------------------------------ internals
     def _all_folders(self) -> list[PhotoFolder]:
-        return [*_DEFAULT_FOLDERS, *self._custom_folders]
+        out = [*_DEFAULT_FOLDERS, *self._custom_folders]
+        if self._folder_renames:
+            out = [
+                f.model_copy(update={"name": self._folder_renames[f.id]})
+                if f.id in self._folder_renames
+                else f
+                for f in out
+            ]
+        return out
 
     def _folder_by_id(self, folder_id: str) -> PhotoFolder:
         for f in self._all_folders():
@@ -464,6 +474,49 @@ class MockPhotoSource:
         return [
             it for it in self._classify_pool(space) if self._in_group(it.id, mod, rem)
         ]
+
+    async def move_folders(
+        self,
+        space: str,
+        folder_ids: list[str],
+        dest_folder_id: str,
+        copy: bool,
+        on_progress=None,
+    ) -> dict:
+        dest = self._folder_by_id(dest_folder_id)
+        names: list[str] = []
+        undo: list[dict] = []
+        for fid in folder_ids:
+            if fid == dest_folder_id:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="폴더를 자기 자신 안으로 옮길 수 없습니다.",
+                )
+            f = self._folder_by_id(fid)
+            base = f.name.split("/")[-1]
+            names.append(base)
+            if copy:
+                self._folder_seq += 1
+                nf = PhotoFolder(
+                    id=f"f-{dest.space}-c{self._folder_seq}",
+                    name=f"{dest.name}/{base}",
+                    space=dest.space,
+                )
+                self._custom_folders.append(nf)
+                undo.append({"kind": "copy", "id": nf.id})
+            else:
+                undo.append({"kind": "move", "id": fid, "prev": f.name})
+                self._folder_renames[fid] = f"{dest.name}/{base}"
+        return {"names": names, "undo": undo}
+
+    async def revert_move_folders(self, undo_payload: list, copy: bool) -> None:
+        for e in undo_payload:
+            if e.get("kind") == "copy":
+                self._custom_folders = [
+                    f for f in self._custom_folders if f.id != e["id"]
+                ]
+            else:
+                self._folder_renames[e["id"]] = e["prev"]
 
     async def purge_trash(self) -> None:
         # Trashed snapshots are gone for good; the op-log status flip (purged)

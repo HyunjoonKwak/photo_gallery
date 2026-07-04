@@ -12,6 +12,7 @@ import type {
   ItemDetail,
   LoginRequest,
   MembersResponse,
+  MoveFoldersRequest,
   MoveRequest,
   OperationResponse,
   OperationsResponse,
@@ -132,6 +133,11 @@ export const api = {
     }),
   createFolder: (body: CreateFolderRequest) =>
     request<OperationResponse>(`/api/photos/folders${ownerQS("?")}`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  moveFolders: (body: MoveFoldersRequest) =>
+    request<OperationResponse>(`/api/photos/ops/move-folders${ownerQS("?")}`, {
       method: "POST",
       body: JSON.stringify(body),
     }),

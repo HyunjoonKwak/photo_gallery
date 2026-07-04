@@ -25,6 +25,7 @@ from .schemas import (
     AffectedDay,
     CreateFolderRequest,
     DeleteRequest,
+    MoveFoldersRequest,
     MoveRequest,
     OperationEntry,
     OperationResponse,
@@ -32,7 +33,9 @@ from .schemas import (
     RemoveFolderRequest,
 )
 
-UNDOABLE_TYPES = frozenset({"move", "copy", "delete", "mkdir"})
+UNDOABLE_TYPES = frozenset(
+    {"move", "copy", "delete", "mkdir", "move_folder", "copy_folder"}
+)
 # Deleted items sit in the trash; keep undo open for 7 days (spec: 휴지통 보존).
 DELETE_UNDO_WINDOW = timedelta(days=7)
 
@@ -172,6 +175,50 @@ async def execute_create_folder(
     )
 
 
+async def execute_move_folders(
+    source: PhotoSource,
+    sqlite_path: str,
+    *,
+    user: str,
+    req: "MoveFoldersRequest",
+    on_progress: ProgressFn | None = None,
+) -> OperationResponse:
+    """폴더째 이동/복사 (하위 전체 포함) — 여러 폴더 한 번에, undo 지원."""
+    outcome = await source.move_folders(
+        req.space, req.folder_ids, req.dest_folder_id, req.copy_mode, on_progress
+    )
+    verb = "복사" if req.copy_mode else "이동"
+    names = outcome.get("names", [])
+    if not names:
+        # Every folder was already inside the destination (no-op skips).
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "선택한 폴더가 이미 대상 폴더 안에 있습니다."
+        )
+    label = (
+        f"'{names[0]}'"
+        if len(names) == 1
+        else f"'{names[0]}' 외 {len(names) - 1}개"
+    )
+    # 토스트가 "…했습니다"를 덧붙이므로 동사로 끝나는 형태 유지.
+    summary = f"{label} 폴더를 {verb}"
+    op_id = _record(
+        sqlite_path,
+        user=user,
+        target_user=req.target_user,
+        type_="copy_folder" if req.copy_mode else "move_folder",
+        space_from=req.space,
+        space_to=None,
+        payload={
+            "summary": summary,
+            "undo": outcome.get("undo", []),
+            "copy": req.copy_mode,
+        },
+    )
+    return OperationResponse(
+        operation_id=op_id, summary=summary, affected=[], undoable=True
+    )
+
+
 async def execute_remove_folder(
     source: PhotoSource,
     sqlite_path: str,
@@ -285,6 +332,11 @@ async def undo_operation(
             raise HTTPException(
                 status.HTTP_409_CONFLICT, "폴더가 비어 있지 않아 되돌릴 수 없습니다."
             )
+        affected = []
+    elif op_type in ("move_folder", "copy_folder"):
+        await source.revert_move_folders(
+            payload.get("undo", []), payload.get("copy", False)
+        )
         affected = []
     else:  # pragma: no cover - guarded by UNDOABLE_TYPES on insert
         raise HTTPException(status.HTTP_409_CONFLICT, "되돌릴 수 없는 작업 유형입니다.")

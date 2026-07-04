@@ -15,18 +15,38 @@ function DualActions({
   activePane,
   sourceCurrent,
   destCurrent,
+  folderSel,
+  onFoldersDone,
 }: {
   activePane: 0 | 1;
   sourceCurrent: PhotoFolder | null;
   destCurrent: PhotoFolder | null;
+  /** 활성 페인에서 ✓ 체크된 폴더들 — 있으면 버튼이 폴더 모드로 동작. */
+  folderSel: Map<string, PhotoFolder>;
+  onFoldersDone: () => void;
 }) {
   const selected = useTimelineStore((s) => s.selected);
   const ops = useFileOps();
   const n = selected.size;
+  const nf = folderSel.size;
+  const folderMode = nf > 0;
   const arrow = activePane === 0 ? "→" : "←";
   const sameFolder = destCurrent != null && destCurrent.id === sourceCurrent?.id;
-  const canTransfer = n > 0 && destCurrent != null && !sameFolder && !ops.isBusy;
+  const canTransfer = folderMode
+    ? destCurrent != null && !folderSel.has(destCurrent.id) && !ops.isBusy
+    : n > 0 && destCurrent != null && !sameFolder && !ops.isBusy;
   const destName = destCurrent ? folderBasename(destCurrent.name) : "반대쪽 폴더";
+
+  const transferFolders = (copy: boolean) => {
+    const folders = [...folderSel.values()];
+    ops.moveFolders(
+      folders[0].space,
+      folders.map((f) => f.id),
+      destCurrent!.id,
+      copy,
+      onFoldersDone,
+    );
+  };
 
   const btn =
     "flex flex-col items-center gap-0.5 rounded-lg px-2 py-2 text-[11px] font-medium transition-colors disabled:opacity-30 lg:w-full";
@@ -36,20 +56,38 @@ function DualActions({
       data-no-boxselect
       className="flex shrink-0 items-center justify-center gap-1 border-y border-slate-200 bg-slate-50 px-2 py-1 lg:w-20 lg:flex-col lg:border-x lg:border-y-0 lg:py-4"
     >
-      <span className="text-xs font-semibold text-slate-500">{n}장</span>
+      <span className="text-xs font-semibold text-slate-500">
+        {folderMode ? `📁${nf}개` : `${n}장`}
+      </span>
       <button
-        onClick={() => ops.move([...selected], destCurrent!.id, false)}
+        onClick={() =>
+          folderMode
+            ? transferFolders(false)
+            : ops.move([...selected], destCurrent!.id, false)
+        }
         disabled={!canTransfer}
-        title={destCurrent ? `${destName}(으)로 이동` : "반대쪽 페인에서 폴더를 여세요"}
+        title={
+          destCurrent
+            ? `${destName}(으)로 ${folderMode ? "폴더째 " : ""}이동`
+            : "반대쪽 페인에서 폴더를 여세요"
+        }
         className={`${btn} text-slate-600 enabled:hover:bg-blue-100 enabled:hover:text-blue-700`}
       >
         <span className="text-base leading-none">{arrow}</span>
         이동
       </button>
       <button
-        onClick={() => ops.move([...selected], destCurrent!.id, true)}
+        onClick={() =>
+          folderMode
+            ? transferFolders(true)
+            : ops.move([...selected], destCurrent!.id, true)
+        }
         disabled={!canTransfer}
-        title={destCurrent ? `${destName}(으)로 복사` : "반대쪽 페인에서 폴더를 여세요"}
+        title={
+          destCurrent
+            ? `${destName}(으)로 ${folderMode ? "폴더째 " : ""}복사`
+            : "반대쪽 페인에서 폴더를 여세요"
+        }
         className={`${btn} text-slate-600 enabled:hover:bg-blue-100 enabled:hover:text-blue-700`}
       >
         <span className="text-base leading-none">⧉</span>
@@ -57,8 +95,12 @@ function DualActions({
       </button>
       <button
         onClick={() => ops.remove([...selected])}
-        disabled={n === 0 || ops.isBusy}
-        title="휴지통으로 이동 (되돌리기 가능)"
+        disabled={folderMode || n === 0 || ops.isBusy}
+        title={
+          folderMode
+            ? "폴더 삭제는 브레드크럼의 [폴더 삭제]로 (빈 폴더만)"
+            : "휴지통으로 이동 (되돌리기 가능)"
+        }
         className={`${btn} text-slate-600 enabled:hover:bg-red-100 enabled:hover:text-red-700`}
       >
         <span className="text-base leading-none">🗑</span>
@@ -83,6 +125,26 @@ export function FolderView() {
   const [activePane, setActivePane] = useState<0 | 1>(0);
   const clearSelection = useTimelineStore((s) => s.clearSelection);
 
+  // 폴더째 이동/복사(분할 뷰): 활성 페인에서 ✓ 체크된 폴더들. 사진 선택과
+  // 배타적 — 폴더를 체크하면 사진 선택을 비우고, 사진을 선택하면 여기가 비워짐.
+  const [folderSel, setFolderSel] = useState<Map<string, PhotoFolder>>(
+    new Map(),
+  );
+  const clearFolderSel = () => setFolderSel(new Map());
+  const toggleFolderCheck = (f: PhotoFolder) => {
+    setFolderSel((prev) => {
+      const next = new Map(prev);
+      if (next.has(f.id)) next.delete(f.id);
+      else next.set(f.id, f);
+      return next;
+    });
+    clearSelection();
+  };
+  const photoSelCount = useTimelineStore((s) => s.selected.size);
+  useEffect(() => {
+    if (photoSelCount > 0) setFolderSel(new Map());
+  }, [photoSelCount]);
+
   // Whose photos we're organizing changed → old breadcrumbs point into the
   // previous owner's tree (path-style ids) — reset to root.
   const viewedOwner = useTimelineStore((s) => s.viewedOwner);
@@ -90,6 +152,7 @@ export function FolderView() {
     setPathA([]);
     setPathB([]);
     setActivePane(0);
+    setFolderSel(new Map());
   }, [viewedOwner]);
 
   // Cross-view jump (e.g. timeline's folder panel): open the requested folder
@@ -111,6 +174,7 @@ export function FolderView() {
   const activate = (pane: 0 | 1) => {
     if (pane !== activePane) {
       clearSelection();
+      setFolderSel(new Map());
       setActivePane(pane);
     }
   };
@@ -118,8 +182,20 @@ export function FolderView() {
   const toggleDual = (on: boolean) => {
     if (on === dual) return;
     clearSelection();
+    setFolderSel(new Map());
     setActivePane(0);
     setDual(on);
+  };
+
+  // 페인 내 이동(드릴인/브레드크럼)하면 체크된 폴더가 화면에서 사라지므로
+  // 선택도 함께 해제 (사진 선택과 동일한 규칙).
+  const changePathA = (p: PhotoFolder[]) => {
+    setFolderSel(new Map());
+    setPathA(p);
+  };
+  const changePathB = (p: PhotoFolder[]) => {
+    setFolderSel(new Map());
+    setPathB(p);
   };
 
   return (
@@ -131,7 +207,8 @@ export function FolderView() {
       >
         {dual && (
           <span className="mr-auto text-xs text-slate-400">
-            한쪽에서 선택 → 가운데 버튼이나 드래그로 반대쪽 폴더로 이동/복사
+            사진 선택 또는 폴더 ✓ 체크 → 가운데 버튼이나 드래그로 반대쪽
+            폴더로 이동/복사
           </span>
         )}
         <nav className="flex gap-1 rounded-lg bg-slate-100 p-0.5">
@@ -211,17 +288,21 @@ export function FolderView() {
           >
             <FolderPane
               path={pathA}
-              onPathChange={setPathA}
+              onPathChange={changePathA}
               active={activePane === 0}
               onActivate={() => activate(0)}
               dndPrefix="a-"
               dropTarget={activePane !== 0}
+              checkedFolderIds={new Set(folderSel.keys())}
+              onToggleFolderCheck={toggleFolderCheck}
             />
           </section>
           <DualActions
             activePane={activePane}
             sourceCurrent={activeCurrent}
             destCurrent={inactiveCurrent}
+            folderSel={folderSel}
+            onFoldersDone={clearFolderSel}
           />
           <section
             className={`flex min-h-0 min-w-0 flex-1 ${
@@ -230,11 +311,13 @@ export function FolderView() {
           >
             <FolderPane
               path={pathB}
-              onPathChange={setPathB}
+              onPathChange={changePathB}
               active={activePane === 1}
               onActivate={() => activate(1)}
               dndPrefix="b-"
               dropTarget={activePane !== 1}
+              checkedFolderIds={new Set(folderSel.keys())}
+              onToggleFolderCheck={toggleFolderCheck}
             />
           </section>
         </div>

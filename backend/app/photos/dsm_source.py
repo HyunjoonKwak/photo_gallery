@@ -871,6 +871,53 @@ class DsmPhotoSource:
         invalidate_folder_cache(self._sid)
         return True
 
+    async def move_folders(
+        self,
+        space: str,
+        folder_ids: list[str],
+        dest_folder_id: str,
+        copy: bool,
+        on_progress: ProgressFn | None = None,
+    ) -> dict:
+        dest_dir, _ = await self._dest_dir(dest_folder_id)
+        src_dirs: list[str] = []
+        names: list[str] = []
+        for fid in folder_ids:
+            src, _ = await self._dest_dir(fid)
+            # Guard: 자기 자신/자기 하위로의 이동은 무한 중첩 — 차단.
+            if dest_dir == src or dest_dir.startswith(src + "/"):
+                raise DsmError(
+                    100, f"'{src.rsplit('/', 1)[-1]}' 폴더를 자기 자신(하위) 안으로 옮길 수 없습니다."
+                )
+            if src.rsplit("/", 1)[0] == dest_dir and not copy:
+                continue  # 이미 대상 폴더 안 — no-op
+            src_dirs.append(src)
+            names.append(src.rsplit("/", 1)[-1])
+        if src_dirs:
+            # CopyMove는 디렉터리도 재귀 이동/복사한다 (실 NAS 검증 —
+            # 2026-07-03 MobileBackup 평탄화 작업에서 대량 실사용).
+            await self._copymove_chunked(
+                src_dirs, dest_dir, remove_src=not copy, on_progress=on_progress
+            )
+        invalidate_folder_cache(self._sid)
+        invalidate_bucket_cache(self._sid)
+        undo = [
+            {"src": src, "dest": f"{dest_dir}/{src.rsplit('/', 1)[-1]}"}
+            for src in src_dirs
+        ]
+        return {"names": names, "undo": undo}
+
+    async def revert_move_folders(self, undo_payload: list, copy: bool) -> None:
+        if copy:
+            # 복사 취소: 만들어진 사본 폴더를 영구 삭제 (방금 만든 사본).
+            await self._delete_paths([e["dest"] for e in undo_payload])
+        else:
+            for e in undo_payload:
+                parent = e["src"].rsplit("/", 1)[0]
+                await self._copymove([e["dest"]], parent, remove_src=True)
+        invalidate_folder_cache(self._sid)
+        invalidate_bucket_cache(self._sid)
+
     def _invalidate(self, affected: set[tuple[str, str]]) -> None:
         for space, _ in affected:
             invalidate_bucket_cache(self._sid, space)
