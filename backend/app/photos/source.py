@@ -213,6 +213,13 @@ class PhotoSource(Protocol):
         ...
 
     # -------------------------------------------------- folder-level move
+    async def folder_conflicts(
+        self, space: str, folder_ids: list[str], dest_folder_id: str
+    ) -> list[tuple[str, str]]:
+        """(folder_id, name) of source folders whose name already exists as a
+        subfolder of the destination — drives the folder 충돌 처리 dialog."""
+        ...
+
     async def move_folders(
         self,
         space: str,
@@ -220,11 +227,14 @@ class PhotoSource(Protocol):
         dest_folder_id: str,
         copy: bool,
         on_progress: ProgressFn | None = None,
+        conflict_strategy: str = "skip",
     ) -> dict:
         """Move/copy whole folders (subtree 포함) into a destination folder.
 
-        Returns ``{"names": [표시명...], "undo": <source-specific payload>}`` —
-        the undo payload feeds ``revert_move_folders``.
+        ``conflict_strategy`` handles a same-named folder at the destination:
+        skip | rename (name_1). Returns
+        ``{"names": [표시명...], "undo": <source-specific payload>}`` — the undo
+        payload feeds ``revert_move_folders``.
         """
         ...
 

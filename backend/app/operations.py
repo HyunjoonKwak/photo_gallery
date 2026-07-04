@@ -214,8 +214,31 @@ async def execute_move_folders(
     on_progress: ProgressFn | None = None,
 ) -> OperationResponse:
     """폴더째 이동/복사 (하위 전체 포함) — 여러 폴더 한 번에, undo 지원."""
+    strategy = req.conflict_strategy
+    if strategy == "ask":
+        clashes = await source.folder_conflicts(
+            req.space, req.folder_ids, req.dest_folder_id
+        )
+        if clashes:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "folder_conflict",
+                    "message": f"같은 이름의 폴더 {len(clashes)}개가 대상 위치에 있습니다.",
+                    "conflicts": [
+                        {"folder_id": i, "name": n} for i, n in clashes
+                    ],
+                },
+            )
+        strategy = "skip"  # no clashes → moot
+
     outcome = await source.move_folders(
-        req.space, req.folder_ids, req.dest_folder_id, req.copy_mode, on_progress
+        req.space,
+        req.folder_ids,
+        req.dest_folder_id,
+        req.copy_mode,
+        on_progress,
+        conflict_strategy=strategy,
     )
     verb = "복사" if req.copy_mode else "이동"
     names = outcome.get("names", [])

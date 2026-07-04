@@ -724,8 +724,7 @@ class DsmPhotoSource:
         if data.get("taskid"):
             await self._poll_task("SYNO.FileStation.Rename", 2, data.get("taskid"))
 
-    async def _list_filenames(self, dir_path: str) -> set[str]:
-        """Filenames directly in a folder (filesystem truth), for conflict checks."""
+    async def _list_entries(self, dir_path: str) -> list[dict]:
         try:
             data = await self._dsm.call(
                 "SYNO.FileStation.List",
@@ -734,8 +733,26 @@ class DsmPhotoSource:
                 extra={"folder_path": dir_path, "limit": 100000},
             )
         except DsmError:
-            return set()
-        return {f.get("name", "") for f in data.get("files", [])}
+            return []
+        return data.get("files", [])
+
+    async def _list_filenames(self, dir_path: str) -> set[str]:
+        """Filenames directly in a folder (filesystem truth), for conflict checks."""
+        return {f.get("name", "") for f in await self._list_entries(dir_path)}
+
+    async def _list_subdir_names(self, dir_path: str) -> set[str]:
+        """Sub-folder names directly in a folder, for folder-move conflict checks."""
+        return {
+            f.get("name", "") for f in await self._list_entries(dir_path) if f.get("isdir")
+        }
+
+    @staticmethod
+    def _unique_dir_name(taken: set[str], name: str) -> str:
+        """folder → folder_1 (or _2, …) not already present (no extension logic)."""
+        n = 1
+        while f"{name}_{n}" in taken:
+            n += 1
+        return f"{name}_{n}"
 
     @staticmethod
     def _unique_name(taken: set[str], filename: str) -> str:
@@ -1107,6 +1124,21 @@ class DsmPhotoSource:
         _REMOVED_FOLDERS.setdefault(self._sid, {})[str(folder_id)] = _time.monotonic()
         return True
 
+    async def folder_conflicts(
+        self, space: str, folder_ids: list[str], dest_folder_id: str
+    ) -> list[tuple[str, str]]:
+        dest_dir, _ = await self._dest_dir(dest_folder_id)
+        existing = await self._list_subdir_names(dest_dir)
+        out: list[tuple[str, str]] = []
+        for fid in folder_ids:
+            src, _ = await self._dest_dir(fid)
+            if src.rsplit("/", 1)[0] == dest_dir:
+                continue  # 이미 대상 안 — 충돌 아님(no-op)
+            name = src.rsplit("/", 1)[-1]
+            if name in existing:
+                out.append((fid, name))
+        return out
+
     async def move_folders(
         self,
         space: str,
@@ -1114,10 +1146,13 @@ class DsmPhotoSource:
         dest_folder_id: str,
         copy: bool,
         on_progress: ProgressFn | None = None,
+        conflict_strategy: str = "skip",
     ) -> dict:
         dest_dir, _ = await self._dest_dir(dest_folder_id)
-        src_dirs: list[str] = []
-        names: list[str] = []
+        taken = await self._list_subdir_names(dest_dir)
+        plain: list[str] = []  # src dirs moving under their own name
+        plain_names: list[str] = []
+        renamed: list[tuple[str, str]] = []  # (src, new_name)
         for fid in folder_ids:
             src, _ = await self._dest_dir(fid)
             # Guard: 자기 자신/자기 하위로의 이동은 무한 중첩 — 차단.
@@ -1127,25 +1162,37 @@ class DsmPhotoSource:
                 )
             if src.rsplit("/", 1)[0] == dest_dir and not copy:
                 continue  # 이미 대상 폴더 안 — no-op
-            src_dirs.append(src)
-            names.append(src.rsplit("/", 1)[-1])
-        if src_dirs:
+            name = src.rsplit("/", 1)[-1]
+            if name in taken:
+                # 같은 이름 폴더가 대상에 있음. skip: 건너뜀. rename: name_1.
+                if conflict_strategy == "rename":
+                    new_name = self._unique_dir_name(taken, name)
+                    taken.add(new_name)
+                    renamed.append((src, new_name))
+                continue
+            taken.add(name)
+            plain.append(src)
+            plain_names.append(name)
+
+        if plain:
             # CopyMove는 디렉터리도 재귀 이동/복사한다 (실 NAS 검증 —
             # 2026-07-03 MobileBackup 평탄화 작업에서 대량 실사용).
             await self._copymove_chunked(
-                src_dirs, dest_dir, remove_src=not copy, on_progress=on_progress
+                plain, dest_dir, remove_src=not copy, on_progress=on_progress
             )
+        for src, new_name in renamed:
+            await self._place_renamed(
+                src, dest_dir, src.rsplit("/", 1)[-1], new_name, copy=copy
+            )
+
         invalidate_folder_cache(self._sid)
         invalidate_bucket_cache(self._sid)
-        # NOTE: 이동한 폴더는 tombstone하지 않는다. Synology가 이동 후 폴더 id를
-        # 그대로 유지하면(재색인이 경로만 갱신) tombstone이 대상 위치의 그 폴더
-        # 까지 숨겨 "옮긴 폴더가 안 보인다"가 된다(2026-07-04 실 NAS 보고).
-        # 원본 위치의 잔상은 프론트 지연 재조회(resettle)로 자연히 정리된다.
-        # (삭제는 되돌아올 대상이 없어 remove_folder에서 계속 tombstone.)
+        # NOTE: 이동한 폴더는 tombstone하지 않는다 (2026-07-04 실 NAS 보고 — 재색인이
+        # 폴더 id를 유지하면 대상 위치까지 숨는다). 원본 잔상은 프론트 resettle로 정리.
+        names = plain_names + [nn for _, nn in renamed]
         undo = [
-            {"src": src, "dest": f"{dest_dir}/{src.rsplit('/', 1)[-1]}"}
-            for src in src_dirs
-        ]
+            {"src": s, "dest": f"{dest_dir}/{n}"} for s, n in zip(plain, plain_names)
+        ] + [{"src": s, "dest": f"{dest_dir}/{nn}"} for s, nn in renamed]
         return {"names": names, "undo": undo}
 
     async def revert_move_folders(self, undo_payload: list, copy: bool) -> None:

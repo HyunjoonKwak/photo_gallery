@@ -159,11 +159,14 @@ export interface RemoveFolderRequest {
   target_user?: string;
 }
 
+export type FolderConflictStrategy = "ask" | "skip" | "rename";
+
 export interface MoveFoldersRequest {
   space: Space;
   folder_ids: string[];
   dest_folder_id: string;
   copy_mode: boolean;
+  conflict_strategy?: FolderConflictStrategy;
   target_user?: string;
   progress_key?: string;
 }

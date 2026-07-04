@@ -174,6 +174,8 @@ class PlacedItem(BaseModel):
 # buttons). skip: leave conflicting items alone. overwrite: replace the existing
 # file (destructive). rename: keep both via a "name_1.ext" suffix.
 ConflictStrategy = Literal["ask", "skip", "overwrite", "rename"]
+# Folder-level: no overwrite (replacing a whole subtree is too destructive).
+FolderConflictStrategy = Literal["ask", "skip", "rename"]
 
 
 class MoveRequest(BaseModel):
@@ -237,6 +239,9 @@ class MoveFoldersRequest(BaseModel):
     folder_ids: list[str] = Field(min_length=1, max_length=2000)
     dest_folder_id: str = Field(min_length=1, max_length=512)
     copy_mode: bool = False
+    # 대상에 같은 이름의 폴더가 있을 때: ask(기본, 409로 다이얼로그) / skip /
+    # rename(name_1). 폴더는 overwrite 미지원(전체 트리 소실이라 위험).
+    conflict_strategy: FolderConflictStrategy = "ask"
     target_user: str | None = Field(default=None, max_length=128)
     progress_key: str | None = Field(default=None, max_length=64)
 

@@ -495,6 +495,20 @@ class MockPhotoSource:
             it for it in self._classify_pool(space) if self._in_group(it.id, mod, rem)
         ]
 
+    async def folder_conflicts(
+        self, space: str, folder_ids: list[str], dest_folder_id: str
+    ) -> list[tuple[str, str]]:
+        dest = self._folder_by_id(dest_folder_id)
+        existing = {f.name for f in self._all_folders()}
+        out: list[tuple[str, str]] = []
+        for fid in folder_ids:
+            if fid == dest_folder_id:
+                continue
+            base = self._folder_by_id(fid).name.split("/")[-1]
+            if f"{dest.name}/{base}" in existing:
+                out.append((fid, base))
+        return out
+
     async def move_folders(
         self,
         space: str,
@@ -502,8 +516,10 @@ class MockPhotoSource:
         dest_folder_id: str,
         copy: bool,
         on_progress=None,
+        conflict_strategy: str = "skip",
     ) -> dict:
         dest = self._folder_by_id(dest_folder_id)
+        taken = {f.name for f in self._all_folders()}
         names: list[str] = []
         undo: list[dict] = []
         for fid in folder_ids:
@@ -514,19 +530,29 @@ class MockPhotoSource:
                 )
             f = self._folder_by_id(fid)
             base = f.name.split("/")[-1]
+            target = f"{dest.name}/{base}"
+            if target in taken:
+                if conflict_strategy != "rename":
+                    continue  # skip
+                n = 1
+                while f"{dest.name}/{base}_{n}" in taken:
+                    n += 1
+                base = f"{base}_{n}"
+                target = f"{dest.name}/{base}"
+            taken.add(target)
             names.append(base)
             if copy:
                 self._folder_seq += 1
                 nf = PhotoFolder(
                     id=f"f-{dest.space}-c{self._folder_seq}",
-                    name=f"{dest.name}/{base}",
+                    name=target,
                     space=dest.space,
                 )
                 self._custom_folders.append(nf)
                 undo.append({"kind": "copy", "id": nf.id})
             else:
                 undo.append({"kind": "move", "id": fid, "prev": f.name})
-                self._folder_renames[fid] = f"{dest.name}/{base}"
+                self._folder_renames[fid] = target
         return {"names": names, "undo": undo}
 
     async def revert_move_folders(self, undo_payload: list, copy: bool) -> None:

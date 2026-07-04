@@ -6,8 +6,13 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
-import type { ConflictStrategy, OperationResponse, Space } from "../api/types";
-import { useConflictStore, conflictsOf } from "../store/conflict";
+import type {
+  ConflictStrategy,
+  MoveFoldersRequest,
+  OperationResponse,
+  Space,
+} from "../api/types";
+import { useConflictStore, conflictInfoOf } from "../store/conflict";
 import { useProgressStore } from "../store/progress";
 import { useTimelineStore } from "../store/timeline";
 import { useToastStore } from "../store/toast";
@@ -114,15 +119,20 @@ export function useFileOps() {
     // dialog (globally, so drag-drop/액션바/라이트박스 이동 모두 커버) and retry
     // with the chosen strategy. Everything else is a plain error toast.
     onError: (err, variables) => {
-      const conflicts = conflictsOf(err);
-      if (!conflicts) return onError(err);
+      const info = conflictInfoOf(err);
+      if (!info) return onError(err);
       useConflictStore.getState().ask({
-        conflicts,
+        kind: info.kind,
+        names: info.names,
         copyMode: variables.copy_mode,
         onChoose: (strategy) => {
           const p = startProgress(variables.copy_mode ? "복사" : "이동");
           moveMutation.mutate(
-            { ...variables, conflict_strategy: strategy, progress_key: p.key },
+            {
+              ...variables,
+              conflict_strategy: strategy as ConflictStrategy,
+              progress_key: p.key,
+            },
             { onSettled: p.stop },
           );
         },
@@ -171,7 +181,28 @@ export function useFileOps() {
           : undefined,
       );
     },
-    onError,
+    // 대상에 같은 이름 폴더가 있으면 409 → 전역 다이얼로그(폴더 옵션: 이름변경/
+    // 건너뛰기), 선택 전략으로 재시도. 조용히 건너뛰던 문제 해결(2026-07-05).
+    onError: (err, variables) => {
+      const info = conflictInfoOf(err);
+      if (!info) return onError(err);
+      useConflictStore.getState().ask({
+        kind: info.kind,
+        names: info.names,
+        copyMode: variables.copy_mode,
+        onChoose: (strategy) => {
+          const p = startProgress(variables.copy_mode ? "폴더 복사" : "폴더 이동");
+          moveFoldersMutation.mutate(
+            {
+              ...variables,
+              conflict_strategy: strategy as MoveFoldersRequest["conflict_strategy"],
+              progress_key: p.key,
+            },
+            { onSettled: p.stop },
+          );
+        },
+      });
+    },
   });
 
   const rmdirMutation = useMutation({

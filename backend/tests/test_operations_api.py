@@ -318,6 +318,9 @@ def test_move_folders_all_noop_returns_conflict(tmp_path):
     from app.schemas import MoveFoldersRequest
 
     class _NoopSource:
+        async def folder_conflicts(self, *args, **kwargs):
+            return []  # no name clashes → proceed to move (which no-ops)
+
         async def move_folders(self, *args, **kwargs):
             return {"names": [], "undo": []}
 
@@ -331,6 +334,49 @@ def test_move_folders_all_noop_returns_conflict(tmp_path):
             )
         )
     assert exc.value.status_code == 409
+
+
+def test_move_folders_default_asks_on_name_conflict(client):
+    """대상에 같은 이름 폴더가 있으면 ask(기본)는 409+목록 → 조용히 건너뛰지
+    않는다 (2026-07-05 보고: 폴더 이동이 아무 변화 없이 성공 보고)."""
+    # 가족앨범 아래 "행사" 폴더 생성 → 최상위 "행사"를 가족앨범으로 옮기면 충돌.
+    client.post(
+        "/api/photos/folders",
+        json={"space": "team", "name": "행사", "parent_id": "f-team-1"},
+    )
+    resp = client.post(
+        "/api/photos/ops/move-folders",
+        json={
+            "space": "team",
+            "folder_ids": ["f-team-2"],
+            "dest_folder_id": "f-team-1",
+            "copy_mode": False,
+        },
+    )
+    assert resp.status_code == 409
+    detail = resp.json()["detail"]
+    assert detail["code"] == "folder_conflict"
+    assert detail["conflicts"] == [{"folder_id": "f-team-2", "name": "행사"}]
+
+
+def test_move_folders_rename_keeps_both(client):
+    client.post(
+        "/api/photos/folders",
+        json={"space": "team", "name": "행사", "parent_id": "f-team-1"},
+    )
+    op = client.post(
+        "/api/photos/ops/move-folders",
+        json={
+            "space": "team",
+            "folder_ids": ["f-team-2"],
+            "dest_folder_id": "f-team-1",
+            "copy_mode": False,
+            "conflict_strategy": "rename",
+        },
+    )
+    assert op.status_code == 200
+    names = {f["name"] for f in client.get("/api/photos/folders").json()["folders"]}
+    assert "가족앨범/행사" in names and "가족앨범/행사_1" in names
 
 
 def test_move_folder_into_itself_is_rejected(client):

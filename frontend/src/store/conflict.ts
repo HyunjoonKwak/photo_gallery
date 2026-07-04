@@ -1,14 +1,16 @@
-/** Global filename-conflict prompt. Any move/copy path (drag-drop, 액션바,
- * 라이트박스, 분할 뷰) triggers the same dialog via this store when the backend
- * answers 409 with the conflict list, so no move can silently skip files. */
+/** Global name-conflict prompt. Any move/copy path (드래그·액션바·라이트박스·
+ * 분할 뷰, 사진이든 폴더든) triggers the same dialog via this store when the
+ * backend answers 409 with the conflict list, so no move can silently skip. */
 
 import { create } from "zustand";
-import type { ConflictItem, ConflictStrategy } from "../api/types";
+
+export type ConflictKind = "file" | "folder";
 
 interface Pending {
-  conflicts: ConflictItem[];
+  kind: ConflictKind;
+  names: string[]; // conflicting filenames or folder names (display)
   copyMode: boolean;
-  onChoose: (strategy: ConflictStrategy) => void;
+  onChoose: (strategy: string) => void; // skip | rename | overwrite
 }
 
 interface ConflictState {
@@ -23,16 +25,24 @@ export const useConflictStore = create<ConflictState>()((set) => ({
   clear: () => set({ pending: null }),
 }));
 
-/** Extract the conflict list from an ApiError-shaped 409 detail, else null. */
-export function conflictsOf(err: unknown): ConflictItem[] | null {
-  const detail = (err as { status?: number; detail?: unknown })?.detail;
-  if (
-    (err as { status?: number })?.status === 409 &&
-    detail &&
-    typeof detail === "object" &&
-    (detail as { code?: unknown }).code === "filename_conflict"
-  ) {
-    return (detail as { conflicts: ConflictItem[] }).conflicts;
+/** Read a file/folder conflict out of an ApiError-shaped 409, else null. */
+export function conflictInfoOf(
+  err: unknown,
+): { kind: ConflictKind; names: string[] } | null {
+  const e = err as { status?: number; detail?: unknown };
+  if (e?.status !== 409 || !e.detail || typeof e.detail !== "object") return null;
+  const d = e.detail as { code?: string; conflicts?: unknown[] };
+  if (d.code === "filename_conflict") {
+    return {
+      kind: "file",
+      names: (d.conflicts ?? []).map((c) => (c as { filename: string }).filename),
+    };
+  }
+  if (d.code === "folder_conflict") {
+    return {
+      kind: "folder",
+      names: (d.conflicts ?? []).map((c) => (c as { name: string }).name),
+    };
   }
   return null;
 }
