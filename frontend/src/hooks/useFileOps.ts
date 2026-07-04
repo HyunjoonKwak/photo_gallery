@@ -51,6 +51,20 @@ function startProgress(label: string) {
 export function useFileOps() {
   const queryClient = useQueryClient();
 
+  // 폴더 이동/삭제는 파일시스템엔 즉시 반영되지만 Synology Photos 인덱스가
+  // 새 위치를 재색인할 때까지 옮긴 폴더가 목록에 안 나타난다(인덱스 지연,
+  // 2026-07-04 실 NAS 보고). 즉시 무효화는 옛 인덱스를 다시 읽을 뿐이라,
+  // 재색인이 따라잡을 시간을 두고 몇 차례 더 무효화해 자동으로 나타나게 한다.
+  const RESETTLE_MS = [1500, 4000, 8000];
+  const resettleFolders = () => {
+    for (const ms of RESETTLE_MS) {
+      window.setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ["folders"] });
+        queryClient.invalidateQueries({ queryKey: ["folder-counts"] });
+      }, ms);
+    }
+  };
+
   const invalidateAffected = (res: OperationResponse) => {
     // Buckets (counts changed) + only the touched day buckets + folder views.
     queryClient.invalidateQueries({ queryKey: ["buckets"] });
@@ -130,6 +144,7 @@ export function useFileOps() {
       queryClient.invalidateQueries({ queryKey: ["folder-counts"] });
       queryClient.invalidateQueries({ queryKey: ["buckets"] });
       queryClient.invalidateQueries({ queryKey: ["ops"] });
+      resettleFolders(); // 옮긴 폴더가 대상 위치에 재색인되는 대로 나타나게
       useToastStore.getState().push(
         `${res.summary}했습니다`,
         res.undoable
@@ -145,6 +160,7 @@ export function useFileOps() {
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ["folders"] });
       queryClient.invalidateQueries({ queryKey: ["ops"] });
+      resettleFolders(); // 삭제 반영이 인덱스에 늦게 잡혀도 결국 수렴하게
       useToastStore.getState().push(`${res.summary}했습니다`);
     },
     onError,

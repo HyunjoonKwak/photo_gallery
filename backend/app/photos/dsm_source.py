@@ -1011,7 +1011,6 @@ class DsmPhotoSource:
         dest_dir, _ = await self._dest_dir(dest_folder_id)
         src_dirs: list[str] = []
         names: list[str] = []
-        moved_ids: list[str] = []
         for fid in folder_ids:
             src, _ = await self._dest_dir(fid)
             # Guard: 자기 자신/자기 하위로의 이동은 무한 중첩 — 차단.
@@ -1023,7 +1022,6 @@ class DsmPhotoSource:
                 continue  # 이미 대상 폴더 안 — no-op
             src_dirs.append(src)
             names.append(src.rsplit("/", 1)[-1])
-            moved_ids.append(str(fid))
         if src_dirs:
             # CopyMove는 디렉터리도 재귀 이동/복사한다 (실 NAS 검증 —
             # 2026-07-03 MobileBackup 평탄화 작업에서 대량 실사용).
@@ -1032,12 +1030,11 @@ class DsmPhotoSource:
             )
         invalidate_folder_cache(self._sid)
         invalidate_bucket_cache(self._sid)
-        if not copy:
-            # 이동된 원본 폴더도 인덱스 재색인 전까지 트리에 남으므로 tombstone.
-            tomb = _REMOVED_FOLDERS.setdefault(self._sid, {})
-            now = _time.monotonic()
-            for fid in moved_ids:
-                tomb[fid] = now
+        # NOTE: 이동한 폴더는 tombstone하지 않는다. Synology가 이동 후 폴더 id를
+        # 그대로 유지하면(재색인이 경로만 갱신) tombstone이 대상 위치의 그 폴더
+        # 까지 숨겨 "옮긴 폴더가 안 보인다"가 된다(2026-07-04 실 NAS 보고).
+        # 원본 위치의 잔상은 프론트 지연 재조회(resettle)로 자연히 정리된다.
+        # (삭제는 되돌아올 대상이 없어 remove_folder에서 계속 tombstone.)
         undo = [
             {"src": src, "dest": f"{dest_dir}/{src.rsplit('/', 1)[-1]}"}
             for src in src_dirs
