@@ -89,10 +89,18 @@ async def execute_move(
     on_progress: ProgressFn | None = None,
 ) -> OperationResponse:
     outcome = await source.move(
-        req.space, req.item_ids, req.dest_folder_id, req.copy_mode, on_progress
+        req.space,
+        req.item_ids,
+        req.dest_folder_id,
+        req.copy_mode,
+        on_progress,
+        conflict_strategy=req.conflict_strategy,
     )
     verb = "복사" if req.copy_mode else "이동"
-    summary = f"{len(req.item_ids)}장을 '{outcome.dest_name or '대상'}' 폴더로 {verb}"
+    # 실제로 처리된 장수(skip으로 빠진 건 제외) — moved/created 기준.
+    handled = len(outcome.moved) + len(outcome.created_ids)
+    n = handled if req.copy_mode or outcome.moved else len(req.item_ids)
+    summary = f"{n}장을 '{outcome.dest_name or '대상'}' 폴더로 {verb}"
 
     payload = {
         "summary": summary,

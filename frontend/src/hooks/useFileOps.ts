@@ -6,7 +6,7 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
-import type { OperationResponse, Space } from "../api/types";
+import type { ConflictStrategy, OperationResponse, Space } from "../api/types";
 import { useProgressStore } from "../store/progress";
 import { useTimelineStore } from "../store/timeline";
 import { useToastStore } from "../store/toast";
@@ -180,7 +180,12 @@ export function useFileOps() {
   };
 
   return {
-    move: (itemIds: string[], folderId: string, copyMode: boolean) => {
+    move: (
+      itemIds: string[],
+      folderId: string,
+      copyMode: boolean,
+      conflictStrategy?: ConflictStrategy,
+    ) => {
       const p = startProgress(copyMode ? "복사" : "이동");
       moveMutation.mutate(
         {
@@ -188,12 +193,21 @@ export function useFileOps() {
           item_ids: itemIds,
           dest_folder_id: folderId,
           copy_mode: copyMode,
+          conflict_strategy: conflictStrategy,
           target_user: targetUser(),
           progress_key: p.key,
         },
         { onSettled: p.stop },
       );
     },
+    /** Pre-flight filename-collision check for a move/copy into a folder. */
+    checkConflicts: (itemIds: string[], folderId: string) =>
+      api.moveCheck({
+        space: spaceOf(itemIds),
+        item_ids: itemIds,
+        dest_folder_id: folderId,
+        target_user: targetUser(),
+      }),
     remove: (itemIds: string[], onSuccess?: () => void) => {
       const p = startProgress("삭제");
       deleteMutation.mutate(

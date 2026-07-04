@@ -35,8 +35,11 @@ from ..schemas import (
     DeleteRequest,
     FolderCountsResponse,
     FoldersResponse,
+    ConflictItem,
     ItemDetail,
     MembersResponse,
+    MoveCheckRequest,
+    MoveCheckResponse,
     MoveFoldersRequest,
     MoveRequest,
     OperationResponse,
@@ -224,6 +227,21 @@ async def list_place_items(
 
 
 # ------------------------------------------------------------ file operations
+
+
+@router.post("/ops/move-check", response_model=MoveCheckResponse)
+async def op_move_check(
+    req: MoveCheckRequest,
+    session: Session = Depends(get_current_session),
+    source: PhotoSource = Depends(get_photo_source),
+) -> MoveCheckResponse:
+    """Pre-flight: which selected items would collide by filename at the dest.
+    The frontend calls this before a move/copy to raise the 충돌 처리 dialog."""
+    _check_target_user(session, req.target_user)
+    pairs = await source.conflicts(req.space, req.item_ids, req.dest_folder_id)
+    return MoveCheckResponse(
+        conflicts=[ConflictItem(item_id=i, filename=f) for i, f in pairs]
+    )
 
 
 @router.post("/ops/move", response_model=OperationResponse)

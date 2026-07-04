@@ -35,6 +35,19 @@ from ..schemas import (
 )
 from .source import Affected, DeleteOutcome, MoveOutcome
 
+def _unique_name(taken: set[str], filename: str) -> str:
+    """photo.jpg → photo_1.jpg (or _2, …) not already in ``taken``."""
+    if "." in filename:
+        base, ext = filename.rsplit(".", 1)
+        ext = "." + ext
+    else:
+        base, ext = filename, ""
+    n = 1
+    while f"{base}_{n}{ext}" in taken:
+        n += 1
+    return f"{base}_{n}{ext}"
+
+
 # (w, h) aspect seeds — mixed portrait/landscape so justified layout is exercised.
 _ASPECTS = [(4, 3), (3, 4), (3, 2), (2, 3), (16, 9), (1, 1), (9, 16)]
 _DAYS_BACK = 540  # ~18 months of history
@@ -231,6 +244,8 @@ class MockPhotoSource:
         self._folder_seq = 0
         # 폴더 이동 시뮬레이션: id → 바뀐 이름 (mock 폴더는 flat이라 이름만)
         self._folder_renames: dict[str, str] = {}
+        # 충돌 rename 시뮬레이션: 이동된 아이템 id → 바뀐 파일명 (name_1.ext)
+        self._filename_override: dict[str, str] = {}
 
     # ------------------------------------------------------------ internals
     def _all_folders(self) -> list[PhotoFolder]:
@@ -276,6 +291,9 @@ class MockPhotoSource:
         if base.id != item_id:
             # A copy id ("-cN") resolves to its base pixels but keeps its own id.
             base = base.model_copy(update={"id": item_id})
+        override = self._filename_override.get(item_id)
+        if override:  # 충돌 rename으로 파일명이 바뀐 이동 아이템
+            base = base.model_copy(update={"filename": override})
         return base
 
     def _effective_loc(self, item_id: str) -> tuple[str, str | None]:
@@ -575,6 +593,27 @@ class MockPhotoSource:
             on_progress(done, total)
             await asyncio.sleep(0.1)
 
+    def _folder_filenames(self, folder_id: str | None) -> set[str]:
+        return {
+            self._resolve_item(iid).filename
+            for iid, (_, fid) in self._loc.items()
+            if fid == folder_id and iid not in self._deleted
+        }
+
+    async def conflicts(
+        self, space: str, item_ids: list[str], dest_folder_id: str
+    ) -> list[tuple[str, str]]:
+        dest = self._folder_by_id(dest_folder_id)
+        existing = self._folder_filenames(dest.id)
+        out: list[tuple[str, str]] = []
+        for iid in item_ids:
+            if iid in self._deleted:
+                continue
+            fn = self._resolve_item(iid).filename
+            if fn in existing:
+                out.append((iid, fn))
+        return out
+
     async def move(
         self,
         space: str,
@@ -582,11 +621,14 @@ class MockPhotoSource:
         dest_folder_id: str,
         copy: bool,
         on_progress=None,
+        conflict_strategy: str = "skip",
     ) -> MoveOutcome:
         # space is ignored: the mock encodes the space in each item id.
         dest = self._folder_by_id(dest_folder_id)
         outcome = MoveOutcome(dest_space=dest.space, dest_name=dest.name)
         affected: set[tuple[str, str]] = set()
+        existing = self._folder_filenames(dest.id)
+        taken = set(existing)
 
         for done, item_id in enumerate(item_ids, start=1):
             await self._tick(on_progress, done, len(item_ids))
@@ -597,10 +639,33 @@ class MockPhotoSource:
                 )
             item = self._resolve_item(item_id)
             day = self._day_of(item_id)
+            filename = item.filename
+            clash = filename in existing
+            dest_fn = filename
+
+            if clash and conflict_strategy == "skip":
+                continue
+            if clash and conflict_strategy == "overwrite":
+                # 기존 동명 파일 제거 (덮어쓰기 — 원본 소실, 비가역).
+                for other, (_, fid) in list(self._loc.items()):
+                    if (
+                        fid == dest.id
+                        and other not in self._deleted
+                        and self._resolve_item(other).filename == filename
+                    ):
+                        self._loc.pop(other, None)
+                        self._filename_override.pop(other, None)
+                        affected.add((dest.space, self._day_of(other)))
+            elif clash and conflict_strategy == "rename":
+                dest_fn = _unique_name(taken, filename)
+                taken.add(dest_fn)
+
             if copy:
                 self._copy_seq += 1
                 copy_id = f"{item_id}-c{self._copy_seq}"
-                self._extras[copy_id] = item.model_copy(update={"id": copy_id})
+                self._extras[copy_id] = item.model_copy(
+                    update={"id": copy_id, "filename": dest_fn}
+                )
                 self._loc[copy_id] = (dest.space, dest.id)
                 outcome.created_ids.append(copy_id)
                 affected.add((dest.space, day))
@@ -610,6 +675,8 @@ class MockPhotoSource:
                     PlacedItem(id=item_id, space=prev_space, folder_id=prev_folder, day=day)
                 )
                 self._loc[item_id] = (dest.space, dest.id)
+                if dest_fn != filename:
+                    self._filename_override[item_id] = dest_fn
                 affected.add((prev_space, day))
                 affected.add((dest.space, day))
 

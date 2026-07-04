@@ -2,7 +2,9 @@ import { useEffect, useState } from "react";
 import { useTimelineStore } from "../store/timeline";
 import { useFileOps } from "../hooks/useFileOps";
 import { useResizableWidth } from "../hooks/useResizableWidth";
-import type { PhotoFolder } from "../api/types";
+import { useToastStore } from "../store/toast";
+import type { ConflictItem, ConflictStrategy, PhotoFolder } from "../api/types";
+import { ConflictDialog } from "./ConflictDialog";
 import { FolderPane } from "./FolderPane";
 import { TreeSection, folderBasename } from "./FolderTree";
 
@@ -48,6 +50,31 @@ function DualActions({
     );
   };
 
+  // 사진 이동/복사: 먼저 파일명 충돌을 확인해 충돌이 있으면 처리 방법을 묻는다.
+  const [pending, setPending] = useState<{
+    copy: boolean;
+    conflicts: ConflictItem[];
+  } | null>(null);
+
+  const transferPhotos = async (copy: boolean) => {
+    const ids = [...selected];
+    try {
+      const { conflicts } = await ops.checkConflicts(ids, destCurrent!.id);
+      if (conflicts.length === 0) {
+        ops.move(ids, destCurrent!.id, copy);
+      } else {
+        setPending({ copy, conflicts });
+      }
+    } catch (err) {
+      useToastStore.getState().push((err as Error).message);
+    }
+  };
+
+  const resolveConflict = (strategy: ConflictStrategy) => {
+    if (pending) ops.move([...selected], destCurrent!.id, pending.copy, strategy);
+    setPending(null);
+  };
+
   const btn =
     "flex flex-col items-center gap-0.5 rounded-lg px-2 py-2 text-[11px] font-medium transition-colors disabled:opacity-30 lg:w-full";
 
@@ -60,11 +87,7 @@ function DualActions({
         {folderMode ? `📁${nf}개` : `${n}장`}
       </span>
       <button
-        onClick={() =>
-          folderMode
-            ? transferFolders(false)
-            : ops.move([...selected], destCurrent!.id, false)
-        }
+        onClick={() => (folderMode ? transferFolders(false) : transferPhotos(false))}
         disabled={!canTransfer}
         title={
           destCurrent
@@ -77,11 +100,7 @@ function DualActions({
         이동
       </button>
       <button
-        onClick={() =>
-          folderMode
-            ? transferFolders(true)
-            : ops.move([...selected], destCurrent!.id, true)
-        }
+        onClick={() => (folderMode ? transferFolders(true) : transferPhotos(true))}
         disabled={!canTransfer}
         title={
           destCurrent
@@ -106,6 +125,14 @@ function DualActions({
         <span className="text-base leading-none">🗑</span>
         삭제
       </button>
+      {pending && (
+        <ConflictDialog
+          conflicts={pending.conflicts}
+          copyMode={pending.copy}
+          onChoose={resolveConflict}
+          onCancel={() => setPending(null)}
+        />
+      )}
     </div>
   );
 }

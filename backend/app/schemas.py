@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -166,15 +168,41 @@ class PlacedItem(BaseModel):
     trash_path: str | None = None  # DSM: path inside the app trash folder
 
 
+# How to handle items whose filename already exists in the destination folder.
+# skip: leave conflicting items alone. overwrite: replace the existing file
+# (destructive — the overwritten original is gone). rename: keep both by giving
+# the incoming file a "name_1.ext" suffix.
+ConflictStrategy = Literal["skip", "overwrite", "rename"]
+
+
 class MoveRequest(BaseModel):
     space: str = "team"  # source space of the items (personal | team)
     item_ids: list[str] = Field(min_length=1, max_length=500)
     dest_folder_id: str
     copy_mode: bool = False
+    conflict_strategy: ConflictStrategy = "skip"
     # Set when an admin organizes another member's photos (audit trail).
     target_user: str | None = Field(default=None, max_length=128)
     # Client-generated key for count-based progress polling (B-6 진행 바).
     progress_key: str | None = Field(default=None, max_length=64)
+
+
+class MoveCheckRequest(BaseModel):
+    """Pre-flight: which items would collide by filename at the destination."""
+
+    space: str = "team"
+    item_ids: list[str] = Field(min_length=1, max_length=500)
+    dest_folder_id: str
+    target_user: str | None = Field(default=None, max_length=128)
+
+
+class ConflictItem(BaseModel):
+    item_id: str
+    filename: str
+
+
+class MoveCheckResponse(BaseModel):
+    conflicts: list[ConflictItem]
 
 
 class DeleteRequest(BaseModel):

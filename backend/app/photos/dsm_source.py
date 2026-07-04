@@ -691,7 +691,12 @@ class DsmPhotoSource:
         return "/photo" if space == "team" else "/home/Photos"
 
     async def _copymove(
-        self, src_paths: list[str], dest_dir: str, *, remove_src: bool
+        self,
+        src_paths: list[str],
+        dest_dir: str,
+        *,
+        remove_src: bool,
+        overwrite: bool = False,
     ) -> None:
         data = await self._dsm.call(
             "SYNO.FileStation.CopyMove",
@@ -702,10 +707,48 @@ class DsmPhotoSource:
                 "path": json.dumps(src_paths),
                 "dest_folder_path": dest_dir,
                 "remove_src": "true" if remove_src else "false",
-                "overwrite": "false",
+                "overwrite": "true" if overwrite else "false",
             },
         )
         await self._poll_task("SYNO.FileStation.CopyMove", 3, data.get("taskid"))
+
+    async def _rename(self, path: str, new_name: str) -> None:
+        data = await self._dsm.call(
+            "SYNO.FileStation.Rename",
+            "rename",
+            version=2,
+            sid=self._sid,
+            extra={"path": path, "name": new_name},
+        )
+        # Rename may run as a task (taskid) or return synchronously — poll if async.
+        if data.get("taskid"):
+            await self._poll_task("SYNO.FileStation.Rename", 2, data.get("taskid"))
+
+    async def _list_filenames(self, dir_path: str) -> set[str]:
+        """Filenames directly in a folder (filesystem truth), for conflict checks."""
+        try:
+            data = await self._dsm.call(
+                "SYNO.FileStation.List",
+                "list",
+                sid=self._sid,
+                extra={"folder_path": dir_path, "limit": 100000},
+            )
+        except DsmError:
+            return set()
+        return {f.get("name", "") for f in data.get("files", [])}
+
+    @staticmethod
+    def _unique_name(taken: set[str], filename: str) -> str:
+        """photo.jpg → photo_1.jpg (or _2, … ) not present in ``taken``."""
+        if "." in filename:
+            base, ext = filename.rsplit(".", 1)
+            ext = "." + ext
+        else:
+            base, ext = filename, ""
+        n = 1
+        while f"{base}_{n}{ext}" in taken:
+            n += 1
+        return f"{base}_{n}{ext}"
 
     async def _delete_paths(self, paths: list[str]) -> None:
         data = await self._dsm.call(
@@ -796,6 +839,18 @@ class DsmPhotoSource:
             if on_progress:
                 on_progress(min(start + len(chunk), total), total)
 
+    async def conflicts(
+        self, space: str, item_ids: list[str], dest_folder_id: str
+    ) -> list[tuple[str, str]]:
+        metas = await self._item_meta(space, item_ids)
+        dest_dir, _ = await self._dest_dir(dest_folder_id)
+        existing = await self._list_filenames(dest_dir)
+        return [
+            (i, metas[i]["filename"])
+            for i in item_ids
+            if i in metas and metas[i]["filename"] in existing
+        ]
+
     async def move(
         self,
         space: str,
@@ -803,38 +858,85 @@ class DsmPhotoSource:
         dest_folder_id: str,
         copy: bool,
         on_progress: ProgressFn | None = None,
+        conflict_strategy: str = "skip",
     ) -> MoveOutcome:
         metas = await self._item_meta(space, item_ids)
         dest_dir, dest_space = await self._dest_dir(dest_folder_id)
         dest_name = _FOLDER_META.get(self._sid, {}).get(dest_folder_id, (dest_space, ""))[1]
         outcome = MoveOutcome(dest_space=dest_space, dest_name=dest_name)
         affected: set[tuple[str, str]] = set()
-        src_paths = [metas[i]["path"] for i in item_ids if i in metas]
 
-        await self._copymove_chunked(
-            src_paths, dest_dir, remove_src=not copy, on_progress=on_progress
-        )
+        existing = await self._list_filenames(dest_dir)
+        present = [i for i in item_ids if i in metas]
+        clashing = [i for i in present if metas[i]["filename"] in existing]
+        clash_ids = set(clashing)
 
-        for item_id in item_ids:
-            m = metas.get(item_id)
-            if not m:
-                continue
-            day = m["day"]
-            dest_path = f"{dest_dir}/{m['filename']}"
-            affected.add((space, day))
-            affected.add((dest_space, day))
-            if copy:
-                outcome.created_ids.append(dest_path)  # DSM: path, not item id
-            else:
-                outcome.moved.append(
-                    PlacedItem(
-                        id=item_id, space=space, folder_id=m["folder_id"], day=day,
-                        src_path=m["path"], trash_path=dest_path,  # current location
-                    )
-                )
+        # Items that move under their own name: non-clashing always, plus the
+        # clashing ones when overwriting (they replace the existing file).
+        if conflict_strategy == "overwrite":
+            plain = present
+        else:  # skip or rename → clashing items are handled separately/omitted
+            plain = [i for i in present if i not in clash_ids]
+
+        if plain:
+            await self._copymove_chunked(
+                [metas[i]["path"] for i in plain],
+                dest_dir,
+                remove_src=not copy,
+                overwrite=(conflict_strategy == "overwrite"),
+                on_progress=on_progress,
+            )
+        for item_id in plain:
+            self._record_placed(outcome, affected, space, dest_space, dest_dir,
+                                 metas[item_id], item_id, copy, metas[item_id]["filename"])
+
+        # rename: give each clashing file a fresh "name_1.ext" and place it via a
+        # temp folder (CopyMove can't rename its target, so copy→rename→move).
+        if conflict_strategy == "rename" and clashing:
+            taken = set(existing)
+            for item_id in clashing:
+                m = metas[item_id]
+                new_name = self._unique_name(taken, m["filename"])
+                taken.add(new_name)
+                await self._place_renamed(m["path"], dest_dir, m["filename"],
+                                          new_name, copy=copy)
+                self._record_placed(outcome, affected, space, dest_space, dest_dir,
+                                    m, item_id, copy, new_name)
+
         outcome.affected = sorted(affected)
         self._invalidate(affected)
         return outcome
+
+    @staticmethod
+    def _record_placed(outcome, affected, space, dest_space, dest_dir, m, item_id,
+                       copy, dest_filename) -> None:
+        day = m["day"]
+        dest_path = f"{dest_dir}/{dest_filename}"
+        affected.add((space, day))
+        affected.add((dest_space, day))
+        if copy:
+            outcome.created_ids.append(dest_path)  # DSM: path, not item id
+        else:
+            outcome.moved.append(
+                PlacedItem(
+                    id=item_id, space=space, folder_id=m["folder_id"], day=day,
+                    src_path=m["path"], trash_path=dest_path,  # current location
+                )
+            )
+
+    async def _place_renamed(
+        self, src_path: str, dest_dir: str, filename: str, new_name: str, *, copy: bool
+    ) -> None:
+        # temp folder under dest so the copy/move never collides, then rename and
+        # move into place. '#'-prefixed → hidden from the folder tree.
+        tmp = f"{dest_dir}/#dup{_time.time_ns()}"
+        await self._ensure_dir(tmp)
+        try:
+            await self._copymove([src_path], tmp, remove_src=not copy)
+            await self._rename(f"{tmp}/{filename}", new_name)
+            await self._copymove([f"{tmp}/{new_name}"], dest_dir, remove_src=True)
+        finally:
+            await self._delete_paths([tmp])
 
     async def delete(
         self,

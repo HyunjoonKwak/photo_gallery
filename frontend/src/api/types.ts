@@ -102,14 +102,33 @@ export interface ItemDetail {
 
 // --- file operations ---
 
+export type ConflictStrategy = "skip" | "overwrite" | "rename";
+
 export interface MoveRequest {
   space: Space;
   item_ids: string[];
   dest_folder_id: string;
   copy_mode: boolean;
+  conflict_strategy?: ConflictStrategy;
   target_user?: string;
   /** Client-generated key for count-based progress polling. */
   progress_key?: string;
+}
+
+export interface MoveCheckRequest {
+  space: Space;
+  item_ids: string[];
+  dest_folder_id: string;
+  target_user?: string;
+}
+
+export interface ConflictItem {
+  item_id: string;
+  filename: string;
+}
+
+export interface MoveCheckResponse {
+  conflicts: ConflictItem[];
 }
 
 export interface DeleteRequest {

@@ -112,6 +112,96 @@ def test_copy_creates_new_item_and_undo_removes_it(client):
     assert len(restored) == before_count
 
 
+def _folder_filenames(client, folder_id):
+    items = client.get(
+        "/api/photos/folder-items", params={"folder_id": folder_id}
+    ).json()["items"]
+    return [i["filename"] for i in items]
+
+
+def _seed_conflict(client):
+    """가족앨범(f-team-1)에 사진 1장을 넣고, 같은 파일명이 다시 들어오도록
+    그 사진의 복사본을 대상으로 준비한다. (원본, 대상폴더에_이미있는_파일명)"""
+    _, items = _first_day_items(client)
+    original = items[0]["id"]
+    client.post(
+        "/api/photos/ops/move",
+        json={"item_ids": [original], "dest_folder_id": "f-team-1", "copy_mode": False},
+    )
+    fname = _folder_filenames(client, "f-team-1")[0]
+    # 복사본은 원본과 같은 파일명 → f-team-1에 다시 넣으면 충돌.
+    op = client.post(
+        "/api/photos/ops/move",
+        json={"item_ids": [original], "dest_folder_id": "f-team-2", "copy_mode": True},
+    ).json()
+    # op 응답엔 새 id가 없으니 f-team-2에서 복사본 id를 찾는다.
+    copy_id = client.get(
+        "/api/photos/folder-items", params={"folder_id": "f-team-2"}
+    ).json()["items"][0]["id"]
+    return copy_id, fname
+
+
+def test_move_check_reports_filename_conflicts(client):
+    copy_id, fname = _seed_conflict(client)
+    resp = client.post(
+        "/api/photos/ops/move-check",
+        json={"item_ids": [copy_id], "dest_folder_id": "f-team-1"},
+    )
+    assert resp.status_code == 200
+    conflicts = resp.json()["conflicts"]
+    assert conflicts == [{"item_id": copy_id, "filename": fname}]
+
+
+def test_move_skip_leaves_conflicting_item(client):
+    copy_id, _ = _seed_conflict(client)
+    before = len(_folder_filenames(client, "f-team-1"))
+    client.post(
+        "/api/photos/ops/move",
+        json={
+            "item_ids": [copy_id],
+            "dest_folder_id": "f-team-1",
+            "copy_mode": True,
+            "conflict_strategy": "skip",
+        },
+    )
+    # skip: 대상 폴더 파일 수 그대로.
+    assert len(_folder_filenames(client, "f-team-1")) == before
+
+
+def test_move_rename_keeps_both_with_suffix(client):
+    copy_id, fname = _seed_conflict(client)
+    base, ext = fname.rsplit(".", 1)
+    client.post(
+        "/api/photos/ops/move",
+        json={
+            "item_ids": [copy_id],
+            "dest_folder_id": "f-team-1",
+            "copy_mode": True,
+            "conflict_strategy": "rename",
+        },
+    )
+    names = _folder_filenames(client, "f-team-1")
+    assert fname in names and f"{base}_1.{ext}" in names
+
+
+def test_move_overwrite_replaces_and_keeps_one(client):
+    copy_id, fname = _seed_conflict(client)
+    before = len(_folder_filenames(client, "f-team-1"))
+    client.post(
+        "/api/photos/ops/move",
+        json={
+            "item_ids": [copy_id],
+            "dest_folder_id": "f-team-1",
+            "copy_mode": True,
+            "conflict_strategy": "overwrite",
+        },
+    )
+    names = _folder_filenames(client, "f-team-1")
+    # overwrite: 기존 동명 파일이 교체돼 파일 수는 그대로, 이름은 1개만.
+    assert len(names) == before
+    assert names.count(fname) == 1
+
+
 def test_delete_and_restore(client):
     day, items = _first_day_items(client)
     ids = [items[0]["id"]]

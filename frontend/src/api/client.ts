@@ -13,6 +13,8 @@ import type {
   LoginRequest,
   MembersResponse,
   MoveFoldersRequest,
+  MoveCheckRequest,
+  MoveCheckResponse,
   MoveRequest,
   OperationResponse,
   OperationsResponse,
@@ -136,6 +138,11 @@ export const api = {
   // source (homes vs own) from the dependency, which reads query params.
   opMove: (body: MoveRequest) =>
     request<OperationResponse>(`/api/photos/ops/move${ownerQS("?")}`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  moveCheck: (body: MoveCheckRequest) =>
+    request<MoveCheckResponse>(`/api/photos/ops/move-check${ownerQS("?")}`, {
       method: "POST",
       body: JSON.stringify(body),
     }),

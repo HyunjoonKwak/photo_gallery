@@ -142,6 +142,13 @@ class PhotoSource(Protocol):
         ...
 
     # ----------------------------------------------------------- write side
+    async def conflicts(
+        self, space: str, item_ids: list[str], dest_folder_id: str
+    ) -> list[tuple[str, str]]:
+        """(item_id, filename) pairs whose filename already exists in the dest
+        folder — the pre-flight check that drives the 충돌 처리 dialog."""
+        ...
+
     async def move(
         self,
         space: str,
@@ -149,12 +156,15 @@ class PhotoSource(Protocol):
         dest_folder_id: str,
         copy: bool,
         on_progress: ProgressFn | None = None,
+        conflict_strategy: str = "skip",
     ) -> MoveOutcome:
         """Move (or copy) items into a folder — cross-space allowed.
 
         ``space`` is the source space of the items (needed by the DSM source to
         resolve the share prefix; the mock source ignores it). ``on_progress``
         receives (done, total) as chunks complete (B-6 진행 바).
+        ``conflict_strategy`` decides same-filename handling: skip | overwrite |
+        rename (see schemas.ConflictStrategy).
         """
         ...
 
