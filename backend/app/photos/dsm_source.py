@@ -60,8 +60,26 @@ _TOP_FOLDER_CACHE: dict[str, tuple[float, list[PhotoFolder]]] = {}
 # App-trash item ids: sid -> (monotonic_ts, ids). Photos indexes /photo/#trash
 # like any folder, so listings must subtract these (see _trash_item_ids).
 _TRASH_ID_CACHE: dict[str, tuple[float, frozenset[str]]] = {}
+# Folder tombstones: sid -> {folder_id: removed_at}. FileStation deletes a
+# folder instantly but Browse.Folder (Photos index) keeps returning it until
+# reindexing (2026-07-04 실 NAS 보고: 삭제한 폴더가 트리에 계속 보임) — hide
+# removed ids for a grace window. A same-named recreate gets a NEW Foto id,
+# so tombstoning by id never hides a legitimate folder.
+_REMOVED_FOLDERS: dict[str, dict[str, float]] = {}
+_REMOVED_FOLDER_TTL = 600.0  # seconds — Photos reindex catches up well within
 _BUCKET_TTL = 300.0  # seconds
 _PAGE = 5000
+
+
+def _tombstoned_folders(sid: str) -> set[str]:
+    """Live tombstone ids for this sid (expired entries pruned in place)."""
+    entries = _REMOVED_FOLDERS.get(sid)
+    if not entries:
+        return set()
+    now = _time.monotonic()
+    for fid in [f for f, ts in entries.items() if now - ts > _REMOVED_FOLDER_TTL]:
+        entries.pop(fid, None)
+    return set(entries)
 
 
 def invalidate_bucket_cache(sid: str, space: str | None = None) -> None:
@@ -266,7 +284,12 @@ class DsmPhotoSource:
         the UI expands nodes on demand.
         """
         metas = _FOLDER_META.setdefault(self._sid, {})
+        tombstoned = _tombstoned_folders(self._sid)
         out: list[PhotoFolder] = []
+
+        def _keep(f: dict) -> bool:
+            # 시스템 폴더(#trash)와 방금 삭제됐지만 인덱스에 남은 폴더 제외.
+            return not self._is_system_folder(f) and str(f.get("id")) not in tombstoned
 
         if parent_id is None:
             cached = _TOP_FOLDER_CACHE.get(self._sid)
@@ -278,8 +301,8 @@ class DsmPhotoSource:
             )
             for space, children in (("team", team), ("personal", personal)):
                 for f in children:
-                    if self._is_system_folder(f):
-                        continue  # 앱 휴지통(#trash) 등은 트리에 노출하지 않음
+                    if not _keep(f):
+                        continue
                     pf = self._folder_from(f, space, parent_id=None)
                     metas[pf.id] = (space, pf.name)
                     out.append(pf)
@@ -291,7 +314,7 @@ class DsmPhotoSource:
             raise DsmError(100, "폴더를 먼저 탐색해야 합니다 (경로 캐시 없음).")
         space = meta[0]
         for f in await self._list_children(space, int(parent_id)):
-            if self._is_system_folder(f):
+            if not _keep(f):
                 continue
             pf = self._folder_from(f, space, parent_id=parent_id)
             metas[pf.id] = (space, pf.name)
@@ -972,6 +995,9 @@ class DsmPhotoSource:
             return False
         await self._delete_paths([dest_dir])
         invalidate_folder_cache(self._sid)
+        # Photos keeps listing the folder until it reindexes → hide it now
+        # (tombstone) so the tree drops it immediately after the toast.
+        _REMOVED_FOLDERS.setdefault(self._sid, {})[str(folder_id)] = _time.monotonic()
         return True
 
     async def move_folders(
@@ -985,6 +1011,7 @@ class DsmPhotoSource:
         dest_dir, _ = await self._dest_dir(dest_folder_id)
         src_dirs: list[str] = []
         names: list[str] = []
+        moved_ids: list[str] = []
         for fid in folder_ids:
             src, _ = await self._dest_dir(fid)
             # Guard: 자기 자신/자기 하위로의 이동은 무한 중첩 — 차단.
@@ -996,6 +1023,7 @@ class DsmPhotoSource:
                 continue  # 이미 대상 폴더 안 — no-op
             src_dirs.append(src)
             names.append(src.rsplit("/", 1)[-1])
+            moved_ids.append(str(fid))
         if src_dirs:
             # CopyMove는 디렉터리도 재귀 이동/복사한다 (실 NAS 검증 —
             # 2026-07-03 MobileBackup 평탄화 작업에서 대량 실사용).
@@ -1004,6 +1032,12 @@ class DsmPhotoSource:
             )
         invalidate_folder_cache(self._sid)
         invalidate_bucket_cache(self._sid)
+        if not copy:
+            # 이동된 원본 폴더도 인덱스 재색인 전까지 트리에 남으므로 tombstone.
+            tomb = _REMOVED_FOLDERS.setdefault(self._sid, {})
+            now = _time.monotonic()
+            for fid in moved_ids:
+                tomb[fid] = now
         undo = [
             {"src": src, "dest": f"{dest_dir}/{src.rsplit('/', 1)[-1]}"}
             for src in src_dirs
@@ -1018,6 +1052,9 @@ class DsmPhotoSource:
             for e in undo_payload:
                 parent = e["src"].rsplit("/", 1)[0]
                 await self._copymove([e["dest"]], parent, remove_src=True)
+            # 되돌린 원본 폴더가 트리에 다시 보여야 한다 — 혹 Photos가 폴더 id를
+            # 재사용하면 tombstone이 복원본을 가릴 수 있으므로 전부 해제.
+            _REMOVED_FOLDERS.pop(self._sid, None)
         invalidate_folder_cache(self._sid)
         invalidate_bucket_cache(self._sid)
 
