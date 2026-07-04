@@ -202,7 +202,10 @@ class MoveFoldersRequest(BaseModel):
     """폴더째(하위 전체 포함) 이동/복사 — 여러 폴더 한 번에."""
 
     space: str = "team"  # source space of the folders
-    folder_ids: list[str] = Field(min_length=1, max_length=100)
+    # "모두 선택"으로 한 위치의 하위 폴더 전체를 한 번에 옮길 수 있어야 한다
+    # (실 NAS: 한 폴더 아래 100개 초과 흔함). CopyMove는 25개씩 청크 처리하므로
+    # 상한은 병리적 요청 방지용 안전값.
+    folder_ids: list[str] = Field(min_length=1, max_length=2000)
     dest_folder_id: str = Field(min_length=1, max_length=512)
     copy_mode: bool = False
     target_user: str | None = Field(default=None, max_length=128)

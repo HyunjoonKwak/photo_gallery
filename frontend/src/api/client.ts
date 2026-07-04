@@ -44,6 +44,21 @@ export class ApiError extends Error {
   }
 }
 
+/** Pull a human message out of a FastAPI error body. `detail` is a plain
+ * string for HTTPException, but an array of {msg,loc} for 422 validation
+ * errors — surface the first message instead of a generic fallback. */
+function errorDetail(data: unknown): string {
+  if (data && typeof data === "object" && "detail" in data) {
+    const d = (data as { detail: unknown }).detail;
+    if (typeof d === "string") return d;
+    if (Array.isArray(d) && d.length > 0) {
+      const first = d[0] as { msg?: unknown };
+      if (typeof first?.msg === "string") return first.msg;
+    }
+  }
+  return "요청이 실패했습니다.";
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let resp: Response;
   try {
@@ -62,9 +77,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   const data = await resp.json().catch(() => null);
   if (!resp.ok) {
-    const detail =
-      data && typeof data.detail === "string" ? data.detail : "요청이 실패했습니다.";
-    throw new ApiError(resp.status, detail);
+    throw new ApiError(resp.status, errorDetail(data));
   }
   return data as T;
 }
