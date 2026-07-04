@@ -856,16 +856,32 @@ class DsmPhotoSource:
                 return f
         return PhotoFolder(id=f"{prefix}/{name}", name=f"/{name}", space=space)
 
+    # Synology sidecar dirs (@eaDir) and desktop droppings don't count as
+    # folder contents — DSM's own UI treats such folders as empty too.
+    _JUNK_ENTRIES = frozenset({".DS_Store", "Thumbs.db", "desktop.ini"})
+
     async def remove_folder(self, folder_id: str) -> bool:
         # SAFETY: only EMPTY folders are removable — this also backs the
         # folder-view 삭제 버튼, so a photo-bearing folder must never vanish.
+        # Emptiness is checked against the FILESYSTEM (FileStation.List), not
+        # the Photos index: the index lags both ways — it kept counting
+        # moved-out photos (blocking deletion of a truly empty folder,
+        # 2026-07-04 실 NAS 사용자 보고) and it can miss just-added files
+        # (which would delete them for good — photo share has no recycle bin).
         try:
-            if await self.folder_count(folder_id) > 0:
-                return False
-            if await self.folders(folder_id):
-                return False
             dest_dir, _ = await self._dest_dir(folder_id)
+            data = await self._dsm.call(
+                "SYNO.FileStation.List",
+                "list",
+                sid=self._sid,
+                extra={"folder_path": dest_dir, "limit": 1000},
+            )
         except DsmError:
+            return False
+        for entry in data.get("files", []):
+            name = entry.get("name", "")
+            if name.startswith("@") or name in self._JUNK_ENTRIES:
+                continue
             return False
         await self._delete_paths([dest_dir])
         invalidate_folder_cache(self._sid)
