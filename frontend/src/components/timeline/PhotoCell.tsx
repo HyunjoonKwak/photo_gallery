@@ -27,6 +27,10 @@ export const PhotoCell = memo(function PhotoCell({ cell }: { cell: CellLayout })
     id: item.id,
   });
   const [loaded, setLoaded] = useState(false);
+  // Synology가 해당 아이템의 썸네일을 생성하지 않았거나(특히 동영상) cache_key가
+  // 비면 이미지 로드가 실패한다 — 빈 회색칸 대신 폴백 표시로 전환.
+  const [failed, setFailed] = useState(false);
+  const noThumb = failed || !item.cache_key;
 
   const onCellClick = (e: React.MouseEvent) => {
     const store = useTimelineStore.getState();
@@ -72,16 +76,30 @@ export const PhotoCell = memo(function PhotoCell({ cell }: { cell: CellLayout })
         backgroundPosition: "center",
       }}
     >
-      <img
-        src={thumbnailUrl(space, item.id, item.cache_key, "sm")}
-        alt={item.filename}
-        loading="lazy"
-        draggable={false}
-        onLoad={() => setLoaded(true)}
-        className={`h-full w-full object-cover transition-all duration-200 ${
-          loaded ? "opacity-100" : "opacity-0"
-        } ${selected ? "scale-90 rounded" : ""}`}
-      />
+      {noThumb ? (
+        // 썸네일 없음: 동영상은 필름 톤 배경 + 큰 ▶, 사진은 파일 아이콘.
+        <div
+          className={`flex h-full w-full items-center justify-center ${
+            item.type === "video" ? "bg-slate-800 text-white/90" : "bg-slate-200 text-slate-400"
+          } ${selected ? "scale-90 rounded" : ""}`}
+        >
+          <span className="text-2xl leading-none">
+            {item.type === "video" ? "▶" : "🖼"}
+          </span>
+        </div>
+      ) : (
+        <img
+          src={thumbnailUrl(space, item.id, item.cache_key, "sm")}
+          alt={item.filename}
+          loading="lazy"
+          draggable={false}
+          onLoad={() => setLoaded(true)}
+          onError={() => setFailed(true)}
+          className={`h-full w-full object-cover transition-all duration-200 ${
+            loaded ? "opacity-100" : "opacity-0"
+          } ${selected ? "scale-90 rounded" : ""}`}
+        />
+      )}
       {item.type === "video" && (
         <span className="pointer-events-none absolute bottom-1.5 right-1.5 flex items-center gap-1 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">
           ▶{item.duration_ms != null && ` ${formatDuration(item.duration_ms)}`}
