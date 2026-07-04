@@ -57,11 +57,17 @@ _FOLDER_META: dict[str, dict[str, tuple[str, str]]] = {}
 # Top-level folders are the one slow level (DSM scans all top folders); cache
 # them per sid. Deeper levels are fast and fetched live.
 _TOP_FOLDER_CACHE: dict[str, tuple[float, list[PhotoFolder]]] = {}
+# App-trash item ids: sid -> (monotonic_ts, ids). Photos indexes /photo/#trash
+# like any folder, so listings must subtract these (see _trash_item_ids).
+_TRASH_ID_CACHE: dict[str, tuple[float, frozenset[str]]] = {}
 _BUCKET_TTL = 300.0  # seconds
 _PAGE = 5000
 
 
 def invalidate_bucket_cache(sid: str, space: str | None = None) -> None:
+    # Trash contents change on the same writes that stale the buckets
+    # (delete/restore/purge) — one invalidation hook covers both.
+    _TRASH_ID_CACHE.pop(sid, None)
     if space is None:
         for key in [k for k in _BUCKET_CACHE if k[0] == sid]:
             _BUCKET_CACHE.pop(key, None)
@@ -111,6 +117,7 @@ class DsmPhotoSource:
         if cached and (_time.monotonic() - cached[0]) < _BUCKET_TTL:
             return cached[1]
 
+        trash_ids = await self._trash_item_ids(space)
         counter: Counter[str] = Counter()
         offset = 0
         while True:
@@ -125,7 +132,7 @@ class DsmPhotoSource:
             items = data.get("list", [])
             for it in items:
                 ts = it.get("time")
-                if ts:
+                if ts and str(it.get("id")) not in trash_ids:
                     counter[date.fromtimestamp(ts).isoformat()] += 1
             if len(items) < _PAGE:
                 break
@@ -142,6 +149,7 @@ class DsmPhotoSource:
         d = date.fromisoformat(day)
         start = int(datetime(d.year, d.month, d.day).timestamp())
         end = int((datetime(d.year, d.month, d.day) + timedelta(days=1)).timestamp())
+        trash_ids = await self._trash_item_ids(space)
         # Page through the whole day — a single mobile-backup day can hold
         # thousands of photos, so a fixed limit would silently truncate it.
         out: list[PhotoItem] = []
@@ -163,11 +171,69 @@ class DsmPhotoSource:
                 },
             )
             page = data.get("list", [])
-            out.extend(self._to_item(it) for it in page)
+            out.extend(
+                self._to_item(it)
+                for it in page
+                if str(it.get("id")) not in trash_ids
+            )
             if len(page) < _PAGE:
                 break
             offset += _PAGE
         return out
+
+    async def _trash_item_ids(self, space: str = "team") -> frozenset[str]:
+        """Foto item ids currently in the app trash (/photo/#trash).
+
+        Synology Photos indexes the trash folder like any other folder, so
+        space-wide listings (timeline/search/classify) must subtract these
+        (2026-07-04 실 NAS 사용자 보고: 삭제 사진이 공용 타임라인에 노출).
+        The trash only holds pending deletes, so one small fetch per cache
+        window keeps the full-library paging additional-free.
+        """
+        if space != "team":  # trash lives in the team share only
+            return frozenset()
+        cached = _TRASH_ID_CACHE.get(self._sid)
+        if cached and (_time.monotonic() - cached[0]) < _BUCKET_TTL:
+            return cached[1]
+        try:
+            trash = next(
+                (
+                    f
+                    for f in await self._list_children("team", 0)
+                    if f.get("name") == f"/{self.TRASH_DIRNAME}"
+                ),
+                None,
+            )
+            ids: set[str] = set()
+            if trash is not None:
+                # Trash layout is one level deep (#trash/t<ns>/files); include
+                # the root itself in case files ever land there directly.
+                folder_ids = [int(trash["id"])] + [
+                    int(f["id"])
+                    for f in await self._list_children("team", int(trash["id"]))
+                ]
+                for fid in folder_ids:
+                    offset = 0
+                    while True:
+                        data = await self._dsm.call(
+                            _ns("team", "SYNO.Foto.Browse.Item"),
+                            "list",
+                            version=1,
+                            sid=self._sid,
+                            extra={"folder_id": fid, "offset": offset, "limit": 1000},
+                        )
+                        page = data.get("list", [])
+                        ids.update(str(it.get("id")) for it in page)
+                        if len(page) < 1000:
+                            break
+                        offset += 1000
+        except DsmError:
+            # Filtering is best-effort — a probe failure must not break the
+            # timeline. Uncached so the next call retries.
+            return frozenset()
+        result = frozenset(ids)
+        _TRASH_ID_CACHE[self._sid] = (_time.monotonic(), result)
+        return result
 
     @staticmethod
     def _to_item(it: dict) -> PhotoItem:
@@ -212,6 +278,8 @@ class DsmPhotoSource:
             )
             for space, children in (("team", team), ("personal", personal)):
                 for f in children:
+                    if self._is_system_folder(f):
+                        continue  # 앱 휴지통(#trash) 등은 트리에 노출하지 않음
                     pf = self._folder_from(f, space, parent_id=None)
                     metas[pf.id] = (space, pf.name)
                     out.append(pf)
@@ -223,10 +291,17 @@ class DsmPhotoSource:
             raise DsmError(100, "폴더를 먼저 탐색해야 합니다 (경로 캐시 없음).")
         space = meta[0]
         for f in await self._list_children(space, int(parent_id)):
+            if self._is_system_folder(f):
+                continue
             pf = self._folder_from(f, space, parent_id=parent_id)
             metas[pf.id] = (space, pf.name)
             out.append(pf)
         return out
+
+    @staticmethod
+    def _is_system_folder(f: dict) -> bool:
+        # '#'-prefixed basenames are app/system folders (#trash, DSM #recycle).
+        return f.get("name", "").rstrip("/").rsplit("/", 1)[-1].startswith("#")
 
     @staticmethod
     def _folder_from(f: dict, space: str, parent_id: str | None) -> PhotoFolder:
@@ -258,7 +333,9 @@ class DsmPhotoSource:
 
     async def _filtered_items(self, space: str, filters: dict) -> list[PhotoItem]:
         """All Browse.Item results matching a filter (folder/person/place),
-        fully paginated (limit-1000 truncation 방지)."""
+        fully paginated (limit-1000 truncation 방지). 휴지통 아이템은 제외
+        (인물/장소 태그는 삭제 후에도 인덱스에 남는다)."""
+        trash_ids = await self._trash_item_ids(space)
         out: list[PhotoItem] = []
         offset = 0
         page_size = 1000
@@ -276,7 +353,11 @@ class DsmPhotoSource:
                 },
             )
             page = data.get("list", [])
-            out.extend(self._to_item(it) for it in page)
+            out.extend(
+                self._to_item(it)
+                for it in page
+                if str(it.get("id")) not in trash_ids
+            )
             if len(page) < page_size:
                 break
             offset += page_size
@@ -379,6 +460,7 @@ class DsmPhotoSource:
     async def search_items(self, space: str, keyword: str) -> list[PhotoItem]:
         # SYNO.Foto(Team).Search.Search "list_item" — 실 NAS raw 검증
         # (2026-07-03): 한국어 키워드·폴더명 매칭 동작 확인.
+        trash_ids = await self._trash_item_ids(space)
         out: list[PhotoItem] = []
         offset = 0
         page_size = 500
@@ -396,7 +478,11 @@ class DsmPhotoSource:
                 },
             )
             page = data.get("list", [])
-            out.extend(self._to_item(it) for it in page)
+            out.extend(
+                self._to_item(it)
+                for it in page
+                if str(it.get("id")) not in trash_ids
+            )
             if len(page) < page_size:
                 break
             offset += page_size
@@ -567,7 +653,8 @@ class DsmPhotoSource:
     #   휴지통 폴더(/photo/#trash/<time_ns>/)로 CopyMove. 복원은 역이동.
     # - 복사 취소(undo)만 실제 Delete(영구) — 방금 만든 사본이므로 안전.
     # 재인덱싱 지연으로 buckets 캐시는 쓰기 후 무효화한다.
-    TRASH_ROOT = "/photo/#trash"
+    TRASH_DIRNAME = "#trash"
+    TRASH_ROOT = f"/photo/{TRASH_DIRNAME}"
 
     def _share_prefix(self, space: str) -> str:
         # 실 NAS 검증(2026-07): 공용 = /photo, 개인 = /home/Photos(로그인 사용자
