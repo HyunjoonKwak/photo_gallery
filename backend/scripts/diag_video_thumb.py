@@ -65,6 +65,44 @@ async def main() -> None:
         video = next((it for it in items if it.get("type") == "video"), None)
         photo = next((it for it in items if it.get("type") != "video"), None)
 
+        # 라이브러리 전체 동영상 썸네일 상태 조사 — sm broken 비율과, 그중 m/xl로
+        # 살릴 수 있는 비율을 집계해 "sm이 원인인지 + 폴백이 먹히는지" 확증한다.
+        print("[survey] 전체 동영상 썸네일 상태 스캔 중...")
+        offset = 0
+        vids = 0
+        sm_broken = 0
+        sm_broken_m_ready = 0
+        sm_broken_all_broken = 0
+        no_cache_key = 0
+        while True:
+            page = (await dsm.call(
+                _ns(space, "SYNO.Foto.Browse.Item"), "list", version=1, sid=sid,
+                extra={"offset": offset, "limit": 1000,
+                       "additional": json.dumps(["thumbnail"])},
+            )).get("list", [])
+            for it in page:
+                if it.get("type") != "video":
+                    continue
+                vids += 1
+                th = (it.get("additional") or {}).get("thumbnail") or {}
+                if not th.get("cache_key"):
+                    no_cache_key += 1
+                    continue
+                if th.get("sm") != "ready":
+                    sm_broken += 1
+                    if th.get("m") == "ready" or th.get("xl") == "ready":
+                        sm_broken_m_ready += 1
+                    else:
+                        sm_broken_all_broken += 1
+            if len(page) < 1000:
+                break
+            offset += 1000
+        print(f"  동영상 총 {vids}개")
+        print(f"  sm 정상(ready)          : {vids - sm_broken - no_cache_key}")
+        print(f"  sm broken → m/xl로 복구가능: {sm_broken_m_ready}  ← 배포하면 이만큼 살아남")
+        print(f"  sm broken → 전부 broken   : {sm_broken_all_broken}  ← 폴백 타일 표시")
+        print(f"  cache_key 없음            : {no_cache_key}\n")
+
         for label, it in (("VIDEO", video), ("PHOTO", photo)):
             if not it:
                 print(f"[{label}] 목록에서 찾지 못함 (limit 200 내)\n")

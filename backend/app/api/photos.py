@@ -49,7 +49,9 @@ from .deps import get_current_session, get_photo_source
 router = APIRouter(prefix="/api/photos", tags=["photos"])
 
 Space = Literal["personal", "team"]
-ThumbSize = Literal["sm", "xl"]
+# sm=grid, m=sm이 broken일 때 폴백(동영상 등), xl=라이트박스. 전부 DSM 실제
+# 썸네일 사이즈명과 1:1 (SYNO.Foto.Thumbnail size 파라미터).
+ThumbSize = Literal["sm", "m", "xl"]
 
 
 def _check_target_user(session: Session, target_user: str | None) -> None:

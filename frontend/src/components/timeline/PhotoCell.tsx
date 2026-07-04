@@ -27,10 +27,20 @@ export const PhotoCell = memo(function PhotoCell({ cell }: { cell: CellLayout })
     id: item.id,
   });
   const [loaded, setLoaded] = useState(false);
-  // Synology가 해당 아이템의 썸네일을 생성하지 않았거나(특히 동영상) cache_key가
-  // 비면 이미지 로드가 실패한다 — 빈 회색칸 대신 폴백 표시로 전환.
+  // Synology는 사이즈별로 썸네일을 따로 만든다 — 동영상은 작은(sm) 프레임이
+  // "broken"인데 중간(m)은 있는 경우가 흔하다. sm 실패 시 m으로 한 번 승격,
+  // 그래도 없으면(또는 cache_key 자체가 없으면) 폴백 타일 표시.
+  const [size, setSize] = useState<"sm" | "m">("sm");
   const [failed, setFailed] = useState(false);
   const noThumb = failed || !item.cache_key;
+  const onImgError = () => {
+    if (size === "sm") {
+      setSize("m");
+      setLoaded(false);
+    } else {
+      setFailed(true);
+    }
+  };
 
   const onCellClick = (e: React.MouseEvent) => {
     const store = useTimelineStore.getState();
@@ -89,12 +99,12 @@ export const PhotoCell = memo(function PhotoCell({ cell }: { cell: CellLayout })
         </div>
       ) : (
         <img
-          src={thumbnailUrl(space, item.id, item.cache_key, "sm")}
+          src={thumbnailUrl(space, item.id, item.cache_key, size)}
           alt={item.filename}
           loading="lazy"
           draggable={false}
           onLoad={() => setLoaded(true)}
-          onError={() => setFailed(true)}
+          onError={onImgError}
           className={`h-full w-full object-cover transition-all duration-200 ${
             loaded ? "opacity-100" : "opacity-0"
           } ${selected ? "scale-90 rounded" : ""}`}

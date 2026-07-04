@@ -191,7 +191,7 @@ export function thumbnailUrl(
   space: Space,
   id: string,
   cacheKey: string,
-  size: "sm" | "xl",
+  size: "sm" | "m" | "xl",
 ): string {
   const q = new URLSearchParams({ space, id, cache_key: cacheKey, size });
   const owner = useTimelineStore.getState().viewedOwner;
