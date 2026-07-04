@@ -2,9 +2,7 @@ import { useEffect, useState } from "react";
 import { useTimelineStore } from "../store/timeline";
 import { useFileOps } from "../hooks/useFileOps";
 import { useResizableWidth } from "../hooks/useResizableWidth";
-import { useToastStore } from "../store/toast";
-import type { ConflictItem, ConflictStrategy, PhotoFolder } from "../api/types";
-import { ConflictDialog } from "./ConflictDialog";
+import type { PhotoFolder } from "../api/types";
 import { FolderPane } from "./FolderPane";
 import { TreeSection, folderBasename } from "./FolderTree";
 
@@ -50,30 +48,10 @@ function DualActions({
     );
   };
 
-  // 사진 이동/복사: 먼저 파일명 충돌을 확인해 충돌이 있으면 처리 방법을 묻는다.
-  const [pending, setPending] = useState<{
-    copy: boolean;
-    conflicts: ConflictItem[];
-  } | null>(null);
-
-  const transferPhotos = async (copy: boolean) => {
-    const ids = [...selected];
-    try {
-      const { conflicts } = await ops.checkConflicts(ids, destCurrent!.id);
-      if (conflicts.length === 0) {
-        ops.move(ids, destCurrent!.id, copy);
-      } else {
-        setPending({ copy, conflicts });
-      }
-    } catch (err) {
-      useToastStore.getState().push((err as Error).message);
-    }
-  };
-
-  const resolveConflict = (strategy: ConflictStrategy) => {
-    if (pending) ops.move([...selected], destCurrent!.id, pending.copy, strategy);
-    setPending(null);
-  };
+  // 사진 이동/복사: 충돌은 백엔드가 409로 알려 전역 다이얼로그가 처리한다
+  // (ConflictDialogHost) — 여기선 그냥 이동을 호출한다.
+  const transferPhotos = (copy: boolean) =>
+    ops.move([...selected], destCurrent!.id, copy);
 
   const btn =
     "flex flex-col items-center gap-0.5 rounded-lg px-2 py-2 text-[11px] font-medium transition-colors disabled:opacity-30 lg:w-full";
@@ -125,14 +103,6 @@ function DualActions({
         <span className="text-base leading-none">🗑</span>
         삭제
       </button>
-      {pending && (
-        <ConflictDialog
-          conflicts={pending.conflicts}
-          copyMode={pending.copy}
-          onChoose={resolveConflict}
-          onCancel={() => setPending(null)}
-        />
-      )}
     </div>
   );
 }

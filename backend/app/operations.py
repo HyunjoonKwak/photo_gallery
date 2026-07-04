@@ -88,13 +88,35 @@ async def execute_move(
     req: MoveRequest,
     on_progress: ProgressFn | None = None,
 ) -> OperationResponse:
+    # "ask" (default): surface filename collisions to the client as a 409 so it
+    # can raise the 처리 방법 dialog — this covers EVERY move path (drag-drop,
+    # 액션바, 라이트박스), not just the dual-pane buttons. The client then retries
+    # with an explicit skip/overwrite/rename.
+    strategy = req.conflict_strategy
+    if strategy == "ask":
+        clashes = await source.conflicts(
+            req.space, req.item_ids, req.dest_folder_id
+        )
+        if clashes:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "filename_conflict",
+                    "message": f"같은 이름의 사진 {len(clashes)}장이 대상 폴더에 있습니다.",
+                    "conflicts": [
+                        {"item_id": i, "filename": f} for i, f in clashes
+                    ],
+                },
+            )
+        strategy = "skip"  # no clashes → strategy is moot
+
     outcome = await source.move(
         req.space,
         req.item_ids,
         req.dest_folder_id,
         req.copy_mode,
         on_progress,
-        conflict_strategy=req.conflict_strategy,
+        conflict_strategy=strategy,
     )
     verb = "복사" if req.copy_mode else "이동"
     # 실제로 처리된 장수(skip으로 빠진 건 제외) — moved/created 기준.

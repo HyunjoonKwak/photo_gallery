@@ -1,4 +1,24 @@
 import type { ConflictItem, ConflictStrategy } from "../api/types";
+import { useConflictStore } from "../store/conflict";
+
+/** App-root host: renders the conflict dialog whenever any move/copy hits a
+ * filename collision (the backend 409 populates the store from useFileOps). */
+export function ConflictDialogHost() {
+  const pending = useConflictStore((s) => s.pending);
+  const clear = useConflictStore((s) => s.clear);
+  if (!pending) return null;
+  return (
+    <ConflictDialog
+      conflicts={pending.conflicts}
+      copyMode={pending.copyMode}
+      onChoose={(strategy) => {
+        pending.onChoose(strategy);
+        clear();
+      }}
+      onCancel={clear}
+    />
+  );
+}
 
 /** Same-filename collision dialog for move/copy into a folder.
  *

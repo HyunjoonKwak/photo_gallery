@@ -169,10 +169,11 @@ class PlacedItem(BaseModel):
 
 
 # How to handle items whose filename already exists in the destination folder.
-# skip: leave conflicting items alone. overwrite: replace the existing file
-# (destructive — the overwritten original is gone). rename: keep both by giving
-# the incoming file a "name_1.ext" suffix.
-ConflictStrategy = Literal["skip", "overwrite", "rename"]
+# ask: default — the backend answers 409 with the conflict list so the client
+# raises the 처리 방법 dialog (covers every move path, not just the dual-pane
+# buttons). skip: leave conflicting items alone. overwrite: replace the existing
+# file (destructive). rename: keep both via a "name_1.ext" suffix.
+ConflictStrategy = Literal["ask", "skip", "overwrite", "rename"]
 
 
 class MoveRequest(BaseModel):
@@ -180,7 +181,7 @@ class MoveRequest(BaseModel):
     item_ids: list[str] = Field(min_length=1, max_length=500)
     dest_folder_id: str
     copy_mode: bool = False
-    conflict_strategy: ConflictStrategy = "skip"
+    conflict_strategy: ConflictStrategy = "ask"
     # Set when an admin organizes another member's photos (audit trail).
     target_user: str | None = Field(default=None, max_length=128)
     # Client-generated key for count-based progress polling (B-6 진행 바).

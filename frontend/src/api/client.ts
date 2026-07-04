@@ -40,15 +40,19 @@ function ownerQS(prefix: "&" | "?" = "&"): string {
 /** Error carrying the backend's friendly message + HTTP status. */
 export class ApiError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  /** Raw FastAPI `detail` — a string, a 422 error array, or a structured
+   * object (e.g. the filename-conflict payload). Callers inspect it directly. */
+  detail: unknown;
+  constructor(status: number, message: string, detail?: unknown) {
     super(message);
     this.status = status;
+    this.detail = detail;
   }
 }
 
 /** Pull a human message out of a FastAPI error body. `detail` is a plain
- * string for HTTPException, but an array of {msg,loc} for 422 validation
- * errors — surface the first message instead of a generic fallback. */
+ * string for HTTPException, an array of {msg,loc} for 422 validation errors,
+ * or a structured object (with its own `message`) for richer errors. */
 function errorDetail(data: unknown): string {
   if (data && typeof data === "object" && "detail" in data) {
     const d = (data as { detail: unknown }).detail;
@@ -56,6 +60,9 @@ function errorDetail(data: unknown): string {
     if (Array.isArray(d) && d.length > 0) {
       const first = d[0] as { msg?: unknown };
       if (typeof first?.msg === "string") return first.msg;
+    }
+    if (d && typeof d === "object" && typeof (d as { message?: unknown }).message === "string") {
+      return (d as { message: string }).message;
     }
   }
   return "요청이 실패했습니다.";
@@ -79,7 +86,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   const data = await resp.json().catch(() => null);
   if (!resp.ok) {
-    throw new ApiError(resp.status, errorDetail(data));
+    const raw =
+      data && typeof data === "object" ? (data as { detail?: unknown }).detail : undefined;
+    throw new ApiError(resp.status, errorDetail(data), raw);
   }
   return data as T;
 }

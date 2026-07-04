@@ -7,6 +7,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import type { ConflictStrategy, OperationResponse, Space } from "../api/types";
+import { useConflictStore, conflictsOf } from "../store/conflict";
 import { useProgressStore } from "../store/progress";
 import { useTimelineStore } from "../store/timeline";
 import { useToastStore } from "../store/toast";
@@ -109,7 +110,24 @@ export function useFileOps() {
   const moveMutation = useMutation({
     mutationFn: api.opMove,
     onSuccess: afterOperation,
-    onError,
+    // Filename collisions come back as 409+conflict list: raise the 처리 방법
+    // dialog (globally, so drag-drop/액션바/라이트박스 이동 모두 커버) and retry
+    // with the chosen strategy. Everything else is a plain error toast.
+    onError: (err, variables) => {
+      const conflicts = conflictsOf(err);
+      if (!conflicts) return onError(err);
+      useConflictStore.getState().ask({
+        conflicts,
+        copyMode: variables.copy_mode,
+        onChoose: (strategy) => {
+          const p = startProgress(variables.copy_mode ? "복사" : "이동");
+          moveMutation.mutate(
+            { ...variables, conflict_strategy: strategy, progress_key: p.key },
+            { onSettled: p.stop },
+          );
+        },
+      });
+    },
   });
   const deleteMutation = useMutation({
     mutationFn: api.opDelete,
@@ -200,14 +218,6 @@ export function useFileOps() {
         { onSettled: p.stop },
       );
     },
-    /** Pre-flight filename-collision check for a move/copy into a folder. */
-    checkConflicts: (itemIds: string[], folderId: string) =>
-      api.moveCheck({
-        space: spaceOf(itemIds),
-        item_ids: itemIds,
-        dest_folder_id: folderId,
-        target_user: targetUser(),
-      }),
     remove: (itemIds: string[], onSuccess?: () => void) => {
       const p = startProgress("삭제");
       deleteMutation.mutate(

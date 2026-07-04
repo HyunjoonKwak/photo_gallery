@@ -152,6 +152,29 @@ def test_move_check_reports_filename_conflicts(client):
     assert conflicts == [{"item_id": copy_id, "filename": fname}]
 
 
+def test_move_default_asks_on_conflict_with_409(client):
+    """전략 미지정(ask) + 충돌 → 409 + 충돌 목록. 어느 이동 경로든 조용히
+    건너뛰지 않고 클라이언트가 다이얼로그를 띄우게 한다 (2026-07-05 보고)."""
+    copy_id, fname = _seed_conflict(client)
+    resp = client.post(
+        "/api/photos/ops/move",
+        json={"item_ids": [copy_id], "dest_folder_id": "f-team-1", "copy_mode": True},
+    )
+    assert resp.status_code == 409
+    detail = resp.json()["detail"]
+    assert detail["code"] == "filename_conflict"
+    assert detail["conflicts"] == [{"item_id": copy_id, "filename": fname}]
+
+
+def test_move_default_no_conflict_proceeds(client):
+    _, items = _first_day_items(client)
+    resp = client.post(
+        "/api/photos/ops/move",
+        json={"item_ids": [items[0]["id"]], "dest_folder_id": "f-team-3"},
+    )
+    assert resp.status_code == 200  # 충돌 없으면 ask라도 그대로 진행
+
+
 def test_move_skip_leaves_conflicting_item(client):
     copy_id, _ = _seed_conflict(client)
     before = len(_folder_filenames(client, "f-team-1"))

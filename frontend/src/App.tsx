@@ -11,6 +11,7 @@ import { OperationsPanel } from "./components/OperationsPanel";
 import { BottomTabBar } from "./components/BottomTabBar";
 import { BulkProgress } from "./components/BulkProgress";
 import { Toasts } from "./components/Toasts";
+import { ConflictDialogHost } from "./components/ConflictDialog";
 
 // 보기(무엇을 볼지) — 주 메뉴. 아이콘으로 성격을 구분.
 const VIEWS: { mode: ViewMode; label: string; icon: string }[] = [
@@ -310,6 +311,7 @@ export default function App() {
       {showOps && <OperationsPanel onClose={() => setShowOps(false)} />}
       <BulkProgress />
       <Toasts />
+      <ConflictDialogHost />
     </div>
   );
 }

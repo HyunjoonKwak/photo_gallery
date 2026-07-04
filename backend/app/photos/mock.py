@@ -277,24 +277,26 @@ class MockPhotoSource:
 
     def _resolve_item(self, item_id: str) -> PhotoItem:
         """The PhotoItem object for an id (copy, trash snapshot, or generated)."""
-        if item_id in self._extras:
-            return self._extras[item_id]
         if item_id in self._deleted:
-            return self._deleted[item_id][0]
-        space, day, idx = _parse_id(item_id)
-        generated = _generate_day(space, day)
-        if idx >= len(generated):
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="사진을 찾을 수 없습니다."
-            )
-        base = generated[idx]
-        if base.id != item_id:
-            # A copy id ("-cN") resolves to its base pixels but keeps its own id.
-            base = base.model_copy(update={"id": item_id})
+            return self._deleted[item_id][0]  # trash snapshot — fixed at delete
+        if item_id in self._extras:
+            item = self._extras[item_id]
+        else:
+            space, day, idx = _parse_id(item_id)
+            generated = _generate_day(space, day)
+            if idx >= len(generated):
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="사진을 찾을 수 없습니다.",
+                )
+            item = generated[idx]
+            if item.id != item_id:
+                # A copy id ("-cN") resolves to its base pixels but keeps its id.
+                item = item.model_copy(update={"id": item_id})
         override = self._filename_override.get(item_id)
-        if override:  # 충돌 rename으로 파일명이 바뀐 이동 아이템
-            base = base.model_copy(update={"filename": override})
-        return base
+        if override:  # 충돌 rename으로 파일명이 바뀐 이동 아이템 (extras 포함)
+            item = item.model_copy(update={"filename": override})
+        return item
 
     def _effective_loc(self, item_id: str) -> tuple[str, str | None]:
         loc = self._loc.get(item_id)
