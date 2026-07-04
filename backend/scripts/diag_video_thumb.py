@@ -21,7 +21,12 @@ import sys
 
 import httpx
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+# app 패키지를 어디서 실행하든(호스트 backend/, 컨테이너 /app, stdin 파이프)
+# import 가능하게 — __file__ 비의존(stdin 실행 시 __file__ 없음).
+for _p in (os.getcwd(), os.path.join(os.getcwd(), "backend")):
+    if os.path.isdir(os.path.join(_p, "app")) and _p not in sys.path:
+        sys.path.insert(0, _p)
+        break
 
 from app.dsm.client import DsmClient  # noqa: E402
 
