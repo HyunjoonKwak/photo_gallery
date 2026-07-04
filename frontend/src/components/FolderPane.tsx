@@ -166,6 +166,8 @@ export interface FolderPaneProps {
    * 미전달 시(단일 뷰) 체크박스 자체를 렌더하지 않는다. */
   checkedFolderIds?: Set<string>;
   onToggleFolderCheck?: (f: PhotoFolder) => void;
+  /** 현재 페인의 하위 폴더 전체 선택/해제 (분할 뷰 모두 선택 버튼). */
+  onToggleAllFolders?: (folders: PhotoFolder[], on: boolean) => void;
 }
 
 /** One Finder-style folder pane: breadcrumb + sub-folder cards (drill-in) +
@@ -181,6 +183,7 @@ export function FolderPane({
   dropTarget = false,
   checkedFolderIds,
   onToggleFolderCheck,
+  onToggleAllFolders,
 }: FolderPaneProps) {
   const current = path.length ? path[path.length - 1] : null;
   const setOrdered = useTimelineStore((s) => s.setOrdered);
@@ -278,6 +281,14 @@ export function FolderPane({
     return n === items.length ? ("all" as const) : ("some" as const);
   });
 
+  // 하위 폴더 모두 선택 토글 상태 (분할 뷰) — checkedFolderIds에서 파생.
+  const folderSelState = useMemo(() => {
+    if (subFolders.length === 0) return "none" as const;
+    const n = subFolders.filter((f) => checkedFolderIds?.has(f.id)).length;
+    if (n === 0) return "none" as const;
+    return n === subFolders.length ? ("all" as const) : ("some" as const);
+  }, [subFolders, checkedFolderIds]);
+
   // Background drop target → move into this pane's current folder.
   const bgDrop = useDroppable({
     id: `${dndPrefix}bg`,
@@ -373,11 +384,33 @@ export function FolderPane({
         )}
         {subFolders.length > 0 && (
           <section className="py-3">
-            <div className="mb-1 flex items-center justify-between">
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <h3 className="shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-400">
                 {current ? "하위 폴더" : "폴더"} ({subFolders.length})
               </h3>
-              <nav className="flex gap-0.5 rounded-lg bg-slate-100 p-0.5">
+              {/* 분할 뷰: 이 페인의 하위 폴더 모두 선택/해제 */}
+              {onToggleFolderCheck && onToggleAllFolders && (
+                <button
+                  onClick={() =>
+                    onToggleAllFolders(subFolders, folderSelState !== "all")
+                  }
+                  className="ml-auto flex items-center gap-1.5 rounded-lg px-2 py-0.5 text-xs text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                >
+                  <span
+                    className={`flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold ${
+                      folderSelState === "all"
+                        ? "bg-blue-600 text-white"
+                        : folderSelState === "some"
+                          ? "bg-blue-200 text-blue-700"
+                          : "bg-slate-200 text-slate-500"
+                    }`}
+                  >
+                    {folderSelState === "some" ? "–" : "✓"}
+                  </span>
+                  {folderSelState === "all" ? "모두 해제" : "모두 선택"}
+                </button>
+              )}
+              <nav className="flex shrink-0 gap-0.5 rounded-lg bg-slate-100 p-0.5">
                 <button
                   onClick={() => setFolderDisplay("grid")}
                   title="아이콘 보기"

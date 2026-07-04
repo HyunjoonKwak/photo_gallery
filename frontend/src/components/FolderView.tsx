@@ -140,6 +140,17 @@ export function FolderView() {
     });
     clearSelection();
   };
+  const toggleAllFolders = (folders: PhotoFolder[], on: boolean) => {
+    setFolderSel((prev) => {
+      const next = new Map(prev);
+      for (const f of folders) {
+        if (on) next.set(f.id, f);
+        else next.delete(f.id);
+      }
+      return next;
+    });
+    clearSelection(); // 폴더 선택은 사진 선택과 배타적
+  };
   const photoSelCount = useTimelineStore((s) => s.selected.size);
   useEffect(() => {
     if (photoSelCount > 0) setFolderSel(new Map());
@@ -295,6 +306,7 @@ export function FolderView() {
               dropTarget={activePane !== 0}
               checkedFolderIds={new Set(folderSel.keys())}
               onToggleFolderCheck={toggleFolderCheck}
+              onToggleAllFolders={toggleAllFolders}
             />
           </section>
           <DualActions
@@ -318,6 +330,7 @@ export function FolderView() {
               dropTarget={activePane !== 1}
               checkedFolderIds={new Set(folderSel.keys())}
               onToggleFolderCheck={toggleFolderCheck}
+              onToggleAllFolders={toggleAllFolders}
             />
           </section>
         </div>
