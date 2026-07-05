@@ -356,7 +356,91 @@ def test_move_folders_default_asks_on_name_conflict(client):
     assert resp.status_code == 409
     detail = resp.json()["detail"]
     assert detail["code"] == "folder_conflict"
-    assert detail["conflicts"] == [{"folder_id": "f-team-2", "name": "행사"}]
+    # 최상위 '행사'는 사진 없음 + 대상 '가족앨범/행사'도 비어 있음 → 추가분 0.
+    assert detail["conflicts"] == [
+        {"folder_id": "f-team-2", "name": "행사", "extra_count": 0}
+    ]
+
+
+def test_folder_conflict_reports_extra_count(client):
+    """대상에 원본보다 없는 항목이 있으면 extra_count>0(부분 차이), 원본이
+    대상에 다 있으면 0(완전 일치) — 다이얼로그가 이걸로 분기한다."""
+    _, items = _first_day_items(client)
+    assert len(items) >= 3
+    # 최상위 '행사'(f-team-2)에 사진 2장.
+    client.post(
+        "/api/photos/ops/move",
+        json={
+            "item_ids": [items[0]["id"], items[1]["id"]],
+            "dest_folder_id": "f-team-2",
+        },
+    )
+    # 가족앨범/행사 생성 + 그 중 1장만 넣기(부분 차이 상황: 원본 2 - 공통 1 = 1).
+    child = client.post(
+        "/api/photos/folders",
+        json={"space": "team", "name": "행사", "parent_id": "f-team-1"},
+    ).json()["folder"]
+    # 같은 파일명이 겹치도록 f-team-2의 첫 사진을 복사해 child에 넣는 대신,
+    # 부분 차이를 만들기 위해 다른 사진 1장을 child에 넣는다(공통 파일명 0 →
+    # 원본 2장 모두 추가분). 완전 일치 케이스는 아래에서 별도로.
+    client.post(
+        "/api/photos/ops/move",
+        json={"item_ids": [items[2]["id"]], "dest_folder_id": child["id"]},
+    )
+    resp = client.post(
+        "/api/photos/ops/move-folders",
+        json={
+            "space": "team",
+            "folder_ids": ["f-team-2"],
+            "dest_folder_id": "f-team-1",
+            "copy_mode": False,
+        },
+    )
+    assert resp.status_code == 409
+    conflict = resp.json()["detail"]["conflicts"][0]
+    # 원본 2장 다 대상에 없는 파일명 → 추가분 2.
+    assert conflict["extra_count"] == 2
+
+
+def test_folder_conflict_full_match_extra_zero(client):
+    """복사본으로 대상에 원본과 같은 파일명을 채우면 extra_count 0(완전 일치)."""
+    _, items = _first_day_items(client)
+    orig = items[0]["id"]
+    # 원본을 f-team-2로 이동.
+    client.post(
+        "/api/photos/ops/move",
+        json={"item_ids": [orig], "dest_folder_id": "f-team-2"},
+    )
+    # 같은 파일명을 대상에 만들기: 원본을 다시 복사해 f-team-1/행사에 넣는다.
+    child = client.post(
+        "/api/photos/folders",
+        json={"space": "team", "name": "행사", "parent_id": "f-team-1"},
+    ).json()["folder"]
+    # f-team-2의 그 사진(복사본)을 child로 복사 → 같은 파일명이 양쪽에.
+    src_item = client.get(
+        "/api/photos/folder-items", params={"folder_id": "f-team-2"}
+    ).json()["items"][0]["id"]
+    client.post(
+        "/api/photos/ops/move",
+        json={
+            "item_ids": [src_item],
+            "dest_folder_id": child["id"],
+            "copy_mode": True,
+        },
+    )
+    resp = client.post(
+        "/api/photos/ops/move-folders",
+        json={
+            "space": "team",
+            "folder_ids": ["f-team-2"],
+            "dest_folder_id": "f-team-1",
+            "copy_mode": False,
+        },
+    )
+    assert resp.status_code == 409
+    conflict = resp.json()["detail"]["conflicts"][0]
+    # f-team-2의 사진이 child에 같은 파일명으로 존재 → 추가분 0(완전 일치).
+    assert conflict["extra_count"] == 0
 
 
 def test_move_folders_rename_keeps_both(client):

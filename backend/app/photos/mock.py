@@ -495,18 +495,34 @@ class MockPhotoSource:
             it for it in self._classify_pool(space) if self._in_group(it.id, mod, rem)
         ]
 
+    def _folder_extra_count(self, src_folder_id: str, dest_folder_name: str) -> int:
+        """소스 폴더가 대상 동명 폴더에 없는(파일명 기준) 사진 수. mock은 flat
+        구조라 직속 사진만 비교한다. 0이면 완전 포함(완전 일치)."""
+        dest_f = next(
+            (f for f in self._all_folders() if f.name == dest_folder_name), None
+        )
+        dest_files = self._folder_filenames(dest_f.id) if dest_f else set()
+        extra = 0
+        for item_id, (_, fid) in self._loc.items():
+            if fid != src_folder_id or item_id in self._deleted:
+                continue
+            if self._resolve_item(item_id).filename not in dest_files:
+                extra += 1
+        return extra
+
     async def folder_conflicts(
         self, space: str, folder_ids: list[str], dest_folder_id: str
-    ) -> list[tuple[str, str]]:
+    ) -> list[tuple[str, str, int]]:
         dest = self._folder_by_id(dest_folder_id)
         existing = {f.name for f in self._all_folders()}
-        out: list[tuple[str, str]] = []
+        out: list[tuple[str, str, int]] = []
         for fid in folder_ids:
             if fid == dest_folder_id:
                 continue
             base = self._folder_by_id(fid).name.split("/")[-1]
-            if f"{dest.name}/{base}" in existing:
-                out.append((fid, base))
+            target = f"{dest.name}/{base}"
+            if target in existing:
+                out.append((fid, base, self._folder_extra_count(fid, target)))
         return out
 
     async def move_folders(

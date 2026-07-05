@@ -230,9 +230,13 @@ class PhotoSource(Protocol):
     # -------------------------------------------------- folder-level move
     async def folder_conflicts(
         self, space: str, folder_ids: list[str], dest_folder_id: str
-    ) -> list[tuple[str, str]]:
-        """(folder_id, name) of source folders whose name already exists as a
-        subfolder of the destination — drives the folder 충돌 처리 dialog."""
+    ) -> list[tuple[str, str, int]]:
+        """(folder_id, name, extra_count) of source folders whose name already
+        exists as a subfolder of the destination — drives the folder 충돌 처리
+        dialog. ``extra_count`` is how many items the source holds that the
+        destination twin does NOT (by name+size, recursively): 0 means the
+        source is fully contained in the destination (완전 일치 — 이동 시 원본
+        삭제 제안, 복사 시 "이미 동일" 안내)."""
         ...
 
     async def move_folders(

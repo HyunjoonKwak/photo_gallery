@@ -230,8 +230,11 @@ async def execute_move_folders(
                 detail={
                     "code": "folder_conflict",
                     "message": f"같은 이름의 폴더 {len(clashes)}개가 대상 위치에 있습니다.",
+                    # extra_count 0 = 원본이 대상에 이미 다 있음(완전 일치) →
+                    # 클라이언트가 이동 시 원본 삭제/복사 시 "동일" 안내로 분기.
                     "conflicts": [
-                        {"folder_id": i, "name": n} for i, n in clashes
+                        {"folder_id": i, "name": n, "extra_count": e}
+                        for i, n, e in clashes
                     ],
                 },
             )

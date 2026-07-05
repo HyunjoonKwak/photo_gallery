@@ -771,11 +771,46 @@ class DsmPhotoSource:
                 "SYNO.FileStation.List",
                 "list",
                 sid=self._sid,
-                extra={"folder_path": dir_path, "limit": 100000},
+                extra={
+                    "folder_path": dir_path,
+                    "limit": 100000,
+                    # size for folder-equality comparison (완전 일치 판정).
+                    "additional": json.dumps(["size"]),
+                },
             )
         except DsmError:
             return []
         return data.get("files", [])
+
+    @staticmethod
+    def _entry_size(entry: dict) -> int | None:
+        # FileStation.List returns size under additional (or occasionally flat).
+        add = entry.get("additional") or {}
+        return add.get("size", entry.get("size"))
+
+    async def _folder_extra_count(self, src_dir: str, dest_dir: str) -> int:
+        """How many items ``src_dir`` holds that ``dest_dir`` does NOT, compared
+        by name+size and recursing into same-named subfolders. 0 ⇒ the source is
+        fully contained in the destination (완전 일치). Junk/sidecar entries are
+        ignored. Best-effort: a listing error counts as "not contained" so we
+        never claim a false full-match."""
+        dest = {e.get("name", ""): e for e in await self._list_entries(dest_dir)}
+        extra = 0
+        for e in await self._list_entries(src_dir):
+            name = e.get("name", "")
+            if name.startswith("@") or name in self._JUNK_ENTRIES:
+                continue
+            d = dest.get(name)
+            if e.get("isdir"):
+                if d and d.get("isdir"):
+                    extra += await self._folder_extra_count(
+                        f"{src_dir}/{name}", f"{dest_dir}/{name}"
+                    )
+                else:
+                    extra += 1  # 대상에 없는 하위 폴더 = 추가 항목
+            elif not d or d.get("isdir") or self._entry_size(d) != self._entry_size(e):
+                extra += 1  # 대상에 없거나 크기가 다른 파일 = 추가 항목
+        return extra
 
     async def _list_filenames(self, dir_path: str) -> set[str]:
         """Filenames directly in a folder (filesystem truth), for conflict checks."""
@@ -1247,17 +1282,18 @@ class DsmPhotoSource:
 
     async def folder_conflicts(
         self, space: str, folder_ids: list[str], dest_folder_id: str
-    ) -> list[tuple[str, str]]:
+    ) -> list[tuple[str, str, int]]:
         dest_dir, _ = await self._dest_dir(dest_folder_id)
         existing = await self._list_subdir_names(dest_dir)
-        out: list[tuple[str, str]] = []
+        out: list[tuple[str, str, int]] = []
         for fid in folder_ids:
             src, _ = await self._dest_dir(fid)
             if src.rsplit("/", 1)[0] == dest_dir:
                 continue  # 이미 대상 안 — 충돌 아님(no-op)
             name = src.rsplit("/", 1)[-1]
             if name in existing:
-                out.append((fid, name))
+                extra = await self._folder_extra_count(src, f"{dest_dir}/{name}")
+                out.append((fid, name, extra))
         return out
 
     async def move_folders(

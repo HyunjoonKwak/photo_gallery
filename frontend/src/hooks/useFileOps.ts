@@ -215,16 +215,24 @@ export function useFileOps() {
           : undefined,
       );
     },
-    // 대상에 같은 이름 폴더가 있으면 409 → 전역 다이얼로그(폴더 옵션: 이름변경/
-    // 건너뛰기), 선택 전략으로 재시도. 조용히 건너뛰던 문제 해결(2026-07-05).
+    // 대상에 같은 이름 폴더가 있으면 409 → 전역 다이얼로그로 처리 방법 선택 후
+    // 재시도. 완전 일치(원본이 대상에 다 있음)면 다이얼로그가 원본 삭제/동일
+    // 안내로 분기하고, 그 외엔 합치기/이름변경/건너뛰기. (2026-07-05)
     onError: (err, variables) => {
       const info = conflictInfoOf(err);
       if (!info) return onError(err);
       useConflictStore.getState().ask({
         kind: info.kind,
         names: info.names,
+        folderExtras: info.folderExtras,
         copyMode: variables.copy_mode,
         onChoose: (strategy) => {
+          // 완전 일치 이동 → 선택한 원본 폴더들을 순차로 휴지통으로(대상에 이미
+          // 다 있으므로 이동이 아니라 원본 정리). 여러 폴더 모두 처리한다.
+          if (strategy === "purge_source") {
+            void purgeSourceFolders(variables.space, variables.folder_ids);
+            return;
+          }
           const p = startProgress(variables.copy_mode ? "폴더 복사" : "폴더 이동");
           moveFoldersMutation.mutate(
             {
@@ -238,6 +246,23 @@ export function useFileOps() {
       });
     },
   });
+
+  // 완전 일치한 원본 폴더들을 하나씩 순차로 휴지통으로 이동(재귀 삭제 경로 재사용
+  // — 되돌리기 가능). 순차 실행이라 실 NAS의 FileStation 태스크가 겹치지 않는다.
+  const purgeSourceFolders = async (space: Space, folderIds: string[]) => {
+    for (const folderId of folderIds) {
+      try {
+        await rmdirMutation.mutateAsync({
+          space,
+          folder_id: folderId,
+          recursive: true,
+          target_user: targetUser(),
+        });
+      } catch {
+        // 개별 실패는 rmdirMutation.onError가 토스트로 알림 — 나머지는 계속.
+      }
+    }
+  };
 
   const rmdirMutation = useMutation({
     mutationFn: api.removeFolder,
