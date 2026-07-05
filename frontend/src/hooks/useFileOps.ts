@@ -8,6 +8,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import type {
   ConflictStrategy,
+  EmptiedFolder,
   MoveFoldersRequest,
   OperationResponse,
   Space,
@@ -98,6 +99,32 @@ export function useFileOps() {
     undoMutation.mutate({ opId, progressKey: p.key }, { onSettled: p.stop });
   };
 
+  // Move away all of a folder's photos and it's left empty — offer to clean it
+  // up (사용자 결정: 자동 삭제 대신 정리 제안 토스트). Runs the same rmdir path,
+  // which refuses non-empty folders, so a late-arriving file is never lost.
+  const cleanupEmptied = (folders: EmptiedFolder[]) => {
+    for (const f of folders) {
+      rmdirMutation.mutate({
+        space: f.space,
+        folder_id: f.folder_id,
+        target_user: targetUser(),
+      });
+    }
+  };
+
+  const offerCleanup = (res: OperationResponse) => {
+    const emptied = res.emptied_folders ?? [];
+    if (emptied.length === 0) return;
+    const label =
+      emptied.length === 1
+        ? `'${emptied[0].name}'`
+        : `'${emptied[0].name}' 외 ${emptied.length - 1}개`;
+    useToastStore.getState().push(`${label} 폴더가 비었습니다`, {
+      label: "빈 폴더 정리",
+      run: () => cleanupEmptied(emptied),
+    });
+  };
+
   const afterOperation = (res: OperationResponse) => {
     useTimelineStore.getState().clearSelection();
     invalidateAffected(res);
@@ -107,6 +134,7 @@ export function useFileOps() {
         ? { label: "되돌리기", run: () => runUndo(res.operation_id) }
         : undefined,
     );
+    offerCleanup(res);
   };
 
   const onError = (err: unknown) =>

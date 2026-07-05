@@ -175,7 +175,10 @@ class PlacedItem(BaseModel):
 # file (destructive). rename: keep both via a "name_1.ext" suffix.
 ConflictStrategy = Literal["ask", "skip", "overwrite", "rename"]
 # Folder-level: no overwrite (replacing a whole subtree is too destructive).
-FolderConflictStrategy = Literal["ask", "skip", "rename"]
+# merge: fold the source folder's contents into the same-named destination
+# folder (recursively); inner filename clashes are kept (the existing file
+# wins, the incoming one is left behind — 사용자 결정 2026-07-05).
+FolderConflictStrategy = Literal["ask", "skip", "rename", "merge"]
 
 
 class MoveRequest(BaseModel):
@@ -251,12 +254,24 @@ class AffectedDay(BaseModel):
     day: str
 
 
+class EmptiedFolder(BaseModel):
+    """A source folder left completely empty by a move — the frontend offers a
+    "빈 폴더 정리" toast to remove it (사용자 결정 2026-07-05: 자동 삭제가 아닌
+    정리 제안)."""
+
+    folder_id: str
+    name: str  # basename, for the toast label
+    space: str
+
+
 class OperationResponse(BaseModel):
     operation_id: int
     summary: str
     affected: list[AffectedDay]
     undoable: bool
     folder: PhotoFolder | None = None  # populated by create_folder
+    # Source folders emptied by this move (정리 제안 대상); empty for copy/other.
+    emptied_folders: list[EmptiedFolder] = []
 
 
 class OperationEntry(BaseModel):

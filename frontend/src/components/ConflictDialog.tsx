@@ -3,7 +3,9 @@ import { useConflictStore, type ConflictKind } from "../store/conflict";
 /** Same-name collision dialog for move/copy — files or folders. Raised only
  * when the backend answers 409 with the conflict list. rename keeps both, skip
  * leaves them; files also offer overwrite (destructive, red). Folders never
- * overwrite (replacing a whole subtree is too dangerous). */
+ * overwrite (replacing a whole subtree is too dangerous) but offer merge —
+ * fold the source folder's contents into the existing one (inner file clashes
+ * keep the existing file). */
 function ConflictDialog({
   kind,
   names,
@@ -47,6 +49,20 @@ function ConflictDialog({
         </ul>
 
         <div className="mt-4 space-y-2">
+          {kind === "folder" && (
+            <button
+              onClick={() => onChoose("merge")}
+              className={`${opt} border-emerald-200 hover:bg-emerald-50`}
+            >
+              <span className="font-semibold text-emerald-700">
+                합치기 (내용 병합)
+              </span>
+              <span className="mt-0.5 block text-xs text-slate-500">
+                대상의 같은 이름 폴더 안으로 사진·하위 폴더를 {verb} — 같은
+                파일명은 기존 것을 유지
+              </span>
+            </button>
+          )}
           <button
             onClick={() => onChoose("rename")}
             className={`${opt} border-blue-200 hover:bg-blue-50`}

@@ -41,6 +41,9 @@ class MoveOutcome:
     # Ids of copies made in copy mode — undo deletes these permanently.
     created_ids: list[str] = field(default_factory=list)
     affected: Affected = field(default_factory=list)
+    # (folder_id, basename, space) of source folders emptied by this move —
+    # the frontend offers to clean them up (정리 제안 토스트). Empty for copies.
+    emptied: list[tuple[str, str, str]] = field(default_factory=list)
 
 
 @dataclass
@@ -232,9 +235,11 @@ class PhotoSource(Protocol):
         """Move/copy whole folders (subtree 포함) into a destination folder.
 
         ``conflict_strategy`` handles a same-named folder at the destination:
-        skip | rename (name_1). Returns
-        ``{"names": [표시명...], "undo": <source-specific payload>}`` — the undo
-        payload feeds ``revert_move_folders``.
+        skip | rename (name_1) | merge (fold contents into the existing folder,
+        recursively; inner file clashes keep the existing file). A merge in move
+        mode deletes the source folder once emptied (병합 완료), reversible via
+        undo. Returns ``{"names": [표시명...], "undo": <source-specific payload>}``
+        — the undo payload feeds ``revert_move_folders``.
         """
         ...
 

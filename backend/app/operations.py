@@ -25,6 +25,7 @@ from .schemas import (
     AffectedDay,
     CreateFolderRequest,
     DeleteRequest,
+    EmptiedFolder,
     MoveFoldersRequest,
     MoveRequest,
     OperationEntry,
@@ -144,6 +145,10 @@ async def execute_move(
         summary=summary,
         affected=_affected(outcome.affected),
         undoable=True,
+        emptied_folders=[
+            EmptiedFolder(folder_id=fid, name=name, space=sp)
+            for fid, name, sp in outcome.emptied
+        ],
     )
 
 

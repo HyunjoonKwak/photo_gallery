@@ -740,6 +740,18 @@ class DsmPhotoSource:
         """Filenames directly in a folder (filesystem truth), for conflict checks."""
         return {f.get("name", "") for f in await self._list_entries(dir_path)}
 
+    async def _is_dir_empty(self, dir_path: str) -> bool:
+        """True if a folder holds no real content — Synology sidecars(@eaDir)
+        and desktop droppings don't count (DSM's own UI treats such folders as
+        empty too). Filesystem truth (FileStation), not the lagging Photos
+        index."""
+        for entry in await self._list_entries(dir_path):
+            name = entry.get("name", "")
+            if name.startswith("@") or name in self._JUNK_ENTRIES:
+                continue
+            return False
+        return True
+
     async def _list_subdir_names(self, dir_path: str) -> set[str]:
         """Sub-folder names directly in a folder, for folder-move conflict checks."""
         return {
@@ -805,16 +817,23 @@ class DsmPhotoSource:
             },
         )
         prefix = self._share_prefix(space)
+        metas = _FOLDER_META.setdefault(self._sid, {})
         out: dict[str, dict] = {}
         for it in data.get("list", []):
             folder = it.get("additional", {}).get("folder") or {}
             folder_name = folder.get("name") if isinstance(folder, dict) else folder
             filename = it.get("filename", "")
             day = date.fromtimestamp(it.get("time", 0)).isoformat()
+            fid = str(it.get("folder_id", ""))
+            # Remember the source folder's (space, path) so a later 정리 제안 can
+            # resolve it by id without the tree having been browsed first — the
+            # move originates from the timeline as often as the folder view.
+            if fid and folder_name:
+                metas.setdefault(fid, (space, folder_name))
             out[str(it.get("id"))] = {
                 "path": f"{prefix}{folder_name}/{filename}".replace("//", "/"),
                 "filename": filename,
-                "folder_id": str(it.get("folder_id", "")),
+                "folder_id": fid,
                 "day": day,
             }
         return out
@@ -920,9 +939,40 @@ class DsmPhotoSource:
                 self._record_placed(outcome, affected, space, dest_space, dest_dir,
                                     m, item_id, copy, new_name)
 
+        # A move (not copy) can leave the source folder(s) empty — surface them
+        # so the client can offer 정리(빈 폴더 삭제). Skip in copy mode (originals
+        # stay) and when overwriting into the same folder is a no-op.
+        if not copy and outcome.moved:
+            outcome.emptied = await self._detect_emptied(space, metas, outcome.moved)
+
         outcome.affected = sorted(affected)
         self._invalidate(affected)
         return outcome
+
+    async def _detect_emptied(
+        self, space: str, metas: dict[str, dict], moved: list[PlacedItem]
+    ) -> list[tuple[str, str, str]]:
+        """Source folders left empty after moving ``moved`` out of them.
+
+        Grouped by source folder id; each is re-listed once (post-move) against
+        the filesystem. Returns (folder_id, basename, space) for the empty ones.
+        """
+        # folder_id → (dir_path, basename); dedup so each folder is listed once.
+        by_folder: dict[str, tuple[str, str]] = {}
+        for p in moved:
+            m = metas.get(p.id)
+            if not m or not p.folder_id:
+                continue
+            dir_path = m["path"].rsplit("/", 1)[0]
+            by_folder[p.folder_id] = (dir_path, dir_path.rsplit("/", 1)[-1])
+        out: list[tuple[str, str, str]] = []
+        for fid, (dir_path, basename) in by_folder.items():
+            try:
+                if await self._is_dir_empty(dir_path):
+                    out.append((fid, basename, space))
+            except DsmError:
+                continue  # best-effort — a probe failure just omits the offer
+        return out
 
     @staticmethod
     def _record_placed(outcome, affected, space, dest_space, dest_dir, m, item_id,
@@ -1104,18 +1154,9 @@ class DsmPhotoSource:
         # (which would delete them for good — photo share has no recycle bin).
         try:
             dest_dir, _ = await self._dest_dir(folder_id)
-            data = await self._dsm.call(
-                "SYNO.FileStation.List",
-                "list",
-                sid=self._sid,
-                extra={"folder_path": dest_dir, "limit": 1000},
-            )
+            if not await self._is_dir_empty(dest_dir):
+                return False
         except DsmError:
-            return False
-        for entry in data.get("files", []):
-            name = entry.get("name", "")
-            if name.startswith("@") or name in self._JUNK_ENTRIES:
-                continue
             return False
         await self._delete_paths([dest_dir])
         invalidate_folder_cache(self._sid)
@@ -1153,6 +1194,7 @@ class DsmPhotoSource:
         plain: list[str] = []  # src dirs moving under their own name
         plain_names: list[str] = []
         renamed: list[tuple[str, str]] = []  # (src, new_name)
+        merges: list[tuple[str, str]] = []  # (src, basename) folded into a twin
         for fid in folder_ids:
             src, _ = await self._dest_dir(fid)
             # Guard: 자기 자신/자기 하위로의 이동은 무한 중첩 — 차단.
@@ -1164,11 +1206,14 @@ class DsmPhotoSource:
                 continue  # 이미 대상 폴더 안 — no-op
             name = src.rsplit("/", 1)[-1]
             if name in taken:
-                # 같은 이름 폴더가 대상에 있음. skip: 건너뜀. rename: name_1.
+                # 같은 이름 폴더가 대상에 있음: skip 건너뜀 / rename name_1 /
+                # merge 내용 합치기(재귀).
                 if conflict_strategy == "rename":
                     new_name = self._unique_dir_name(taken, name)
                     taken.add(new_name)
                     renamed.append((src, new_name))
+                elif conflict_strategy == "merge":
+                    merges.append((src, name))
                 continue
             taken.add(name)
             plain.append(src)
@@ -1184,30 +1229,116 @@ class DsmPhotoSource:
             await self._place_renamed(
                 src, dest_dir, src.rsplit("/", 1)[-1], new_name, copy=copy
             )
+        merge_undo: list[dict] = []
+        merge_names: list[str] = []
+        for src, base in merges:
+            undo_entry = await self._merge_dir(src, f"{dest_dir}/{base}", copy=copy)
+            merge_undo.append(undo_entry)
+            merge_names.append(base)
 
         invalidate_folder_cache(self._sid)
         invalidate_bucket_cache(self._sid)
         # NOTE: 이동한 폴더는 tombstone하지 않는다 (2026-07-04 실 NAS 보고 — 재색인이
         # 폴더 id를 유지하면 대상 위치까지 숨는다). 원본 잔상은 프론트 resettle로 정리.
-        names = plain_names + [nn for _, nn in renamed]
-        undo = [
-            {"src": s, "dest": f"{dest_dir}/{n}"} for s, n in zip(plain, plain_names)
-        ] + [{"src": s, "dest": f"{dest_dir}/{nn}"} for s, nn in renamed]
+        names = plain_names + [nn for _, nn in renamed] + merge_names
+        undo = (
+            [{"src": s, "dest": f"{dest_dir}/{n}"} for s, n in zip(plain, plain_names)]
+            + [{"src": s, "dest": f"{dest_dir}/{nn}"} for s, nn in renamed]
+            + merge_undo
+        )
         return {"names": names, "undo": undo}
 
+    async def _merge_dir(self, src_dir: str, dest_dir: str, *, copy: bool) -> dict:
+        """Fold ``src_dir``'s contents into the same-named ``dest_dir``.
+
+        Files: non-clashing ones move/copy in; a name clash keeps the existing
+        destination file and leaves the source one alone (사용자 결정). Sub-
+        folders: a same-named twin recurses (merge), otherwise the whole subtree
+        moves/copies in one shot. In move mode the source folder is deleted once
+        fully emptied (병합 완료). Returns an undo entry for revert_move_folders.
+        """
+        await self._ensure_dir(dest_dir)
+        dest_names = await self._list_filenames(dest_dir)
+        moved: list[dict] = []  # move-undo: [{"from": dest, "to": src}]
+        created: list[str] = []  # copy-undo: paths to delete
+        children: list[dict] = []  # nested merge undo entries
+        move_files: list[tuple[str, str]] = []
+        for entry in await self._list_entries(src_dir):
+            name = entry.get("name", "")
+            if name.startswith("@") or name in self._JUNK_ENTRIES:
+                continue
+            src_path = f"{src_dir}/{name}"
+            dest_path = f"{dest_dir}/{name}"
+            if entry.get("isdir"):
+                if name in dest_names:
+                    children.append(
+                        await self._merge_dir(src_path, dest_path, copy=copy)
+                    )
+                else:
+                    await self._copymove([src_path], dest_dir, remove_src=not copy)
+                    (created if copy else moved).append(
+                        dest_path if copy else {"from": dest_path, "to": src_path}
+                    )
+            elif name in dest_names:
+                continue  # 파일 충돌 → 기존 유지, 소스는 그대로 둠
+            else:
+                move_files.append((src_path, dest_path))
+        if move_files:
+            await self._copymove_chunked(
+                [s for s, _ in move_files], dest_dir, remove_src=not copy,
+                on_progress=None,
+            )
+            for s, d in move_files:
+                (created if copy else moved).append(
+                    d if copy else {"from": d, "to": s}
+                )
+        emptied = False
+        if not copy and await self._is_dir_empty(src_dir):
+            await self._delete_paths([src_dir])
+            emptied = True
+        return {
+            "kind": "merge_copy" if copy else "merge",
+            "moved": moved,
+            "created": created,
+            "children": children,
+            "src_dir": src_dir,
+            "emptied": emptied,
+        }
+
     async def revert_move_folders(self, undo_payload: list, copy: bool) -> None:
-        if copy:
-            # 복사 취소: 만들어진 사본 폴더를 영구 삭제 (방금 만든 사본).
-            await self._delete_paths([e["dest"] for e in undo_payload])
-        else:
-            for e in undo_payload:
-                parent = e["src"].rsplit("/", 1)[0]
-                await self._copymove([e["dest"]], parent, remove_src=True)
+        # Entries are heterogeneous: plain move/copy (whole subtree, no "kind")
+        # and merge/merge_copy (per-file, recursive). Dispatch per entry so a
+        # single op can mix them (merge strategy folds clashers, moves the rest).
+        for e in undo_payload:
+            await self._revert_folder_entry(e, copy)
+        if not copy:
             # 되돌린 원본 폴더가 트리에 다시 보여야 한다 — 혹 Photos가 폴더 id를
             # 재사용하면 tombstone이 복원본을 가릴 수 있으므로 전부 해제.
             _REMOVED_FOLDERS.pop(self._sid, None)
         invalidate_folder_cache(self._sid)
         invalidate_bucket_cache(self._sid)
+
+    async def _revert_folder_entry(self, e: dict, copy: bool) -> None:
+        kind = e.get("kind", "move")
+        if kind == "merge_copy":
+            if e.get("created"):
+                await self._delete_paths(e["created"])
+            for child in e.get("children", []):
+                await self._revert_folder_entry(child, True)
+        elif kind == "merge":
+            # Move each merged file back to its source folder (recreating the
+            # deleted source dir first), then recurse into nested merges.
+            for mv in e.get("moved", []):
+                parent = mv["to"].rsplit("/", 1)[0]
+                await self._ensure_dir(parent)
+                await self._copymove([mv["from"]], parent, remove_src=True)
+            for child in e.get("children", []):
+                await self._revert_folder_entry(child, False)
+        elif copy:  # 통째 복사 취소: 사본 폴더 영구 삭제
+            await self._delete_paths([e["dest"]])
+        else:  # 통째 이동 취소: 원위치로 역이동
+            parent = e["src"].rsplit("/", 1)[0]
+            await self._copymove([e["dest"]], parent, remove_src=True)
 
     def _invalidate(self, affected: set[tuple[str, str]]) -> None:
         for space, _ in affected:

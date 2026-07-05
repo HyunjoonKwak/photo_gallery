@@ -379,6 +379,123 @@ def test_move_folders_rename_keeps_both(client):
     assert "가족앨범/행사" in names and "가족앨범/행사_1" in names
 
 
+def _folder_item_count(client, folder_id):
+    return len(
+        client.get(
+            "/api/photos/folder-items", params={"folder_id": folder_id}
+        ).json()["items"]
+    )
+
+
+def test_move_folders_merge_combines_photos(client):
+    """merge: 소스 폴더의 사진이 대상의 동명 폴더로 합쳐지고 소스는 비워진다."""
+    _, items = _first_day_items(client)
+    assert len(items) >= 3
+    # 행사(f-team-2)에 사진 2장.
+    client.post(
+        "/api/photos/ops/move",
+        json={
+            "item_ids": [items[0]["id"], items[1]["id"]],
+            "dest_folder_id": "f-team-2",
+        },
+    )
+    # 가족앨범 아래 "행사" 폴더(충돌 대상) 생성 + 다른 사진 1장.
+    child = client.post(
+        "/api/photos/folders",
+        json={"space": "team", "name": "행사", "parent_id": "f-team-1"},
+    ).json()["folder"]
+    client.post(
+        "/api/photos/ops/move",
+        json={"item_ids": [items[2]["id"]], "dest_folder_id": child["id"]},
+    )
+
+    op = client.post(
+        "/api/photos/ops/move-folders",
+        json={
+            "space": "team",
+            "folder_ids": ["f-team-2"],
+            "dest_folder_id": "f-team-1",
+            "copy_mode": False,
+            "conflict_strategy": "merge",
+        },
+    )
+    assert op.status_code == 200
+    # 병합 폴더에 기존 1장 + 옮겨온 2장, 소스는 비었다.
+    assert _folder_item_count(client, child["id"]) == 3
+    assert _folder_item_count(client, "f-team-2") == 0
+
+
+def test_move_folders_merge_undo_restores(client):
+    _, items = _first_day_items(client)
+    assert len(items) >= 3
+    client.post(
+        "/api/photos/ops/move",
+        json={
+            "item_ids": [items[0]["id"], items[1]["id"]],
+            "dest_folder_id": "f-team-2",
+        },
+    )
+    child = client.post(
+        "/api/photos/folders",
+        json={"space": "team", "name": "행사", "parent_id": "f-team-1"},
+    ).json()["folder"]
+    client.post(
+        "/api/photos/ops/move",
+        json={"item_ids": [items[2]["id"]], "dest_folder_id": child["id"]},
+    )
+    op = client.post(
+        "/api/photos/ops/move-folders",
+        json={
+            "space": "team",
+            "folder_ids": ["f-team-2"],
+            "dest_folder_id": "f-team-1",
+            "copy_mode": False,
+            "conflict_strategy": "merge",
+        },
+    ).json()
+
+    assert client.post(f"/api/ops/{op['operation_id']}/undo").status_code == 200
+    # 병합 되돌리기: 대상 폴더는 원래 1장, 소스는 다시 2장.
+    assert _folder_item_count(client, child["id"]) == 1
+    assert _folder_item_count(client, "f-team-2") == 2
+
+
+def test_move_reports_emptied_source_folder(client):
+    """사진을 다른 폴더로 옮겨 원본 폴더가 비면 emptied_folders로 정리 제안."""
+    _, items = _first_day_items(client)
+    # 폴더 밖 → f-team-1 (원본이 폴더가 아니라 정리 제안 없음).
+    first = client.post(
+        "/api/photos/ops/move",
+        json={"item_ids": [items[0]["id"]], "dest_folder_id": "f-team-1"},
+    ).json()
+    assert first["emptied_folders"] == []
+    # f-team-1 → f-team-2: 이제 f-team-1이 비워져 정리 제안 대상.
+    second = client.post(
+        "/api/photos/ops/move",
+        json={"item_ids": [items[0]["id"]], "dest_folder_id": "f-team-2"},
+    ).json()
+    emptied = second["emptied_folders"]
+    assert [e["folder_id"] for e in emptied] == ["f-team-1"]
+    assert emptied[0]["name"] == "가족앨범"
+
+
+def test_copy_never_reports_emptied(client):
+    _, items = _first_day_items(client)
+    client.post(
+        "/api/photos/ops/move",
+        json={"item_ids": [items[0]["id"]], "dest_folder_id": "f-team-1"},
+    )
+    op = client.post(
+        "/api/photos/ops/move",
+        json={
+            "item_ids": [items[0]["id"]],
+            "dest_folder_id": "f-team-2",
+            "copy_mode": True,
+        },
+    ).json()
+    assert op["emptied_folders"] == []  # 복사는 원본이 남으므로 비지 않는다
+
+
 def test_move_folder_into_itself_is_rejected(client):
     resp = client.post(
         "/api/photos/ops/move-folders",

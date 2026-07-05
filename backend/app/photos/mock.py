@@ -532,6 +532,10 @@ class MockPhotoSource:
             base = f.name.split("/")[-1]
             target = f"{dest.name}/{base}"
             if target in taken:
+                if conflict_strategy == "merge":
+                    self._merge_mock(f, target, copy, undo)
+                    names.append(base)
+                    continue
                 if conflict_strategy != "rename":
                     continue  # skip
                 n = 1
@@ -555,13 +559,57 @@ class MockPhotoSource:
                 self._folder_renames[fid] = target
         return {"names": names, "undo": undo}
 
+    def _merge_mock(
+        self, src_folder: PhotoFolder, target_name: str, copy: bool, undo: list[dict]
+    ) -> None:
+        """Fold src_folder's photos into the same-named destination folder;
+        clashing filenames are skipped (기존 유지). Mock folders are flat so only
+        the folder's direct photos merge (subtree recursion is a DSM concern)."""
+        dest_f = next(f for f in self._all_folders() if f.name == target_name)
+        dest_files = self._folder_filenames(dest_f.id)
+        moved: list[dict] = []
+        for item_id, (_, fid) in list(self._loc.items()):
+            if fid != src_folder.id or item_id in self._deleted:
+                continue
+            if self._resolve_item(item_id).filename in dest_files:
+                continue  # 파일 충돌 → 기존 유지
+            if copy:
+                self._copy_seq += 1
+                cid = f"{item_id}-c{self._copy_seq}"
+                self._extras[cid] = self._resolve_item(item_id).model_copy(
+                    update={"id": cid}
+                )
+                self._loc[cid] = (dest_f.space, dest_f.id)
+                moved.append({"kind": "copy", "id": cid})
+            else:
+                prev = self._loc[item_id]
+                self._loc[item_id] = (dest_f.space, dest_f.id)
+                moved.append({"kind": "move", "id": item_id, "prev": list(prev)})
+        # 이동 모드에서 소스가 custom 폴더이고 완전히 비면 제거 (DSM 병합 완료 대응).
+        if not copy and not any(
+            f == src_folder.id and iid not in self._deleted
+            for iid, (_, f) in self._loc.items()
+        ):
+            self._custom_folders = [
+                f for f in self._custom_folders if f.id != src_folder.id
+            ]
+        undo.append({"kind": "merge", "moved": moved})
+
     async def revert_move_folders(self, undo_payload: list, copy: bool) -> None:
         for e in undo_payload:
-            if e.get("kind") == "copy":
+            kind = e.get("kind")
+            if kind == "copy":
                 self._custom_folders = [
                     f for f in self._custom_folders if f.id != e["id"]
                 ]
-            else:
+            elif kind == "merge":
+                for mv in e["moved"]:
+                    if mv["kind"] == "copy":
+                        self._extras.pop(mv["id"], None)
+                        self._loc.pop(mv["id"], None)
+                    else:
+                        self._loc[mv["id"]] = tuple(mv["prev"])
+            else:  # 폴더 통째 이동 rename 복원
                 self._folder_renames[e["id"]] = e["prev"]
 
     async def purge_trash(self) -> None:
@@ -708,9 +756,30 @@ class MockPhotoSource:
                 affected.add((prev_space, day))
                 affected.add((dest.space, day))
 
+        if not copy and outcome.moved:
+            outcome.emptied = self._detect_emptied(outcome.moved)
         outcome.affected = sorted(affected)
         self._touch(outcome.affected)
         return outcome
+
+    def _detect_emptied(
+        self, moved: list[PlacedItem]
+    ) -> list[tuple[str, str, str]]:
+        """Source folders (folder_id set) left with no live photos after a move."""
+        out: list[tuple[str, str, str]] = []
+        for fid in {p.folder_id for p in moved if p.folder_id}:
+            remaining = any(
+                f == fid and iid not in self._deleted
+                for iid, (_, f) in self._loc.items()
+            )
+            if remaining:
+                continue
+            try:
+                folder = self._folder_by_id(fid)
+            except HTTPException:
+                continue
+            out.append((fid, folder.name.split("/")[-1], folder.space))
+        return out
 
     async def delete(
         self, space: str, item_ids: list[str], on_progress=None

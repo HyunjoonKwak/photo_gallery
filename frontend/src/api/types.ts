@@ -159,7 +159,7 @@ export interface RemoveFolderRequest {
   target_user?: string;
 }
 
-export type FolderConflictStrategy = "ask" | "skip" | "rename";
+export type FolderConflictStrategy = "ask" | "skip" | "rename" | "merge";
 
 export interface MoveFoldersRequest {
   space: Space;
@@ -176,12 +176,20 @@ export interface AffectedDay {
   day: string;
 }
 
+/** 이동으로 완전히 비워진 원본 폴더 — "빈 폴더 정리" 토스트 제안 대상. */
+export interface EmptiedFolder {
+  folder_id: string;
+  name: string;
+  space: Space;
+}
+
 export interface OperationResponse {
   operation_id: number;
   summary: string;
   affected: AffectedDay[];
   undoable: boolean;
   folder: PhotoFolder | null;
+  emptied_folders: EmptiedFolder[];
 }
 
 export interface OperationEntry {
