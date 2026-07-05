@@ -1,158 +1,151 @@
 # NAS 사진 정리 앱
 
-Synology NAS(DSM 7.2+) 위에서 Docker로 동작하는 가족 사진 정리 웹앱.
-가족 구성원이 각자 DSM 계정으로 로그인해 공용·개인 사진을 타임라인으로 보고,
-드래그앤드롭으로 이동·복사·삭제하며, 모든 작업은 기록·Undo 가능합니다.
+집에 있는 **Synology NAS에서 직접 돌아가는 가족 사진 정리 웹앱**입니다.
+가족이 각자 NAS 계정으로 로그인해, 공용·개인 사진을 날짜순 타임라인으로 훑어보고,
+드래그앤드롭으로 폴더에 정리하고, 중복 사진을 찾아 지웁니다. 모든 작업은 기록되고
+**언제든 되돌릴 수 있습니다.**
 
-> 전체 명세는 [`NAS_사진정리앱_개발명세서.md`](./NAS_사진정리앱_개발명세서.md)가 단일 진실 소스입니다.
-> 전체 리뷰(코드 + 오픈소스/UI/UX 벤치마크)에서 도출된 개선 필요사항은
-> [`docs/IMPROVEMENTS.md`](./docs/IMPROVEMENTS.md)에 있으며, **모든 작업 시 반드시 반영**합니다.
+<p align="center">
+  <em>사진은 NAS 밖으로 나가지 않습니다. 클라우드도, 외부 AI도 쓰지 않습니다.</em>
+</p>
 
-## 현재 진행 상태 (1단계 / MVP)
+---
 
-- [x] 리포 스캐폴딩 (backend / frontend / docker)
-- [x] DSM API 클라이언트 + 로그인 (`SYNO.API.Info` 프로브 → `SYNO.API.Auth`)
-- [x] **타임라인 뷰 + 선택 + DnD** — count-first 버킷, justified 가상 스크롤,
-      날짜 스크러버, 다중 선택(체크서클·Shift 범위·드래그 박스), 폴더 드롭 패널,
-      NAS 없이 개발 가능한 **MOCK_MODE** 포함
-- [x] **파일 작업 + 작업로그/Undo** — 이동/복사/삭제(휴지통)/폴더 생성이 실제 동작,
-      모든 작업이 기록되고 "되돌리기" 토스트 + 작업 기록 패널에서 undo 가능.
-      cross-space 이동(개인↔공용, 공용 보내기는 복사 기본) 포함
-- [x] **라이트박스 완성** — `i` EXIF 패널, `Delete` 휴지통+자동 전진, `Shift+?` 도움말
-- [x] **폴더 뷰** (타임라인↔폴더 토글) + **관리자 셸**(가족 구성원 선택, 주황 배너,
-      target_user 감사 로깅)
-- [x] **Docker 검증** — 이미지 빌드 + 컨테이너 기동(헬스체크·정적 서빙·non-root) 확인
-- [x] **2단계: 중복 사진 정리** — SHA-256+pHash(자체 구현, Pillow만 의존) 해시를
-      `photo_cache`에 영속화, SQLite 잡+진행률/취소/재개, 밴드 버킷팅 그룹핑,
-      "중복 정리" 뷰(스캔 진행바·유사 기준 슬라이더·보관본 클릭 변경·dry-run
-      미리보기 → 휴지통+되돌리기)
-- [ ] **DSM Photos API 실연동 검증**(`backend/app/photos/dsm_source.py`) — 실 NAS 필요.
-      검증 전까지 파일 작업·해시 스캔은 MOCK_MODE에서만 동작
-- [ ] 관리자의 타인 개인 폴더 실데이터 열람(FileStation `/homes` 경로) — 실 NAS 필요
-- [ ] 3단계: AI 자동 분류 (미착수)
+## 왜 만들었나
 
-## 아키텍처
+여러 사람이 여러 기기(폰·카메라·태블릿)로 찍은 사진이 NAS에 쌓이면 금세 엉망이 됩니다.
+같은 사진이 여기저기 중복 저장되고, 날짜 폴더와 이벤트 폴더가 뒤섞이고, 정리하려니
+파일 탐색기로는 너무 느리고 위험합니다.
 
-```
-브라우저 ── /api ──> FastAPI(백엔드) ── DSM Web API ──> Synology DSM
-                       │  세션(HttpOnly 쿠키) ↔ DSM sid 매핑은 서버에만 저장
-                       └  SQLite: 세션 / 작업로그·Undo / 사진 캐시
-```
+기존 도구들의 아쉬운 점을 이렇게 풀었습니다.
 
-파일 조작은 직접 볼륨 마운트가 아니라 **DSM Web API**(Auth / FileStation /
-Foto / FotoTeam)로만 수행합니다. 권한은 DSM이 enforce합니다.
+- **Synology Photos**는 보기엔 좋지만 대량 정리(폴더 재편·중복 제거)가 불편합니다.
+  → 이 앱은 **정리에 특화**했습니다. 타임라인·폴더 두 화면, 다중 선택, 드래그 이동,
+    분할 뷰(양쪽 폴더 놓고 옮기기)를 제공합니다.
+- **파일 탐색기 직접 조작**은 실수하면 복구가 어렵습니다.
+  → 이 앱의 이동·삭제는 전부 **휴지통 + 작업 기록 + 되돌리기**로 안전합니다.
+- **사진을 클라우드나 외부 AI에 올리는 것**은 개인정보가 걱정됩니다.
+  → 모든 처리는 **NAS 안에서만** 일어납니다. 인물·장소 분류도 Synology가 이미
+    만들어 둔 정보를 그대로 재활용합니다.
 
-## 사전 준비
+주 사용 환경은 데스크톱(넓은 화면에서 정리)이지만, 폰에서도 쓸 수 있게 반응형으로
+만들었습니다.
 
-1. `.env.example`을 `.env`로 복사하고 NAS 주소·포트를 채웁니다.
-   ```bash
-   cp .env.example .env
-   ```
-   - `DSM_BASE_URL`, `DSM_PORT` 설정 (HTTPS·자체서명이면 `DSM_VERIFY_TLS=false`)
-   - **DSM 계정/비밀번호는 `.env`에 넣지 않습니다.** 로그인 화면에서 입력합니다.
+---
 
-## 로컬 개발 실행
+## 무엇을 할 수 있나
 
-두 개의 터미널이 필요합니다.
+- **타임라인 보기** — 온 가족의 사진을 촬영 날짜순으로. 스크롤 한 번에 몇 년치를
+  훑고, 오른쪽 날짜 막대로 원하는 시점으로 바로 점프합니다.
+- **폴더 보기** — 폴더를 열어보며 정리. 화면을 둘로 나눠(분할 뷰) 한쪽에서 고르고
+  반대쪽 폴더로 옮기는 "정리 전용" 모드도 있습니다.
+- **다중 선택 & 드래그 이동** — 사진을 여러 장 골라 폴더로 끌어다 놓으면 이동,
+  ⌥(Option)을 누르면 복사. 버튼으로도 됩니다.
+- **개인 → 공용 올리기** — 내 개인 폴더의 사진을 가족 공용 폴더로 손쉽게. 기본은
+  원본을 개인에 남기는 복사입니다.
+- **폴더 관리** — 새 폴더 만들기, 폴더째 이동·복사, **같은 이름 폴더 합치기(merge)**,
+  폴더 삭제(내용이 있으면 확인 후 통째로 휴지통으로). 사진을 다 옮겨 비워진 폴더는
+  "정리하시겠어요?"로 안내합니다.
+- **중복 사진 정리** — NAS 전체를 스캔해 똑같은 사진과 비슷한 사진(연속 촬영 등)을
+  묶어줍니다. 어느 것을 남길지 고르고 나머지는 휴지통으로. 절약되는 용량도 보여줍니다.
+- **인물·장소별 보기** — Synology Photos가 이미 분류해 둔 얼굴·장소 그룹을 그대로
+  불러와, 그 사진들을 한 번에 폴더로 모을 수 있습니다.
+- **크게 보기(라이트박스)** — 한 장을 크게 놓고 좌우로 넘기며 정리. 촬영 정보(EXIF)와
+  동영상 재생을 지원합니다.
+- **모든 작업 되돌리기** — 이동·복사·삭제·폴더 작업은 전부 기록되며, 화면의
+  "되돌리기" 또는 작업 기록 패널에서 되돌릴 수 있습니다. 삭제는 영구 삭제가 아니라
+  휴지통으로 갑니다.
+- **가족 계정 & 관리자** — 각자 자기 사진을 정리하고, 관리자 계정은 (권한이 있으면)
+  다른 가족의 개인 폴더 정리도 도울 수 있습니다. 이때 모든 작업은 "관리자 수행"으로
+  기록됩니다.
 
-> **NAS가 없어도 개발할 수 있습니다.** `.env`에 `MOCK_MODE=true`를 설정하면
-> 아무 계정/비밀번호로 로그인되고(계정명 `admin` → 관리자 역할), 사진 API가
-> 결정적 가짜 데이터(18개월 타임라인 + SVG 썸네일)를 반환합니다.
-> 헤더에 "MOCK 데이터" 배지가 표시됩니다. **운영에서는 절대 켜지 마세요.**
+---
 
-### 1) 백엔드 (FastAPI)
+## 필요한 것
+
+- **Synology NAS** — Intel/AMD Plus 계열, **DSM 7.2 이상**, Synology Photos 사용 중
+- **Container Manager**(Docker)가 설치된 NAS
+- 가족 구성원의 **DSM 계정**(로그인에 사용)
+
+사진 파일은 NAS의 Synology Photos 공유 폴더(`/photo`)와 개인 폴더
+(`/homes/<사용자>/Photos`)를 그대로 사용합니다. 앱은 별도로 사진을 복제해 두지
+않고, 항상 원본을 조작합니다.
+
+---
+
+## 설치 & 배포
+
+미리 빌드된 이미지를 GitHub Container Registry(GHCR)에서 받아 NAS에 올립니다.
+자세한 단계와 리버스 프록시(HTTPS) 설정은 [`DEPLOYMENT.md`](./DEPLOYMENT.md)를 참고하세요.
+
+**요약:**
 
 ```bash
-cd backend
-python3 -m venv .venv && source .venv/bin/activate
+# 1) 로컬(개발 PC)에서 이미지를 빌드해 GHCR로 올림
+./manage.sh ghcr:push
+
+# 2) NAS에서 이미지를 받아 배포
+IMAGE_TAG=latest ./deploy.sh update
+```
+
+접속: `http://<NAS_IP>:9800`
+운영 환경에서는 DSM 리버스 프록시(HTTPS) 뒤에 두고 쿠키 보안 옵션을 켜는 것을
+권장합니다(자세한 내용은 `DEPLOYMENT.md`).
+
+> **보안 참고 — DSM 자동 차단**: 이 앱은 로그인 요청을 NAS로 대신 전달합니다.
+> 비밀번호를 여러 번 틀리면 DSM의 자동 차단이 도커 IP를 막아 **가족 전체가 로그인
+> 못 할 수 있습니다.** DSM `제어판 → 보안 → 계정 → 자동 차단`의 허용 목록에 도커
+> 게이트웨이 IP를 추가해 두면 안전합니다.
+
+---
+
+## 처음 사용하기
+
+1. 브라우저로 `http://<NAS_IP>:9800`에 접속합니다.
+2. **자신의 DSM 계정**으로 로그인합니다(2단계 인증을 쓰면 OTP도 입력).
+   - 계정과 비밀번호는 앱이 저장하지 않습니다. 로그인 세션만 유지합니다.
+3. 상단에서 **📚 라이브러리**(공용 / 내 사진)를 고르고, **뷰**(타임라인 / 폴더 /
+   분류 / 중복 정리)를 전환하며 정리합니다.
+4. 사진에 마우스를 올리면 왼쪽 위 **체크 동그라미**로 선택, 사진을 클릭하면 크게 보기.
+   여러 장을 골라 폴더로 끌어다 놓으면 이동됩니다.
+5. 실수했다면 화면 아래 **되돌리기** 또는 상단 **작업 기록**에서 되돌립니다.
+
+---
+
+## 데이터와 안전성
+
+- **사진은 NAS를 벗어나지 않습니다.** 외부 클라우드·외부 AI로 전송하지 않습니다.
+- **로그인 정보를 저장하지 않습니다.** NAS 세션 키는 서버 안에만 보관하고 브라우저에는
+  노출하지 않습니다.
+- **삭제 = 휴지통.** 영구 삭제가 아니라 앱 휴지통으로 옮기며, 되돌리거나 나중에
+  "휴지통 비우기"로 완전히 지울 수 있습니다.
+- **모든 변경은 되돌릴 수 있습니다.** 이동·복사·삭제·폴더 작업이 작업 기록에 남습니다.
+- 앱이 관리하는 데이터(로그인 세션, 작업 기록, 중복 스캔 캐시)는 NAS의 작은 SQLite
+  파일에 저장되며, 사진 원본과는 별개입니다.
+
+---
+
+## 개발자용
+
+NAS 없이도 개발·체험할 수 있습니다. `.env`에 `MOCK_MODE=true`를 켜면 가짜 사진
+데이터로 모든 기능이 동작합니다(운영에서는 절대 켜지 마세요).
+
+```bash
+# 백엔드 (FastAPI)
+cd backend && python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-# .env는 리포 루트에 있으므로 루트에서 실행하거나 env를 export 합니다.
-cd ..
-uvicorn app.main:app --app-dir backend --reload --port 9800
+cd .. && uvicorn app.main:app --app-dir backend --reload --port 9800
+
+# 프론트엔드 (Vite) — 다른 터미널에서
+cd frontend && npm install && npm run dev
 ```
 
-헬스체크: <http://localhost:9800/api/health> → `{"status":"ok"}`
+브라우저에서 <http://localhost:5173> 접속. `/api` 요청은 Vite가 백엔드(9800)로
+프록시합니다.
 
-### 2) 프론트엔드 (Vite)
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-브라우저에서 <http://localhost:5173> → DSM 계정으로 로그인.
-`/api` 요청은 Vite 프록시가 백엔드(9800)로 전달합니다.
-
-로그인에 성공하면 화면에 **실제 NAS의 `SYNO.API.Info` 프로브 결과**(각 API의
-path/version/사용가능 여부)가 표로 표시됩니다 — 1단계 검증 지점입니다.
-
-## Docker 실행 (NAS Container Manager)
-
-단일 멀티스테이지 이미지(프론트 빌드 → FastAPI가 정적 서빙).
-
-```bash
-docker compose up --build -d
-```
-
-- 접속: `http://<NAS_IP>:9800`
-- SQLite는 `nas-photo-data` 볼륨에 보존됩니다.
-- 운영 시 DSM 리버스 프록시(HTTPS) 뒤에 두고 `.env`의 `COOKIE_SECURE=true` 권장.
-
-## 프로젝트 구조
-
-```
-backend/
-  app/
-    main.py            # FastAPI 진입점 (lifespan, CORS, DsmError 핸들러, 정적 서빙)
-    config.py          # 환경설정 (.env, MOCK_MODE 포함)
-    db.py              # SQLite 스키마 (session / operation / photo_cache / login_attempt)
-    session_store.py   # 쿠키 토큰 ↔ DSM sid 매핑 (서버측)
-    rate_limit.py      # 로그인 시도 제한 (DSM Auto Block 예방)
-    schemas.py         # 요청/응답 모델
-    dsm/
-      client.py        # DSM Web API 클라이언트 (Info 프로브 / 로그인 / 바이너리)
-      errors.py        # DSM 오류코드 → 한국어 메시지
-    photos/
-      source.py        # PhotoSource 프로토콜 (라우터가 보는 유일한 인터페이스)
-      mock.py          # NAS 없는 개발용 결정적 가짜 데이터 + SVG 썸네일
-      dsm_source.py    # SYNO.Foto/FotoTeam 실연동 (⚠️ 실 NAS 검증 전)
-    api/
-      deps.py          # 공용 의존성 (세션, PhotoSource 등)
-      auth.py          # /api/auth/login, /logout, /me
-      system.py        # /api/system/info (API.Info 프로브)
-      photos.py        # /api/photos/buckets·items·folders·thumbnail
-  tests/               # pytest (44개)
-frontend/
-  src/
-    api/               # 백엔드 호출 클라이언트 + 타입
-    lib/               # rowModel(justified+count-first), dates
-    store/             # Zustand (auth / timeline 선택·라이트박스 / toast)
-    components/
-      timeline/        # TimelineView, PhotoCell, DateHeader, Scrubber, ActionBar…
-      TimelineScreen.tsx  # DnD 컨텍스트 + 폴더패널 + 라이트박스 조립
-      FolderPanel.tsx, Lightbox.tsx, Toasts.tsx, LoginForm, ApiInfoPanel
-    App.tsx, main.tsx
-docker/Dockerfile
-docker-compose.yml
-```
-
-## 보안 메모
-
-- DSM `sid`는 브라우저에 노출하지 않습니다. 서버가 HttpOnly 쿠키(불투명 토큰)로
-  래핑하고 sid는 SQLite `session` 테이블에만 보관합니다.
-- 자격증명은 코드·로그·`.env`에 남기지 않습니다. 로그인은 GET 쿼리스트링이 아니라
-  POST 폼으로 전송해 URL·프록시 로그에 비밀번호가 남지 않게 합니다.
-- 앱 자체에서 계정당 로그인 시도를 제한합니다(기본 10분당 5회). 초과 시 429를
-  반환하며, 이 방어선이 DSM Auto Block보다 먼저 동작합니다.
-- 삭제는 영구삭제가 아니라 NAS 휴지통(`#recycle`)으로 보냅니다(후속 단계).
-
-### ⚠️ DSM Auto Block 주의
-
-이 앱은 **로그인 프록시**입니다. 컨테이너(도커 게이트웨이) IP에서 DSM으로 로그인
-요청이 나가므로, 비밀번호 실패가 누적되면 **DSM Auto Block이 그 IP를 차단**해
-가족 전체가 로그인하지 못할 수 있습니다. 예방:
-
-1. DSM **제어판 → 보안 → 계정 → 자동 차단**에서 도커 게이트웨이 IP를 **허용
-   목록(Allow List)** 에 추가합니다.
-2. 앱의 로그인 시도 제한(위)이 1차 방어선이지만, DSM 쪽 허용 목록 등록을 권장합니다.
+- **기술 스택**: FastAPI(Python) · React + TypeScript + Vite · Zustand ·
+  TanStack Query · Tailwind · SQLite. 파일 조작은 볼륨 마운트가 아니라 **DSM Web
+  API**(Auth / FileStation / Foto / FotoTeam)로만 수행하며, 권한은 DSM이 강제합니다.
+- **전체 명세**: [`NAS_사진정리앱_개발명세서.md`](./NAS_사진정리앱_개발명세서.md)
+- **개선·결정 이력**: [`docs/IMPROVEMENTS.md`](./docs/IMPROVEMENTS.md)
+- **배포 가이드**: [`DEPLOYMENT.md`](./DEPLOYMENT.md)
