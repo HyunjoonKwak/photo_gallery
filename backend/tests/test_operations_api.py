@@ -509,6 +509,60 @@ def test_move_folder_into_itself_is_rejected(client):
     assert resp.status_code == 409
 
 
+def test_remove_folder_empty_only_by_default(client):
+    """recursive 미지정: 사진이 있으면 409(빈 폴더만)."""
+    _, items = _first_day_items(client)
+    folder = client.post(
+        "/api/photos/folders", json={"space": "team", "name": "지울폴더"}
+    ).json()["folder"]
+    client.post(
+        "/api/photos/ops/move",
+        json={"item_ids": [items[0]["id"]], "dest_folder_id": folder["id"]},
+    )
+    resp = client.post(
+        "/api/photos/folders/delete",
+        json={"space": "team", "folder_id": folder["id"]},
+    )
+    assert resp.status_code == 409
+
+
+def test_recursive_folder_delete_and_undo(client):
+    """recursive: 사진이 있어도 통째로 휴지통 이동 + undo로 원상복구."""
+    _, items = _first_day_items(client)
+    folder = client.post(
+        "/api/photos/folders", json={"space": "team", "name": "통째삭제"}
+    ).json()["folder"]
+    client.post(
+        "/api/photos/ops/move",
+        json={
+            "item_ids": [items[0]["id"], items[1]["id"]],
+            "dest_folder_id": folder["id"],
+        },
+    )
+    assert _folder_item_count(client, folder["id"]) == 2
+
+    op = client.post(
+        "/api/photos/folders/delete",
+        json={"space": "team", "folder_id": folder["id"], "recursive": True},
+    )
+    assert op.status_code == 200
+    body = op.json()
+    assert body["undoable"] is True and "휴지통" in body["summary"]
+    # 폴더가 목록에서 사라지고 사진도 빠졌다.
+    assert not any(
+        f["id"] == folder["id"]
+        for f in client.get("/api/photos/folders").json()["folders"]
+    )
+
+    # undo: 폴더와 사진이 되돌아온다.
+    assert client.post(f"/api/ops/{body['operation_id']}/undo").status_code == 200
+    assert any(
+        f["id"] == folder["id"]
+        for f in client.get("/api/photos/folders").json()["folders"]
+    )
+    assert _folder_item_count(client, folder["id"]) == 2
+
+
 def test_mkdir_undo_fails_when_folder_not_empty(client):
     _, items = _first_day_items(client)
     op = client.post(

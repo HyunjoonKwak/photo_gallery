@@ -205,16 +205,33 @@ export function FolderPane({
     ops.createFolder(space, name.trim(), current?.id);
   };
 
-  // 폴더 삭제: 빈 폴더만 (백엔드가 검사 — 사진/하위 폴더 있으면 409 토스트).
+  // 폴더 삭제: 비어 있으면 바로 삭제, 사진·하위 폴더가 있으면 확인 후 통째로
+  // 휴지통 이동(가역 — 되돌리기 가능). 빈 폴더 판단은 현재 화면에 이미 로드된
+  // 직속 사진 수 + 하위 폴더 수로 한다(추가 조회 불필요).
   const onRemoveFolder = () => {
     if (!current) return;
+    const name = folderBasename(current.name);
+    const hasContent = items.length > 0 || subFolders.length > 0;
+    if (!hasContent) {
+      if (!window.confirm(`빈 폴더 '${name}'을(를) 삭제할까요?`)) return;
+      ops.removeFolder(current.space, current.id, false, () =>
+        onPathChange(path.slice(0, -1)),
+      );
+      return;
+    }
+    const parts = [
+      items.length > 0 ? `사진 ${items.length}장` : null,
+      subFolders.length > 0 ? `하위 폴더 ${subFolders.length}개` : null,
+    ].filter(Boolean);
     if (
       !window.confirm(
-        `'${folderBasename(current.name)}' 폴더를 삭제할까요?\n(빈 폴더만 삭제됩니다 — 사진이 있으면 거부)`,
+        `'${name}' 폴더에 ${parts.join("과(와) ")}이(가) 있습니다.\n` +
+          `폴더와 안의 내용을 모두 휴지통으로 옮길까요?\n` +
+          `(되돌리기로 복원할 수 있습니다.)`,
       )
     )
       return;
-    ops.removeFolder(current.space, current.id, () =>
+    ops.removeFolder(current.space, current.id, true, () =>
       onPathChange(path.slice(0, -1)),
     );
   };
@@ -365,7 +382,7 @@ export function FolderPane({
             <button
               onClick={onRemoveFolder}
               disabled={ops.isBusy}
-              title="빈 폴더만 삭제됩니다"
+              title="빈 폴더는 바로, 내용이 있으면 확인 후 통째로 휴지통으로"
               className="rounded-lg border border-red-200 px-2 py-0.5 text-xs text-red-500 hover:bg-red-50 disabled:opacity-40"
             >
               폴더 삭제

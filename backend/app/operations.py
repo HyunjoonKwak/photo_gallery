@@ -35,7 +35,7 @@ from .schemas import (
 )
 
 UNDOABLE_TYPES = frozenset(
-    {"move", "copy", "delete", "mkdir", "move_folder", "copy_folder"}
+    {"move", "copy", "delete", "mkdir", "move_folder", "copy_folder", "trash_folder"}
 )
 # Deleted items sit in the trash; keep undo open for 7 days (spec: 휴지통 보존).
 DELETE_UNDO_WINDOW = timedelta(days=7)
@@ -284,11 +284,31 @@ async def execute_remove_folder(
     user: str,
     req: "RemoveFolderRequest",
 ) -> OperationResponse:
-    """Delete an EMPTY folder (분할 뷰 폴더 정리). Non-empty → 409.
+    """Delete a folder.
 
-    Not undoable: nothing is lost (the folder had no photos), and recreating
-    a Foto folder id on undo is not meaningful.
+    - ``recursive`` False: only an EMPTY folder is removed (non-empty → 409).
+      Not undoable (nothing is lost, and recreating a Foto id is meaningless).
+    - ``recursive`` True: the whole folder (photos + subfolders) goes to the
+      trash — reversible via undo (사용자가 확인 후에만 요청). op type
+      ``trash_folder`` so undo moves it back.
     """
+    if req.recursive:
+        result = await source.trash_folder(req.space, req.folder_id)
+        summary = f"'{result['name']}' 폴더를 휴지통으로 이동 (내용 포함)"
+        op_id = _record(
+            sqlite_path,
+            user=user,
+            target_user=req.target_user,
+            type_="trash_folder",
+            space_from=req.space,
+            space_to=None,
+            payload={"summary": summary, "undo": result["undo"]},
+            undo_deadline=_now() + DELETE_UNDO_WINDOW,
+        )
+        return OperationResponse(
+            operation_id=op_id, summary=summary, affected=[], undoable=True
+        )
+
     removed = await source.remove_folder(req.folder_id)
     if not removed:
         raise HTTPException(
@@ -395,6 +415,9 @@ async def undo_operation(
         await source.revert_move_folders(
             payload.get("undo", []), payload.get("copy", False)
         )
+        affected = []
+    elif op_type == "trash_folder":
+        await source.restore_folder(payload["undo"])
         affected = []
     else:  # pragma: no cover - guarded by UNDOABLE_TYPES on insert
         raise HTTPException(status.HTTP_409_CONFLICT, "되돌릴 수 없는 작업 유형입니다.")

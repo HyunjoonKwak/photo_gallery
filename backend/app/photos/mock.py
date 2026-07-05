@@ -891,5 +891,46 @@ class MockPhotoSource:
                 return True
         return False  # default folders are not removable
 
+    async def trash_folder(self, space: str, folder_id: str) -> dict:
+        # 재귀 삭제: 폴더 직속 사진을 휴지통으로 + 폴더 제거(custom). mock은 flat
+        # 구조라 하위 폴더 재귀는 없다(DSM 관심사). undo는 사진 복원 + 폴더 재생성.
+        folder = self._folder_by_id(folder_id)
+        trashed: list[dict] = []
+        for item_id, (_, fid) in list(self._loc.items()):
+            if fid != folder_id or item_id in self._deleted:
+                continue
+            item = self._resolve_item(item_id)
+            sp, f = self._effective_loc(item_id)
+            self._deleted[item_id] = (item, sp, f)
+            self._loc.pop(item_id, None)
+            self._touch([(sp, self._day_of(item_id))])
+            trashed.append({"id": item_id})
+        removed = None
+        for i, f in enumerate(self._custom_folders):
+            if f.id == folder_id:
+                removed = f
+                del self._custom_folders[i]
+                break
+        return {
+            "name": folder.name.split("/")[-1],
+            "undo": {
+                "items": trashed,
+                "folder": removed.model_dump() if removed else None,
+            },
+        }
+
+    async def restore_folder(self, undo_payload: dict) -> None:
+        folder = undo_payload.get("folder")
+        if folder and not any(f.id == folder["id"] for f in self._custom_folders):
+            self._custom_folders.append(PhotoFolder(**folder))
+        for entry in undo_payload.get("items", []):
+            item_id = entry["id"]
+            snapshot = self._deleted.pop(item_id, None)
+            if snapshot is None:
+                continue
+            _, sp, fid = snapshot
+            self._loc[item_id] = (sp, fid)
+            self._touch([(sp, self._day_of(item_id))])
+
 
 mock_source = MockPhotoSource()

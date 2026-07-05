@@ -68,6 +68,9 @@ export function useFileOps() {
       window.setTimeout(() => {
         queryClient.invalidateQueries({ queryKey: ["folders"] });
         queryClient.invalidateQueries({ queryKey: ["folder-counts"] });
+        // 폴더 뷰 사진 목록도 재색인이 따라잡는 대로 갱신 — 이동/삭제한 사진이
+        // 옛 위치에 남거나 새 위치에 늦게 뜨는 인덱스 지연을 수렴시킨다.
+        queryClient.invalidateQueries({ queryKey: ["folder-items"] });
       }, ms);
     }
   };
@@ -135,6 +138,9 @@ export function useFileOps() {
         : undefined,
     );
     offerCleanup(res);
+    // 폴더 뷰에서의 이동/삭제는 Photos 재색인 지연으로 옛 위치에 남을 수 있어,
+    // 서버 tombstone(즉시 숨김) + 지연 재조회(새 위치 반영)로 함께 수렴시킨다.
+    resettleFolders();
   };
 
   const onError = (err: unknown) =>
@@ -238,8 +244,17 @@ export function useFileOps() {
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ["folders"] });
       queryClient.invalidateQueries({ queryKey: ["ops"] });
+      // 재귀 삭제(trash_folder)는 사진까지 빠지므로 사진 캐시도 무효화.
+      queryClient.invalidateQueries({ queryKey: ["folder-items"] });
+      queryClient.invalidateQueries({ queryKey: ["folder-counts"] });
+      queryClient.invalidateQueries({ queryKey: ["buckets"] });
       resettleFolders(); // 삭제 반영이 인덱스에 늦게 잡혀도 결국 수렴하게
-      useToastStore.getState().push(`${res.summary}했습니다`);
+      useToastStore.getState().push(
+        `${res.summary}했습니다`,
+        res.undoable
+          ? { label: "되돌리기", run: () => runUndo(res.operation_id) }
+          : undefined,
+      );
     },
     onError,
   });
@@ -316,9 +331,14 @@ export function useFileOps() {
         { onSuccess: () => onSuccess?.(), onSettled: p.stop },
       );
     },
-    removeFolder: (space: Space, folderId: string, onSuccess?: () => void) =>
+    removeFolder: (
+      space: Space,
+      folderId: string,
+      recursive: boolean,
+      onSuccess?: () => void,
+    ) =>
       rmdirMutation.mutate(
-        { space, folder_id: folderId, target_user: targetUser() },
+        { space, folder_id: folderId, recursive, target_user: targetUser() },
         { onSuccess: () => onSuccess?.() },
       ),
     undo: runUndo,

@@ -156,6 +156,8 @@ export interface CreateFolderRequest {
 export interface RemoveFolderRequest {
   space: Space;
   folder_id: string;
+  /** true면 사진·하위 폴더까지 통째로 휴지통 이동(가역). 기본 false는 빈 폴더만. */
+  recursive?: boolean;
   target_user?: string;
 }
 
@@ -200,6 +202,7 @@ export interface OperationEntry {
     | "delete"
     | "mkdir"
     | "rmdir"
+    | "trash_folder"
     | "move_folder"
     | "copy_folder"
     | "empty_trash";

@@ -215,6 +215,18 @@ class PhotoSource(Protocol):
         """Remove an empty folder (undo of mkdir). False if not empty/removable."""
         ...
 
+    async def trash_folder(self, space: str, folder_id: str) -> dict:
+        """Recursively send a whole folder (photos + subfolders) to the trash —
+        the reversible alternative to a permanent recursive delete. Returns
+        ``{"name": 표시명, "undo": <source-specific payload>}``; the undo payload
+        feeds ``restore_folder`` to bring the folder back to its original place.
+        """
+        ...
+
+    async def restore_folder(self, undo_payload: dict) -> None:
+        """Undo of trash_folder: move the folder back to its original location."""
+        ...
+
     # -------------------------------------------------- folder-level move
     async def folder_conflicts(
         self, space: str, folder_ids: list[str], dest_folder_id: str

@@ -229,6 +229,10 @@ class CreateFolderRequest(BaseModel):
 class RemoveFolderRequest(BaseModel):
     space: str = "team"
     folder_id: str = Field(min_length=1, max_length=512)
+    # False(기본): 빈 폴더만 삭제(비어있지 않으면 409). True: 사진·하위 폴더까지
+    # 통째로 휴지통으로 이동(가역 — undo 시 원위치 복원). 프론트가 사용자에게
+    # 확인받은 뒤에만 True로 보낸다.
+    recursive: bool = False
     target_user: str | None = Field(default=None, max_length=128)
 
 

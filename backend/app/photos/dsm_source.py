@@ -67,6 +67,13 @@ _TRASH_ID_CACHE: dict[str, tuple[float, frozenset[str]]] = {}
 # so tombstoning by id never hides a legitimate folder.
 _REMOVED_FOLDERS: dict[str, dict[str, float]] = {}
 _REMOVED_FOLDER_TTL = 600.0  # seconds — Photos reindex catches up well within
+# Item tombstones: sid -> {item_id: removed_at}. Same reindex-lag problem as
+# folders but for photos — a moved/deleted item keeps coming back from
+# Browse.Item (both the folder_id filter and the timeline) until Photos
+# reindexes (실 NAS: "삭제/이동했는데 폴더에 그대로 보임"). Hide these ids from
+# every listing for a grace window; undo clears them. A moved item that comes
+# back with a NEW id after reindex is unaffected (we tombstone the OLD id).
+_REMOVED_ITEMS: dict[str, dict[str, float]] = {}
 _BUCKET_TTL = 300.0  # seconds
 _PAGE = 5000
 
@@ -80,6 +87,32 @@ def _tombstoned_folders(sid: str) -> set[str]:
     for fid in [f for f, ts in entries.items() if now - ts > _REMOVED_FOLDER_TTL]:
         entries.pop(fid, None)
     return set(entries)
+
+
+def _tombstoned_items(sid: str) -> set[str]:
+    """Live item tombstones for this sid (expired entries pruned in place)."""
+    entries = _REMOVED_ITEMS.get(sid)
+    if not entries:
+        return set()
+    now = _time.monotonic()
+    for iid in [i for i, ts in entries.items() if now - ts > _REMOVED_FOLDER_TTL]:
+        entries.pop(iid, None)
+    return set(entries)
+
+
+def _tombstone_items(sid: str, item_ids: list[str]) -> None:
+    entries = _REMOVED_ITEMS.setdefault(sid, {})
+    now = _time.monotonic()
+    for iid in item_ids:
+        entries[iid] = now
+
+
+def _untombstone_items(sid: str, item_ids: list[str]) -> None:
+    entries = _REMOVED_ITEMS.get(sid)
+    if not entries:
+        return
+    for iid in item_ids:
+        entries.pop(iid, None)
 
 
 def invalidate_bucket_cache(sid: str, space: str | None = None) -> None:
@@ -141,6 +174,7 @@ class DsmPhotoSource:
             return cached[1]
 
         trash_ids = await self._trash_item_ids(space)
+        tomb = _tombstoned_items(self._sid)
         counter: Counter[str] = Counter()
         offset = 0
         while True:
@@ -155,7 +189,8 @@ class DsmPhotoSource:
             items = data.get("list", [])
             for it in items:
                 ts = it.get("time")
-                if ts and str(it.get("id")) not in trash_ids:
+                iid = str(it.get("id"))
+                if ts and iid not in trash_ids and iid not in tomb:
                     counter[date.fromtimestamp(ts).isoformat()] += 1
             if len(items) < _PAGE:
                 break
@@ -173,6 +208,7 @@ class DsmPhotoSource:
         start = int(datetime(d.year, d.month, d.day).timestamp())
         end = int((datetime(d.year, d.month, d.day) + timedelta(days=1)).timestamp())
         trash_ids = await self._trash_item_ids(space)
+        tomb = _tombstoned_items(self._sid)
         # Page through the whole day — a single mobile-backup day can hold
         # thousands of photos, so a fixed limit would silently truncate it.
         out: list[PhotoItem] = []
@@ -198,6 +234,7 @@ class DsmPhotoSource:
                 self._to_item(it)
                 for it in page
                 if str(it.get("id")) not in trash_ids
+                and str(it.get("id")) not in tomb
             )
             if len(page) < _PAGE:
                 break
@@ -361,9 +398,10 @@ class DsmPhotoSource:
 
     async def _filtered_items(self, space: str, filters: dict) -> list[PhotoItem]:
         """All Browse.Item results matching a filter (folder/person/place),
-        fully paginated (limit-1000 truncation 방지). 휴지통 아이템은 제외
-        (인물/장소 태그는 삭제 후에도 인덱스에 남는다)."""
+        fully paginated (limit-1000 truncation 방지). 휴지통·삭제/이동 대기 아이템은
+        제외 (Photos 인덱스는 삭제·이동을 재색인 전까지 계속 반환한다)."""
         trash_ids = await self._trash_item_ids(space)
+        tomb = _tombstoned_items(self._sid)
         out: list[PhotoItem] = []
         offset = 0
         page_size = 1000
@@ -385,6 +423,7 @@ class DsmPhotoSource:
                 self._to_item(it)
                 for it in page
                 if str(it.get("id")) not in trash_ids
+                and str(it.get("id")) not in tomb
             )
             if len(page) < page_size:
                 break
@@ -489,6 +528,7 @@ class DsmPhotoSource:
         # SYNO.Foto(Team).Search.Search "list_item" — 실 NAS raw 검증
         # (2026-07-03): 한국어 키워드·폴더명 매칭 동작 확인.
         trash_ids = await self._trash_item_ids(space)
+        tomb = _tombstoned_items(self._sid)
         out: list[PhotoItem] = []
         offset = 0
         page_size = 500
@@ -510,6 +550,7 @@ class DsmPhotoSource:
                 self._to_item(it)
                 for it in page
                 if str(it.get("id")) not in trash_ids
+                and str(it.get("id")) not in tomb
             )
             if len(page) < page_size:
                 break
@@ -939,10 +980,14 @@ class DsmPhotoSource:
                 self._record_placed(outcome, affected, space, dest_space, dest_dir,
                                     m, item_id, copy, new_name)
 
-        # A move (not copy) can leave the source folder(s) empty — surface them
-        # so the client can offer 정리(빈 폴더 삭제). Skip in copy mode (originals
-        # stay) and when overwriting into the same folder is a no-op.
         if not copy and outcome.moved:
+            # Hide moved ids at their OLD location right away — Photos keeps them
+            # under the old folder_id until it reindexes (실 NAS: "이동했는데
+            # 원본 폴더에 그대로 보임"). The item reappears at the destination
+            # with a new id once reindexed (프론트 resettle 재조회).
+            _tombstone_items(self._sid, [p.id for p in outcome.moved])
+            # A move can leave the source folder(s) empty — surface them so the
+            # client can offer 정리(빈 폴더 삭제).
             outcome.emptied = await self._detect_emptied(space, metas, outcome.moved)
 
         outcome.affected = sorted(affected)
@@ -1034,6 +1079,9 @@ class DsmPhotoSource:
                     src_path=m["path"], trash_path=f"{trash_dir}/{m['filename']}",
                 )
             )
+        # Hide the deleted ids immediately — Photos keeps returning them from the
+        # folder/timeline filters until it reindexes the #trash move.
+        _tombstone_items(self._sid, [p.id for p in outcome.deleted])
         outcome.affected = sorted(affected)
         self._invalidate(affected)
         return outcome
@@ -1064,12 +1112,16 @@ class DsmPhotoSource:
     async def place(
         self, placements: list[PlacedItem], on_progress: ProgressFn | None = None
     ) -> Affected:
-        return await self._reverse(placements, on_progress)  # undo move
+        # Undo move: the item returns to its old path — drop its tombstone so
+        # the restored location shows it again without waiting for reindex.
+        _untombstone_items(self._sid, [p.id for p in placements])
+        return await self._reverse(placements, on_progress)
 
     async def restore(
         self, placements: list[PlacedItem], on_progress: ProgressFn | None = None
     ) -> Affected:
-        return await self._reverse(placements, on_progress)  # undo delete
+        _untombstone_items(self._sid, [p.id for p in placements])  # undo delete
+        return await self._reverse(placements, on_progress)
 
     async def remove_items(self, item_ids: list[str]) -> Affected:
         # undo copy: item_ids are actually the created copies' absolute paths.
@@ -1164,6 +1216,34 @@ class DsmPhotoSource:
         # (tombstone) so the tree drops it immediately after the toast.
         _REMOVED_FOLDERS.setdefault(self._sid, {})[str(folder_id)] = _time.monotonic()
         return True
+
+    async def trash_folder(self, space: str, folder_id: str) -> dict:
+        # 재귀 삭제 = 폴더를 통째로 앱 휴지통(/photo/#trash/t<ns>/)으로 이동.
+        # 파일 단위로 풀지 않고 CopyMove 한 번으로 서브트리 전체를 옮겨(FileStation
+        # 재귀), 하위 구조를 그대로 보존한다 → undo는 폴더를 원위치로 역이동.
+        dest_dir, _ = await self._dest_dir(folder_id)
+        basename = dest_dir.rsplit("/", 1)[-1]
+        trash_dir = f"{self.TRASH_ROOT}/t{_time.time_ns()}"
+        await self._ensure_dir(trash_dir)
+        await self._copymove([dest_dir], trash_dir, remove_src=True)
+        invalidate_folder_cache(self._sid)
+        invalidate_bucket_cache(self._sid)
+        # 트리에서 즉시 감춤(폴더 인덱스 지연 대비, remove_folder와 동일 패턴).
+        _REMOVED_FOLDERS.setdefault(self._sid, {})[str(folder_id)] = _time.monotonic()
+        return {
+            "name": basename,
+            "undo": {"trash_path": f"{trash_dir}/{basename}", "src_dir": dest_dir},
+        }
+
+    async def restore_folder(self, undo_payload: dict) -> None:
+        parent = undo_payload["src_dir"].rsplit("/", 1)[0]
+        await self._ensure_dir(parent)
+        await self._copymove(
+            [undo_payload["trash_path"]], parent, remove_src=True
+        )
+        _REMOVED_FOLDERS.pop(self._sid, None)  # 복원된 폴더가 다시 보이게
+        invalidate_folder_cache(self._sid)
+        invalidate_bucket_cache(self._sid)
 
     async def folder_conflicts(
         self, space: str, folder_ids: list[str], dest_folder_id: str
