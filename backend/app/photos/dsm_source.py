@@ -76,6 +76,11 @@ _REMOVED_FOLDER_TTL = 600.0  # seconds — Photos reindex catches up well within
 _REMOVED_ITEMS: dict[str, dict[str, float]] = {}
 _BUCKET_TTL = 300.0  # seconds
 _PAGE = 5000
+# Video list cache: sid -> {space: (ts, items)}. videos()는 라이브러리 전체를
+# 스캔해 type==video만 거르므로(무거움) 결과를 buckets와 같은 창으로 캐시.
+_VIDEO_CACHE: dict[tuple[str, str], tuple[float, list["PhotoItem"]]] = {}
+# 전량 스캔 페이지를 동시에 몇 개까지 조회할지(첫 조회 지연 단축; NAS 과부하 방지).
+_SCAN_CONCURRENCY = 6
 
 
 def _tombstoned_folders(sid: str) -> set[str]:
@@ -117,13 +122,17 @@ def _untombstone_items(sid: str, item_ids: list[str]) -> None:
 
 def invalidate_bucket_cache(sid: str, space: str | None = None) -> None:
     # Trash contents change on the same writes that stale the buckets
-    # (delete/restore/purge) — one invalidation hook covers both.
+    # (delete/restore/purge) — one invalidation hook covers both. The video
+    # list changes on the same writes, so drop it here too.
     _TRASH_ID_CACHE.pop(sid, None)
     if space is None:
         for key in [k for k in _BUCKET_CACHE if k[0] == sid]:
             _BUCKET_CACHE.pop(key, None)
+        for key in [k for k in _VIDEO_CACHE if k[0] == sid]:
+            _VIDEO_CACHE.pop(key, None)
     else:
         _BUCKET_CACHE.pop((sid, space), None)
+        _VIDEO_CACHE.pop((sid, space), None)
 
 
 def invalidate_folder_cache(sid: str) -> None:
@@ -176,25 +185,13 @@ class DsmPhotoSource:
         trash_ids = await self._trash_item_ids(space)
         tomb = _tombstoned_items(self._sid)
         counter: Counter[str] = Counter()
-        offset = 0
-        while True:
-            data = await self._dsm.call(
-                _ns(space, "SYNO.Foto.Browse.Item"),
-                "list",
-                version=1,
-                sid=self._sid,
-                # additional 생략 → time 만 받아 페이로드 최소화.
-                extra={"offset": offset, "limit": _PAGE},
-            )
-            items = data.get("list", [])
-            for it in items:
+        # additional 생략 → time 만 받아 페이로드 최소화.
+        for page in await self._scan_item_pages(space):
+            for it in page:
                 ts = it.get("time")
                 iid = str(it.get("id"))
                 if ts and iid not in trash_ids and iid not in tomb:
                     counter[date.fromtimestamp(ts).isoformat()] += 1
-            if len(items) < _PAGE:
-                break
-            offset += _PAGE
 
         out = [
             PhotoBucket(day=day, count=count)
@@ -202,6 +199,39 @@ class DsmPhotoSource:
         ]
         _BUCKET_CACHE[cache_key] = (_time.monotonic(), out)
         return out
+
+    async def _scan_item_pages(
+        self, space: str, additional: list[str] | None = None
+    ) -> list[list[dict]]:
+        """라이브러리 전체 Browse.Item를 병렬 "물결"로 스캔해 raw 페이지들을
+        반환. total을 미리 못 믿으므로(필터 없는 count 동작 불확실)
+        _SCAN_CONCURRENCY 페이지씩 동시에 받고, 짧은 페이지(< _PAGE)가 나오면
+        끝에 도달한 것 → 종료. 순차 페이징 대비 첫 조회 지연을 줄인다
+        (buckets/videos 공용)."""
+        extra_add = {"additional": json.dumps(additional)} if additional else {}
+
+        async def fetch(offset: int) -> list[dict]:
+            data = await self._dsm.call(
+                _ns(space, "SYNO.Foto.Browse.Item"),
+                "list",
+                version=1,
+                sid=self._sid,
+                extra={"offset": offset, "limit": _PAGE, **extra_add},
+            )
+            return data.get("list", [])
+
+        pages: list[list[dict]] = []
+        offset = 0
+        done = False
+        while not done:
+            offsets = [offset + i * _PAGE for i in range(_SCAN_CONCURRENCY)]
+            wave = await asyncio.gather(*(fetch(o) for o in offsets))
+            for page in wave:
+                pages.append(page)
+                if len(page) < _PAGE:
+                    done = True
+            offset += _SCAN_CONCURRENCY * _PAGE
+        return pages
 
     async def items(self, space: str, day: str) -> list[PhotoItem]:
         d = date.fromisoformat(day)
@@ -671,28 +701,22 @@ class DsmPhotoSource:
         )
 
     async def videos(self, space: str) -> list[PhotoItem]:
-        # 라이브러리 전체를 페이징하며 type=="video"만 (buckets 패턴 복제).
-        # DSM에 파일유형 필터 파라미터가 있는지는 실 NAS 프로브 미검증이라,
-        # 앱단 필터로 동작(있으면 추후 최적화). 휴지통/tombstone 제외.
+        # 라이브러리 전체를 스캔해 type=="video"만 (DSM에 파일유형 필터
+        # 파라미터가 있는지 실 NAS 프로브 미검증 → 앱단 필터). 무거운 작업이라
+        # ① 결과를 buckets와 같은 창으로 캐시하고 ② 페이지를 동시에 조회해
+        # 첫 조회 지연을 순차 페이징 대비 크게 줄인다. 휴지통/tombstone 제외.
+        cache_key = (self._sid, space)
+        cached = _VIDEO_CACHE.get(cache_key)
+        if cached and (_time.monotonic() - cached[0]) < _BUCKET_TTL:
+            return cached[1]
+
         trash_ids = await self._trash_item_ids(space)
         tomb = _tombstoned_items(self._sid)
+
         out: list[PhotoItem] = []
-        offset = 0
-        while True:
-            data = await self._dsm.call(
-                _ns(space, "SYNO.Foto.Browse.Item"),
-                "list",
-                version=1,
-                sid=self._sid,
-                extra={
-                    "offset": offset,
-                    "limit": _PAGE,
-                    "additional": json.dumps(
-                        ["thumbnail", "resolution", "video_meta"]
-                    ),
-                },
-            )
-            page = data.get("list", [])
+        for page in await self._scan_item_pages(
+            space, ["thumbnail", "resolution", "video_meta"]
+        ):
             for it in page:
                 iid = str(it.get("id"))
                 if (
@@ -701,10 +725,9 @@ class DsmPhotoSource:
                     and iid not in tomb
                 ):
                     out.append(self._to_item(it))
-            if len(page) < _PAGE:
-                break
-            offset += _PAGE
+
         out.sort(key=lambda i: i.taken_at, reverse=True)
+        _VIDEO_CACHE[cache_key] = (_time.monotonic(), out)
         return out
 
     async def folder_count(self, folder_id: str) -> int:

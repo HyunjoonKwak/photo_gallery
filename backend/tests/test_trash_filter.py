@@ -105,9 +105,11 @@ async def test_buckets_exclude_trashed_items(monkeypatch):
     ts = int(_time.time())
     dsm = _RoutingDsm(
         [
+            # offset 0 만 내용(전량 스캔이 병렬로 여러 offset을 치므로 offset>0은
+            # 빈 페이지여야 실제 DSM처럼 동작 → 중복 카운트 방지).
             (
                 "SYNO.FotoTeam.Browse.Item",
-                lambda e: "folder_id" not in e,
+                lambda e: "folder_id" not in e and e.get("offset", 0) == 0,
                 {"list": [{"id": 900, "time": ts}, {"id": 901, "time": ts}]},
             ),
         ]
