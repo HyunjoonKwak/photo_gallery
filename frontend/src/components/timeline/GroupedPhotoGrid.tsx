@@ -19,8 +19,8 @@ const MIN_TILE = 116;
 
 type Row =
   | { kind: "header"; key: string; groupKey: string; label: string }
-  | { kind: "photos"; key: string; items: PhotoItem[] }
-  | { kind: "placeholder"; key: string; day: string; cols: number }
+  | { kind: "photos"; key: string; groupKey: string; items: PhotoItem[] }
+  | { kind: "placeholder"; key: string; groupKey: string; day: string; cols: number }
   | { kind: "more"; key: string; groupKey: string; hidden: number };
 
 interface Group {
@@ -160,6 +160,7 @@ export function GroupedPhotoGrid({
           rows.push({
             kind: "photos",
             key: `p-${g.key}-${i}`,
+            groupKey: g.key,
             items: shown.slice(i * cols, i * cols + cols),
           });
         }
@@ -177,6 +178,7 @@ export function GroupedPhotoGrid({
           rows.push({
             kind: "placeholder",
             key: `x-${g.key}-${i}`,
+            groupKey: g.key,
             day: pdays[0],
             cols,
           });
@@ -208,17 +210,22 @@ export function GroupedPhotoGrid({
 
   const virtualItems = virtualizer.getVirtualItems();
 
-  // 가시 그룹(placeholder 행)의 미리보기 day 요청.
+  // 화면에 보이는 그룹의 미리보기 days를 요청. placeholder 행이 아니라 가시
+  // "그룹" 기준이라, 첫 day 로드로 photos 행으로 전환된 뒤에도(그리고 cols가
+  // 늘어 cap이 커진 뒤에도) 5줄을 채울 나머지 day를 계속 요청한다.
   useEffect(() => {
     const have = new Set(requestedDays);
-    const need: string[] = [];
+    const visibleGroups = new Set<string>();
     for (const v of virtualItems) {
       const r = rows[v.index];
-      if (r?.kind === "placeholder" && !have.has(r.day) && !need.includes(r.day)) {
-        // 그 그룹의 미리보기 days 전부 요청(5줄 채우려면 여러 day 필요).
-        const g = groups.find((gr) => `x-${gr.key}` === r.key.replace(/-\d+$/, ""));
-        const days = g ? previewDaysOf(g) : [r.day];
-        for (const d of days) if (!have.has(d) && !need.includes(d)) need.push(d);
+      if (r) visibleGroups.add(r.groupKey);
+    }
+    const need: string[] = [];
+    for (const gkey of visibleGroups) {
+      const g = groups.find((gr) => gr.key === gkey);
+      if (!g) continue;
+      for (const d of previewDaysOf(g)) {
+        if (!have.has(d) && !need.includes(d)) need.push(d);
       }
     }
     if (need.length) setRequestedDays((prev) => [...prev, ...need]);
