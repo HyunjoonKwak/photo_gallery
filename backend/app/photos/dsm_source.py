@@ -747,17 +747,23 @@ class DsmPhotoSource:
                         {"keys": list(extra), "code": exc.code, "msg": str(exc)[:70]}
                     )
 
-        # merge 키 검증: target을 존재하지 않는 id(bogus)로 둬 실제 병합이
-        # 일어나지 않게 한다 — 키가 맞으면 "대상 없음"류(120 아님), 틀리면 120.
+        # merge 키 검증: 실제 존재하는 id로 "자기 자신 병합"(무해 no-op/의미
+        # 오류)을 시도해 값 유효성 문제를 배제하고 키만 본다. 120=키 틀림,
+        # 그 외(성공/의미오류)=키 맞음. 같은 person을 source·target으로.
         pid = int(persons[0].id)
-        bogus = 999_999_999
         merge_variants = [
-            {"id": json.dumps([pid]), "target": bogus},
-            {"id": json.dumps([pid]), "target_id": bogus},
-            {"source_id": pid, "target_id": bogus},
-            {"source": pid, "target": bogus},
-            {"id_list": json.dumps([pid]), "target_id": bogus},
-            {"source_id_list": json.dumps([pid]), "target_id": bogus},
+            {"id": json.dumps([pid]), "target": pid},
+            {"id": json.dumps([pid]), "target_id": pid},
+            {"id": pid, "target_id": pid},
+            {"id": pid, "target": pid},
+            {"source_id": pid, "target_id": pid},
+            {"id": json.dumps([pid, pid])},  # 타깃 없이 리스트만
+            {"id": json.dumps([pid]), "to_id": pid},
+            {"id": json.dumps([pid]), "dest_id": pid},
+            {"id": json.dumps([pid]), "keep_id": pid},
+            {"id": json.dumps([pid]), "main_id": pid},
+            {"from_id": pid, "to_id": pid},
+            {"person_id": json.dumps([pid]), "target_id": pid},
         ]
         merge_probe: list[dict] = []
         for extra in merge_variants:
@@ -770,8 +776,7 @@ class DsmPhotoSource:
                 )
         return {
             "set_working_keys": set_working,
-            "set_probe": set_probe,
-            "merge (120=키틀림 / 그외=키맞음, target은 bogus라 실제 병합 안 됨)": merge_probe,
+            "merge (120=키틀림 / 그외=키맞음; 자기병합이라 무해)": merge_probe,
         }
 
     async def places(self, space: str) -> list[PlaceInfo]:
