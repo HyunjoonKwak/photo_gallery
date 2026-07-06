@@ -196,6 +196,16 @@ async def list_persons(
     return PersonsResponse(space=space, persons=await source.persons(space))
 
 
+@router.get("/_debug/merge_confirm")
+async def debug_merge_confirm(
+    source: PhotoSource = Depends(get_photo_source),
+) -> dict:
+    """진단용(임시): merged_id 값 형식 확정. 같은 이름 쌍을 실제 병합 시도."""
+    if not hasattr(source, "debug_merge_confirm"):
+        return {"mock": True, "note": "실 NAS에서만 확인 가능합니다."}
+    return await source.debug_merge_confirm()  # type: ignore[attr-defined]
+
+
 @router.post("/persons/name", response_model=NamePersonResponse)
 async def name_person(
     req: NamePersonRequest,
