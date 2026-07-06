@@ -5,7 +5,7 @@ sm/m/xl 상태), (2) 실제 Thumbnail get 응답(이미지 바이트 vs JSON 에
 사진 아이템과 나란히 비교해 "동영상만" 다른지 드러낸다.
 
 사용법 (backend 디렉터리에서):
-    DSM_BASE_URL=https://192.168.1.113 DSM_PORT=5001 DSM_VERIFY_TLS=false \
+    DSM_BASE_URL=https://192.168.0.10 DSM_PORT=5001 DSM_VERIFY_TLS=false \
     DSM_ACCOUNT=<계정> DSM_PASSWD=<비번> \
     python scripts/diag_video_thumb.py [team|personal]
 

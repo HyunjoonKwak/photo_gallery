@@ -3,7 +3,7 @@
 `my_portal`과 동일한 흐름입니다: **로컬에서 빌드·GHCR 푸시 → NAS에서 pull·배포**.
 `nas_photo`는 단일 이미지(멀티스테이지: 프론트 빌드 → FastAPI가 정적 서빙)입니다.
 
-이미지: `ghcr.io/hyunjoonkwak/nas-photo:latest`
+이미지: `ghcr.io/<GHCR_USERNAME>/nas-photo:latest`
 
 ## 1. 로컬 — 빌드 & GHCR 푸시
 

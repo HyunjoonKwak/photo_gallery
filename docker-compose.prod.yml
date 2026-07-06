@@ -13,7 +13,7 @@ services:
     environment:
       - TZ=Asia/Seoul
       # DSM 연결 (자격증명은 넣지 않음 — 로그인 화면에서 입력)
-      - DSM_BASE_URL=${DSM_BASE_URL:-https://192.168.1.113}
+      - DSM_BASE_URL=${DSM_BASE_URL:-https://192.168.0.10}
       - DSM_PORT=${DSM_PORT:-5001}
       - DSM_VERIFY_TLS=${DSM_VERIFY_TLS:-false}
       - DSM_TIMEOUT_SECONDS=${DSM_TIMEOUT_SECONDS:-30}
