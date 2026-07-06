@@ -192,6 +192,18 @@ async def list_persons(
     return PersonsResponse(space=space, persons=await source.persons(space))
 
 
+@router.get("/_debug/places_raw")
+async def debug_places_raw(
+    space: Space = Query("team"),
+    source: PhotoSource = Depends(get_photo_source),
+) -> dict:
+    """진단용(임시): 실 NAS Geocoding list 원본 응답 — 국가별 그룹핑을 위한
+    name 포맷/주소 계층 확인용. mock에선 안내만."""
+    if hasattr(source, "debug_places_raw"):
+        return await source.debug_places_raw(space)  # type: ignore[attr-defined]
+    return {"mock": True, "note": "실 NAS에서만 원본을 확인할 수 있습니다."}
+
+
 @router.get("/person-items", response_model=BucketItemsResponse)
 async def list_person_items(
     id: str,

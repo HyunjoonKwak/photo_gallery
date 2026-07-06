@@ -624,6 +624,18 @@ class DsmPhotoSource:
     async def person_items(self, space: str, person_id: str) -> list[PhotoItem]:
         return await self._filtered_items(space, {"person_id": int(person_id)})
 
+    async def debug_places_raw(self, space: str) -> dict:
+        """진단용: Geocoding list 원본 응답(첫 15개)을 가공 없이 반환. 국가별
+        그룹핑을 위해 실 NAS의 name 포맷/주소 계층 필드를 확인하려는 용도."""
+        data = await self._dsm.call(
+            _ns(space, "SYNO.Foto.Browse.Geocoding"),
+            "list",
+            version=1,
+            sid=self._sid,
+            extra={"offset": 0, "limit": 15},
+        )
+        return {"space": space, "places": data.get("list", [])[:15]}
+
     async def places(self, space: str) -> list[PlaceInfo]:
         out: list[PlaceInfo] = []
         offset = 0
