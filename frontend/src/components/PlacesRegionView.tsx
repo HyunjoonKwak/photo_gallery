@@ -187,10 +187,12 @@ function RegionCard({
   region: RegionGroup;
   onOpen: () => void;
 }) {
+  // 미리보기 4장만 필요 → limit로 한 페이지만(그룹 전체 목록을 안 받음).
+  // 전체 목록과 캐시 키를 분리(place-preview)해 서로 덮어쓰지 않게.
   const q = useQuery({
-    queryKey: ["album-items", space, "place", region.coverId],
-    queryFn: () => api.placeItems(space, region.coverId),
-    staleTime: 60_000,
+    queryKey: ["place-preview", space, region.coverId],
+    queryFn: () => api.placeItems(space, region.coverId, 8),
+    staleTime: 5 * 60_000,
   });
   const preview = (q.data?.items ?? []).slice(0, 4);
   return (

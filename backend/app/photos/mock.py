@@ -413,7 +413,9 @@ class MockPhotoSource:
             return folders
         return [f for f in folders if f.parent_id == parent_id]
 
-    async def folder_items(self, folder_id: str) -> list[PhotoItem]:
+    async def folder_items(
+        self, folder_id: str, limit: int | None = None
+    ) -> list[PhotoItem]:
         self._folder_by_id(folder_id)  # 404 for unknown folders
         out: list[PhotoItem] = []
         for item_id, (_, fid) in self._loc.items():
@@ -422,7 +424,7 @@ class MockPhotoSource:
             item = self._resolve_item(item_id)
             out.append(item.model_copy(update={"folder": self._folder_name(fid)}))
         out.sort(key=lambda i: (i.taken_at, i.id))
-        return out
+        return out[:limit] if limit is not None else out
 
     async def item_detail(self, space: str, item_id: str) -> ItemDetail:
         base_space, day, idx = _parse_id(item_id)
@@ -542,16 +544,19 @@ class MockPhotoSource:
         out.sort(key=lambda g: -(g.item_count or 0))
         return [g for g in out if g.item_count]
 
-    async def place_items(self, space: str, place_id: str) -> list[PhotoItem]:
+    async def place_items(
+        self, space: str, place_id: str, limit: int | None = None
+    ) -> list[PhotoItem]:
         spec = next((g for g in _PLACES if g[0] == place_id), None)
         if spec is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="장소를 찾을 수 없습니다."
             )
         mod, rem = spec[5], spec[6]
-        return [
+        out = [
             it for it in self._classify_pool(space) if self._in_group(it.id, mod, rem)
         ]
+        return out[:limit] if limit is not None else out
 
     async def videos(self, space: str) -> list[PhotoItem]:
         out = [
@@ -1098,12 +1103,15 @@ class MockZonePhotoSource(MockPhotoSource):
             )
         return out
 
-    async def folder_items(self, folder_id: str) -> list[PhotoItem]:
-        return [
+    async def folder_items(
+        self, folder_id: str, limit: int | None = None
+    ) -> list[PhotoItem]:
+        out = [
             _zone_item(p)
             for p in _zone_leaf_files(folder_id)
             if p not in self._zone_moved
         ]
+        return out[:limit] if limit is not None else out
 
     async def folder_count(self, folder_id: str) -> int:
         return len(await self.folder_items(folder_id))

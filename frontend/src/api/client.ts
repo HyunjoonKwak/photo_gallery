@@ -122,9 +122,11 @@ export const api = {
         ? `/api/photos/folders?parent_id=${encodeURIComponent(parentId)}${scopeQS()}`
         : `/api/photos/folders${scopeQS("?")}`,
     ),
-  folderItems: (folderId: string) =>
+  folderItems: (folderId: string, limit?: number) =>
     request<BucketItemsResponse>(
-      `/api/photos/folder-items?folder_id=${encodeURIComponent(folderId)}${scopeQS()}`,
+      `/api/photos/folder-items?folder_id=${encodeURIComponent(folderId)}${
+        limit ? `&limit=${limit}` : ""
+      }${scopeQS()}`,
     ),
   folderCounts: (ids: string[]) =>
     request<FolderCountsResponse>(
@@ -146,9 +148,11 @@ export const api = {
     ),
   places: (space: Space) =>
     request<PlacesResponse>(`/api/photos/places?space=${space}${scopeQS()}`),
-  placeItems: (space: Space, id: string) =>
+  placeItems: (space: Space, id: string, limit?: number) =>
     request<BucketItemsResponse>(
-      `/api/photos/place-items?space=${space}&id=${encodeURIComponent(id)}${scopeQS()}`,
+      `/api/photos/place-items?space=${space}&id=${encodeURIComponent(id)}${
+        limit ? `&limit=${limit}` : ""
+      }${scopeQS()}`,
     ),
   videos: (space: Space) =>
     request<BucketItemsResponse>(`/api/photos/videos?space=${space}${scopeQS()}`),

@@ -411,15 +411,19 @@ class DsmPhotoSource:
                 stack.append(cid)
         return out
 
-    async def _filtered_items(self, space: str, filters: dict) -> list[PhotoItem]:
-        """All Browse.Item results matching a filter (folder/person/place),
-        fully paginated (limit-1000 truncation 방지). 휴지통·삭제/이동 대기 아이템은
-        제외 (Photos 인덱스는 삭제·이동을 재색인 전까지 계속 반환한다)."""
+    async def _filtered_items(
+        self, space: str, filters: dict, limit: int | None = None
+    ) -> list[PhotoItem]:
+        """Browse.Item results matching a filter (folder/person/place). limit이
+        없으면 전량 페이징(limit-1000 truncation 방지), 있으면 한 페이지만
+        (미리보기 카드용 — 수천 장 그룹을 통째로 받지 않도록). 휴지통·삭제/이동
+        대기 아이템은 제외(Photos 인덱스는 재색인 전까지 계속 반환한다)."""
         trash_ids = await self._trash_item_ids(space)
         tomb = _tombstoned_items(self._sid)
         out: list[PhotoItem] = []
         offset = 0
-        page_size = 1000
+        # 미리보기는 필터로 몇 장 빠질 수 있으니 여유 있게 한 페이지.
+        page_size = min(limit + 8, 1000) if limit is not None else 1000
         while True:
             data = await self._dsm.call(
                 _ns(space, "SYNO.Foto.Browse.Item"),
@@ -440,17 +444,21 @@ class DsmPhotoSource:
                 if str(it.get("id")) not in trash_ids
                 and str(it.get("id")) not in tomb
             )
-            if len(page) < page_size:
-                break
+            if limit is not None or len(page) < page_size:
+                break  # 미리보기는 한 페이지로 종료
             offset += page_size
-        return out
+        return out[:limit] if limit is not None else out
 
-    async def folder_items(self, folder_id: str) -> list[PhotoItem]:
+    async def folder_items(
+        self, folder_id: str, limit: int | None = None
+    ) -> list[PhotoItem]:
         # folder_id 필터는 실 NAS 동작 확인됨(2026-07): 해당 폴더의 "직속" 사진만
         # 반환(하위 폴더 사진 미포함). 폴더 space는 메타 캐시에서 판정(UI가 트리
         # 탐색 중 채움); 미스면 최상위를 한 번 로드해 시도.
         space = self._folder_space(folder_id)
-        return await self._filtered_items(space, {"folder_id": int(folder_id)})
+        return await self._filtered_items(
+            space, {"folder_id": int(folder_id)}, limit
+        )
 
     # EXIF keys worth showing, normalized to fixed names the frontend labels.
     _EXIF_KEYS = (
@@ -655,8 +663,12 @@ class DsmPhotoSource:
         out.sort(key=lambda g: -(g.item_count or 0))
         return out
 
-    async def place_items(self, space: str, place_id: str) -> list[PhotoItem]:
-        return await self._filtered_items(space, {"geocoding_id": int(place_id)})
+    async def place_items(
+        self, space: str, place_id: str, limit: int | None = None
+    ) -> list[PhotoItem]:
+        return await self._filtered_items(
+            space, {"geocoding_id": int(place_id)}, limit
+        )
 
     async def videos(self, space: str) -> list[PhotoItem]:
         # 라이브러리 전체를 페이징하며 type=="video"만 (buckets 패턴 복제).

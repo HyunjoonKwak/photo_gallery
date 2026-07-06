@@ -71,8 +71,11 @@ class PhotoSource(Protocol):
         """
         ...
 
-    async def folder_items(self, folder_id: str) -> list[PhotoItem]:
-        """Items currently assigned to a folder (folder view)."""
+    async def folder_items(
+        self, folder_id: str, limit: int | None = None
+    ) -> list[PhotoItem]:
+        """Items currently assigned to a folder (folder view). ``limit`` caps to
+        a single cheap page (미리보기 카드용 — 전체 페이징 회피)."""
         ...
 
     async def folder_count(self, folder_id: str) -> int:
@@ -110,8 +113,10 @@ class PhotoSource(Protocol):
         """Geocoded place groups of one space."""
         ...
 
-    async def place_items(self, space: str, place_id: str) -> list[PhotoItem]:
-        """All items taken at a place."""
+    async def place_items(
+        self, space: str, place_id: str, limit: int | None = None
+    ) -> list[PhotoItem]:
+        """All items taken at a place. ``limit`` caps to a single cheap page."""
         ...
 
     async def videos(self, space: str) -> list[PhotoItem]:

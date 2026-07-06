@@ -127,15 +127,18 @@ class _FsRootMixin:
             return await self._fs_children_folders(parent_id)
         return await super().folders(parent_id)
 
-    async def folder_items(self, folder_id: str) -> list[PhotoItem]:
+    async def folder_items(
+        self, folder_id: str, limit: int | None = None
+    ) -> list[PhotoItem]:
         if not _is_path_id(folder_id):
-            return await super().folder_items(folder_id)
+            return await super().folder_items(folder_id, limit)
         files = await self._fs_list(folder_id, files=True)
-        return [
+        items = [
             self._fs_item(f)
             for f in files
             if f.get("name", "").lower().endswith(_PHOTO_EXT)
         ]
+        return items[:limit] if limit is not None else items
 
     async def folder_count(self, folder_id: str) -> int:
         if not _is_path_id(folder_id):

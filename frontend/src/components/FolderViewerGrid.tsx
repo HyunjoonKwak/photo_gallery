@@ -120,10 +120,12 @@ function FolderCard({
   folder: PhotoFolder;
   onOpen: () => void;
 }) {
+  // 미리보기 4장만 필요 → limit로 한 페이지만(폴더 전체 목록을 안 받음).
+  // 전체 목록(folder-items)과 캐시 키 분리(folder-preview).
   const q = useQuery({
-    queryKey: ["folder-items", folder.id],
-    queryFn: () => api.folderItems(folder.id),
-    staleTime: 60_000,
+    queryKey: ["folder-preview", folder.id],
+    queryFn: () => api.folderItems(folder.id, 8),
+    staleTime: 5 * 60_000,
   });
   const preview = (q.data?.items ?? []).slice(0, 4);
   return (

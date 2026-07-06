@@ -106,12 +106,14 @@ async def list_folders(
 @router.get("/folder-items", response_model=BucketItemsResponse)
 async def list_folder_items(
     folder_id: str,
+    limit: int | None = Query(None, ge=1, le=100),
     source: PhotoSource = Depends(get_photo_source),
     settings: Settings = Depends(get_settings),
 ) -> BucketItemsResponse:
-    """Items assigned to one folder (folder view). Space rides on the folder."""
+    """Items assigned to one folder (folder view). Space rides on the folder.
+    ``limit`` (미리보기 카드) caps to a cheap single page."""
     items = fill_thumbhashes(
-        settings.sqlite_path, await source.folder_items(folder_id)
+        settings.sqlite_path, await source.folder_items(folder_id, limit)
     )
     folders = {f.id: f for f in await source.folders()}
     space = folders[folder_id].space if folder_id in folders else "team"
@@ -217,11 +219,13 @@ async def list_places(
 async def list_place_items(
     id: str,
     space: Space = Query("team"),
+    limit: int | None = Query(None, ge=1, le=100),
     source: PhotoSource = Depends(get_photo_source),
     settings: Settings = Depends(get_settings),
 ) -> BucketItemsResponse:
+    """``limit`` (미리보기 카드) caps to a cheap single page."""
     items = fill_thumbhashes(
-        settings.sqlite_path, await source.place_items(space, id)
+        settings.sqlite_path, await source.place_items(space, id, limit)
     )
     return BucketItemsResponse(space=space, day="", items=items)
 
