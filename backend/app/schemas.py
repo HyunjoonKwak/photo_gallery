@@ -66,6 +66,10 @@ class PhotoItem(BaseModel):
     # items the dedup scan has hashed; decoded client-side.
     thumbhash: str | None = None
     folder: str | None = None
+    # GPS 좌표(additional=["gps"]) — 장소 지도 뷰의 핀 위치. 대부분 None,
+    # place_items에서만 채운다(사진에 위치정보 있을 때).
+    lat: float | None = None
+    lng: float | None = None
 
 
 class BucketsResponse(BaseModel):

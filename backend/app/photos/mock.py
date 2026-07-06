@@ -105,6 +105,13 @@ _PLACES = [
     ("g-4", "Japan", 2, "Tokyo", "", 7, 3),
     ("g-5", "Australia", 1087, "Sydney", "", 4, 4),
 ]
+# 지도 뷰 데모용 first_level 대표 좌표(lat, lng).
+_PLACE_COORDS = {
+    "Seoul": (37.5665, 126.9780),
+    "Suwon-si": (37.2636, 127.0286),
+    "Tokyo": (35.6762, 139.6503),
+    "Sydney": (-33.8688, 151.2093),
+}
 # Scanning every generated day is wasteful for a mock — cap the lookback.
 _CLASSIFY_DAYS_BACK = 60
 
@@ -618,9 +625,21 @@ class MockPhotoSource:
                 status_code=status.HTTP_404_NOT_FOUND, detail="장소를 찾을 수 없습니다."
             )
         mod, rem = spec[5], spec[6]
-        out = [
-            it for it in self._classify_pool(space) if self._in_group(it.id, mod, rem)
-        ]
+        first_level = spec[3]
+        base = _PLACE_COORDS.get(first_level)
+        out: list[PhotoItem] = []
+        for it in self._classify_pool(space):
+            if not self._in_group(it.id, mod, rem):
+                continue
+            if base is not None:  # 대표 좌표 + 사진별 소폭 지터
+                r = _rng(f"{it.id}:gps")
+                it = it.model_copy(
+                    update={
+                        "lat": base[0] + (r.random() - 0.5) * 0.05,
+                        "lng": base[1] + (r.random() - 0.5) * 0.05,
+                    }
+                )
+            out.append(it)
         return out[:limit] if limit is not None else out
 
     async def videos(self, space: str) -> list[PhotoItem]:

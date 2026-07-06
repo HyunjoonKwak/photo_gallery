@@ -59,3 +59,33 @@ async def test_places_carry_country_and_first_level():
     assert rocks.country == "Australia"
     assert rocks.first_level == "Sydney"
     assert rocks.second_level == "The Rocks"
+
+
+def test_to_item_parses_gps():
+    it = DsmPhotoSource._to_item(
+        {
+            "id": 1,
+            "filename": "a.jpg",
+            "time": 1_700_000_000,
+            "additional": {
+                "thumbnail": {"cache_key": "1_1"},
+                "gps": {"latitude": 37.5, "longitude": 127.0},
+            },
+        }
+    )
+    assert it.lat == 37.5 and it.lng == 127.0
+
+
+def test_to_item_no_gps_is_none():
+    it = DsmPhotoSource._to_item(
+        {"id": 1, "filename": "a.jpg", "time": 1_700_000_000, "additional": {}}
+    )
+    assert it.lat is None and it.lng is None
+
+
+async def test_mock_place_items_have_gps():
+    from app.photos.mock import MockPhotoSource
+
+    items = await MockPhotoSource().place_items("team", "g-1")  # Seoul
+    assert items and all(it.lat is not None and it.lng is not None for it in items)
+    assert abs(items[0].lat - 37.5665) < 0.2

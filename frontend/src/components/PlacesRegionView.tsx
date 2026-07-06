@@ -4,6 +4,7 @@ import { api } from "../api/client";
 import type { PhotoItem, PlaceInfo, Space } from "../api/types";
 import { Thumb } from "./timeline/Thumb";
 import { UniformPhotoGrid } from "./timeline/UniformPhotoGrid";
+import { PlacesMapView } from "./PlacesMapView";
 
 /** 장소(지역별) 뷰어 — Synology Photos의 GPS 지오코딩 그룹(`places`)을 국가별
  * 섹션으로 한 화면에 펼치고, 각 국가 아래에 지역(first_level=도시) 카드를
@@ -35,7 +36,7 @@ const COUNTRY_KO: Record<string, string> = {
 };
 const countryLabel = (c: string) => COUNTRY_KO[c] ?? c;
 
-interface RegionGroup {
+export interface RegionGroup {
   first_level: string;
   country: string; // 브레드크럼용(한글 라벨)
   total: number;
@@ -52,6 +53,7 @@ interface CountrySection {
 
 export function PlacesRegionView({ space }: { space: Space }) {
   const [region, setRegion] = useState<RegionGroup | null>(null);
+  const [mode, setMode] = useState<"regions" | "map">("regions");
 
   const q = useQuery({
     queryKey: ["places", space],
@@ -103,6 +105,11 @@ export function PlacesRegionView({ space }: { space: Space }) {
       .sort((a, b) => b.total - a.total);
   }, [places]);
 
+  const allRegions = useMemo(
+    () => countries.flatMap((c) => c.regions),
+    [countries],
+  );
+
   if (q.isPending)
     return <p className="p-6 text-sm text-slate-400">불러오는 중…</p>;
   if (places.length === 0)
@@ -136,11 +143,30 @@ export function PlacesRegionView({ space }: { space: Space }) {
             </span>
           </span>
         )}
+        {!region && (
+          <nav className="ml-auto flex gap-0.5 rounded-lg bg-slate-100 p-0.5">
+            {(["regions", "map"] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => setMode(m)}
+                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                  mode === m
+                    ? "bg-white text-slate-800 shadow-sm"
+                    : "text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                {m === "regions" ? "지역별" : "지도"}
+              </button>
+            ))}
+          </nav>
+        )}
       </div>
 
       <div className="min-h-0 flex-1">
         {region ? (
           <RegionPhotos space={space} region={region} />
+        ) : mode === "map" ? (
+          <PlacesMapView space={space} regions={allRegions} onOpen={setRegion} />
         ) : (
           <div className="h-full space-y-6 overflow-y-auto p-4">
             {countries.map((c) => (

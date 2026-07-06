@@ -332,6 +332,9 @@ class DsmPhotoSource:
         resolution = additional.get("resolution", {})
         thumb = additional.get("thumbnail", {})
         video_meta = additional.get("video_meta") or {}
+        gps = additional.get("gps") or {}
+        lat = gps.get("latitude")
+        lng = gps.get("longitude")
         return PhotoItem(
             id=str(it.get("id")),
             filename=it.get("filename", ""),
@@ -344,6 +347,8 @@ class DsmPhotoSource:
             duration_ms=video_meta.get("duration"),
             placeholder_color=None,  # thumbhash lands with photo_cache (phase 2)
             folder=None,
+            lat=float(lat) if lat not in (None, "") else None,
+            lng=float(lng) if lng not in (None, "") else None,
         )
 
     async def folders(self, parent_id: str | None = None) -> list[PhotoFolder]:
@@ -464,7 +469,10 @@ class DsmPhotoSource:
                     **filters,
                     "offset": offset,
                     "limit": page_size,
-                    "additional": json.dumps(["thumbnail", "resolution", "video_meta"]),
+                    # gps: 장소 지도 뷰의 핀 좌표(폴더/인물/장소 아이템 공용).
+                    "additional": json.dumps(
+                        ["thumbnail", "resolution", "video_meta", "gps"]
+                    ),
                 },
             )
             page = data.get("list", [])

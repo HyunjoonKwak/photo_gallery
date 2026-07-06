@@ -35,6 +35,9 @@ export interface PhotoItem {
    * hashed the item; decoded client-side. */
   thumbhash: string | null;
   folder: string | null;
+  /** GPS 좌표(장소 지도 뷰) — place_items에서만 채워짐, 대개 null. */
+  lat: number | null;
+  lng: number | null;
   /** Set client-side when the item's space differs from the global scope
    * (folder view can show personal folders while scope is team). */
   space?: Space;
