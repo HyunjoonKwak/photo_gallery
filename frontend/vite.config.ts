@@ -10,7 +10,10 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: "autoUpdate",
+      // prompt: 새 버전이 나오면 자동 적용하지 않고 대기 → 앱이 토스트로
+      // 알리고 사용자가 "새로고침"을 누르면 적용(useRegisterSW).
+      registerType: "prompt",
+      injectRegister: false, // 등록은 앱(PwaUpdater)에서 직접
       includeAssets: ["favicon-64.png", "apple-touch-icon.png"],
       manifest: {
         name: "NAS 사진 정리",

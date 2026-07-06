@@ -11,6 +11,7 @@ import { OperationsPanel } from "./components/OperationsPanel";
 import { BottomTabBar } from "./components/BottomTabBar";
 import { BulkProgress } from "./components/BulkProgress";
 import { Toasts } from "./components/Toasts";
+import { PwaUpdater } from "./components/PwaUpdater";
 import { ConflictDialogHost } from "./components/ConflictDialog";
 import { ZoneManager } from "./components/ZoneManager";
 
@@ -388,6 +389,7 @@ export default function App() {
       <BulkProgress />
       <Toasts />
       <ConflictDialogHost />
+      <PwaUpdater />
     </div>
   );
 }
