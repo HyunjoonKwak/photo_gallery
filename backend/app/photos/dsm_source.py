@@ -596,14 +596,18 @@ class DsmPhotoSource:
                 if p.get("show") is False:
                     continue  # user hid this face group in Synology Photos
                 thumb = (p.get("additional") or {}).get("thumbnail") or {}
-                unit = thumb.get("unit_id")
+                # 실 NAS(DSM 7.2, 2026-07 raw 확인): 사람 커버 사진 id는
+                # top-level `cover`에 오고, 썸네일 cache_key는
+                # additional.thumbnail.cache_key. (구버전 호환으로 unit_id도
+                # fallback.) 사진 썸네일과 동일하게 id=item id + type=unit로 프록시.
+                cover = p.get("cover") or thumb.get("unit_id")
                 out.append(
                     PersonInfo(
                         id=str(p.get("id")),
                         space=space,
                         name=p.get("name") or "",
                         item_count=p.get("item_count"),
-                        cover_item_id=str(unit) if unit else None,
+                        cover_item_id=str(cover) if cover else None,
                         cover_cache_key=thumb.get("cache_key"),
                     )
                 )
