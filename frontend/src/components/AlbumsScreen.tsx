@@ -1,9 +1,10 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, thumbnailUrl } from "../api/client";
-import type { PersonInfo, PlaceInfo, Space } from "../api/types";
+import type { PersonInfo, Space } from "../api/types";
 import { useTimelineStore, type AlbumKind } from "../store/timeline";
 import { UniformPhotoGrid } from "./timeline/UniformPhotoGrid";
+import { PlacesRegionView } from "./PlacesRegionView";
 
 /** 앨범(감상) — 사람/장소/비디오. Synology Photos 내장 AI 그룹(얼굴·GPS)과
  * 라이브러리 전체 비디오를 순수 뷰어로 브라우즈. 정리는 폴더 분류에서. */
@@ -66,12 +67,7 @@ export function AlbumsScreen() {
           ) : (
             <PeopleGrid space={space} onOpen={openGroup} />
           ))}
-        {albumKind === "places" &&
-          (groupId ? (
-            <GroupGrid space={space} kind="place" id={groupId} />
-          ) : (
-            <PlacesGrid space={space} onOpen={openGroup} />
-          ))}
+        {albumKind === "places" && <PlacesRegionView space={space} />}
         {albumKind === "videos" && <VideosGrid space={space} />}
       </div>
     </div>
@@ -161,63 +157,18 @@ function PersonCard({
   );
 }
 
-function PlacesGrid({
-  space,
-  onOpen,
-}: {
-  space: Space;
-  onOpen: (id: string, label: string) => void;
-}) {
-  const q = useQuery({
-    queryKey: ["places", space],
-    queryFn: () => api.places(space),
-    staleTime: 5 * 60_000,
-  });
-  const places = q.data?.places ?? [];
-  if (q.isPending)
-    return <p className="p-6 text-sm text-slate-400">불러오는 중…</p>;
-  if (places.length === 0)
-    return (
-      <p className="p-6 text-sm text-slate-400">
-        위치 정보(GPS)가 있는 사진이 없습니다.
-      </p>
-    );
-  return (
-    <div className="h-full overflow-y-auto p-4">
-      <div className="flex flex-wrap gap-1.5">
-        {places.map((g: PlaceInfo) => (
-          <button
-            key={g.id}
-            onClick={() => onOpen(g.id, g.name || "알 수 없는 장소")}
-            className="flex items-center gap-1.5 rounded-full border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-100"
-          >
-            <span aria-hidden>📍</span>
-            {g.name || "알 수 없는 장소"}
-            {g.item_count != null && (
-              <span className="text-xs text-slate-400">
-                {g.item_count.toLocaleString()}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function GroupGrid({
   space,
   kind,
   id,
 }: {
   space: Space;
-  kind: "person" | "place";
+  kind: "person";
   id: string;
 }) {
   const q = useQuery({
     queryKey: ["album-items", space, kind, id],
-    queryFn: () =>
-      kind === "person" ? api.personItems(space, id) : api.placeItems(space, id),
+    queryFn: () => api.personItems(space, id),
   });
   const items = useMemo(
     () => (q.data?.items ?? []).map((it) => ({ ...it, space })),
