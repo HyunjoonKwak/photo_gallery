@@ -123,8 +123,10 @@ class DsmClient:
         version: int | None = None,
         sid: str | None = None,
         extra: dict[str, Any] | None = None,
+        http_method: str = "GET",
     ) -> Any:
-        """Generic authenticated DSM API call returning the ``data`` payload."""
+        """Generic authenticated DSM API call returning the ``data`` payload.
+        ``http_method`` = "POST" sends params as a form body (일부 쓰기 API용)."""
         endpoint = await self._endpoint(api)
         params: dict[str, Any] = {
             "api": api,
@@ -136,7 +138,7 @@ class DsmClient:
         if sid:
             params["_sid"] = sid
         url = f"{self._base}/{endpoint.path}"
-        return await self._send(url, params, api=api)
+        return await self._send(url, params, api=api, method=http_method)
 
     async def fetch_binary(
         self,

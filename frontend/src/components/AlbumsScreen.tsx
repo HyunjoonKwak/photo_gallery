@@ -95,6 +95,11 @@ function PeopleGrid({
     staleTime: 5 * 60_000,
   });
   const persons = q.data?.persons ?? [];
+  // 기존에 지정된 이름들 — 이름 입력 시 선택지로 제공(선택=병합, 새로 입력=신규).
+  const existingNames = useMemo(
+    () => [...new Set(persons.map((p) => p.name).filter(Boolean))],
+    [persons],
+  );
   if (q.isPending)
     return <p className="p-6 text-sm text-slate-400">불러오는 중…</p>;
   if (persons.length === 0)
@@ -111,6 +116,7 @@ function PeopleGrid({
             key={p.id}
             person={p}
             space={space}
+            existingNames={existingNames}
             onOpen={() => onOpen(p.id, p.name || "이름 없는 인물")}
           />
         ))}
@@ -122,15 +128,18 @@ function PeopleGrid({
 function PersonCard({
   person,
   space,
+  existingNames,
   onOpen,
 }: {
   person: PersonInfo;
   space: Space;
+  existingNames: string[];
   onOpen: () => void;
 }) {
   const label = person.name || "이름 없는 인물";
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(person.name);
+  const listId = `names-${person.id}`;
   const qc = useQueryClient();
   const pushToast = useToastStore((s) => s.push);
 
@@ -182,6 +191,7 @@ function PersonCard({
         <div className="flex w-full flex-col items-stretch gap-1">
           <input
             autoFocus
+            list={listId}
             value={value}
             onChange={(e) => setValue(e.target.value)}
             onKeyDown={(e) => {
@@ -191,9 +201,16 @@ function PersonCard({
                 setValue(person.name);
               }
             }}
-            placeholder="이름 입력"
+            placeholder="이름 입력/선택"
             className="w-full rounded border border-slate-300 px-1 py-0.5 text-center text-xs outline-none focus:border-blue-400"
           />
+          <datalist id={listId}>
+            {existingNames
+              .filter((n) => n !== person.name)
+              .map((n) => (
+                <option key={n} value={n} />
+              ))}
+          </datalist>
           <div className="flex gap-1">
             <button
               onClick={submit}

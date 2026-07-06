@@ -715,6 +715,40 @@ class DsmPhotoSource:
                 )
         return {"name": name, "merged_into": merged_into}
 
+    async def debug_name_variants(self, person_id: str, name: str) -> dict:
+        """진단용: 인물 이름 지정(set_name)의 여러 API 변형을 실제로 시도해
+        어느 게 되는지 보고. 성공하면 그 변형에서 이름이 실제로 지정되고 멈춘다
+        (사용자가 원하던 동작). 실패는 code/message로 원인 파악용."""
+        api = _ns("personal", "SYNO.Foto.Browse.Person")
+        pid = int(person_id)
+        variants = [
+            ("set_name", 1, {"id": pid, "name": name}, "GET"),
+            ("set_name", 1, {"id": pid, "name": name}, "POST"),
+            ("set_name", 1, {"id": json.dumps([pid]), "name": name}, "GET"),
+            ("set_name", 2, {"id": pid, "name": name}, "GET"),
+            ("set_name", 3, {"id": pid, "name": name}, "POST"),
+            ("rename", 1, {"id": pid, "name": name}, "GET"),
+        ]
+        attempts: list[dict] = []
+        for m, ver, extra, http in variants:
+            entry = {
+                "method": m,
+                "version": ver,
+                "http": http,
+                "id_shape": "array" if isinstance(extra["id"], str) else "int",
+            }
+            try:
+                await self._dsm.call(
+                    api, m, version=ver, sid=self._sid, extra=extra, http_method=http
+                )
+                entry["ok"] = True
+                attempts.append(entry)
+                break
+            except DsmError as exc:
+                entry.update(ok=False, code=exc.code, msg=str(exc)[:160])
+                attempts.append(entry)
+        return {"person_id": person_id, "attempts": attempts}
+
     async def places(self, space: str) -> list[PlaceInfo]:
         out: list[PlaceInfo] = []
         offset = 0
