@@ -56,6 +56,10 @@ _DAYS_BACK = 540  # ~18 months of history
 # Copies get a "-cN" suffix; parsing falls back to the base item for rendering.
 _ID_RE = re.compile(r"^m-(personal|team)-(\d{4}-\d{2}-\d{2})-(\d+)(?:-c\d+)?$")
 
+# 기본 폴더(f-team-1..3 / f-personal-1..3)는 operations 테스트가 "빈 폴더"
+# fixture로 강하게 의존하므로 그대로 flat·empty로 둔다. 폴더 뷰어(drill-in +
+# leaf thumbnails) 데모/검증용 콘텐츠는 테스트가 참조하지 않는 전용 데모
+# 폴더(f-demo-*)로 격리하고, 리프에는 reset()에서 생성 아이템을 배정한다.
 _DEFAULT_FOLDERS = [
     PhotoFolder(id="f-team-1", name="가족앨범", space="team"),
     PhotoFolder(id="f-team-2", name="행사", space="team"),
@@ -63,6 +67,23 @@ _DEFAULT_FOLDERS = [
     PhotoFolder(id="f-personal-1", name="여행", space="personal"),
     PhotoFolder(id="f-personal-2", name="아이들", space="personal"),
     PhotoFolder(id="f-personal-3", name="스크린샷", space="personal"),
+    # 데모 전용(테스트 미참조): 중첩 + 리프 사진.
+    PhotoFolder(id="f-demo-1", name="정리 앨범", space="team"),
+    PhotoFolder(id="f-demo-1-a", name="2024_설날", space="team",
+                parent_id="f-demo-1", depth=1),
+    PhotoFolder(id="f-demo-1-b", name="2024_여름휴가", space="team",
+                parent_id="f-demo-1", depth=1),
+    PhotoFolder(id="f-demo-2", name="행사 모음", space="team"),
+    PhotoFolder(id="f-demo-p1", name="제주도 여행", space="personal"),
+]
+
+# reset() 시 리프 폴더에 배정할 (folder_id, space) — 각기 다른 최근 날짜의
+# 생성 아이템을 담아 폴더 뷰어에 미리보기/썸네일이 보이도록 한다.
+_SEED_FOLDERS = [
+    ("f-demo-1-a", "team"),
+    ("f-demo-1-b", "team"),
+    ("f-demo-2", "team"),
+    ("f-demo-p1", "personal"),
 ]
 
 _MEMBERS = ["admin", "dad", "mom", "jimin"]
@@ -247,6 +268,27 @@ class MockPhotoSource:
         self._folder_renames: dict[str, str] = {}
         # 충돌 rename 시뮬레이션: 이동된 아이템 id → 바뀐 파일명 (name_1.ext)
         self._filename_override: dict[str, str] = {}
+        self._seed_folder_contents()
+
+    def _seed_folder_contents(self) -> None:
+        """리프 폴더에 생성 아이템 몇 장씩 배정 — 폴더 뷰어를 MOCK_MODE에서
+        검증/데모하기 위함(실 DSM은 실제 파일이 들어 있음). 같은 space에
+        머무르므로 타임라인에서 사라지지 않고 폴더 라벨만 얻는다."""
+        today = date.today()
+        used_days: set[str] = set()
+        # 최근 날짜(테스트의 _first_day_items = buckets[0])를 오염시키지 않도록
+        # 충분히 과거 날짜부터 스캔해 배정한다.
+        for order, (folder_id, space) in enumerate(_SEED_FOLDERS):
+            for back in range(300 + order * 7, _DAYS_BACK):
+                day = (today - timedelta(days=back)).isoformat()
+                if day in used_days:
+                    continue
+                n = _day_count(space, day)
+                if n >= 5:
+                    for idx in range(min(n, 8)):
+                        self._loc[f"m-{space}-{day}-{idx}"] = (space, folder_id)
+                    used_days.add(day)
+                    break
 
     # ------------------------------------------------------------ internals
     def _all_folders(self) -> list[PhotoFolder]:
@@ -357,8 +399,13 @@ class MockPhotoSource:
         return result
 
     async def folders(self, parent_id: str | None = None) -> list[PhotoFolder]:
-        # Mock folders are a flat top-level set; children requests return empty.
-        return [] if parent_id else self._all_folders()
+        # parent_id=None → 전체 flat(기존 계약 — manage 폴더 트리/테스트가 이
+        # 목록에서 중첩 폴더까지 본다). parent 지정 시 그 폴더의 직속 하위만
+        # (폴더 뷰어 drill-in). 최상위만 필요한 뷰어는 parent_id로 자체 필터.
+        folders = self._all_folders()
+        if parent_id is None:
+            return folders
+        return [f for f in folders if f.parent_id == parent_id]
 
     async def folder_items(self, folder_id: str) -> list[PhotoItem]:
         self._folder_by_id(folder_id)  # 404 for unknown folders
