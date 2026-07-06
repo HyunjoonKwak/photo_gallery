@@ -57,23 +57,30 @@ export function GroupedPhotoGrid({
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
-  const setRefs = useCallback((el: HTMLDivElement | null) => {
+  const setScrollRefs = useCallback((el: HTMLDivElement | null) => {
     scrollRef.current = el;
     setScrollEl(el);
   }, []);
+  // 폭은 스크러버 거터(pr-12)를 뺀 "안쪽" 박스에서 측정한다. 패딩 포함
+  // 컨테이너를 재면 열이 실제보다 넓게 잡혀 사진이 우측 라벨 밑으로 넘친다.
+  const [contentEl, setContentEl] = useState<HTMLDivElement | null>(null);
   const [width, setWidth] = useState(0);
   const [viewportH, setViewportH] = useState(0);
   const [scrollTop, setScrollTop] = useState(0);
   useLayoutEffect(() => {
-    const el = scrollEl;
-    if (!el) return;
-    const ro = new ResizeObserver(() => {
-      setWidth(Math.floor(el.clientWidth) - 8);
-      setViewportH(el.clientHeight);
-    });
-    ro.observe(el);
+    if (!scrollEl) return;
+    const ro = new ResizeObserver(() => setViewportH(scrollEl.clientHeight));
+    ro.observe(scrollEl);
     return () => ro.disconnect();
   }, [scrollEl]);
+  useLayoutEffect(() => {
+    if (!contentEl) return;
+    const ro = new ResizeObserver(() =>
+      setWidth(Math.floor(contentEl.clientWidth)),
+    );
+    ro.observe(contentEl);
+    return () => ro.disconnect();
+  }, [contentEl]);
   const cols = Math.max(1, Math.floor((width + GAP) / (minTile + GAP)));
   const tile = cols > 0 ? (width - GAP * (cols - 1)) / cols : minTile;
 
@@ -303,11 +310,15 @@ export function GroupedPhotoGrid({
   return (
     <div className="relative h-full">
       <div
-        ref={setRefs}
-        className="h-full overflow-y-auto px-1"
+        ref={setScrollRefs}
+        className="h-full overflow-y-auto"
         onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
       >
+      {/* pl-3 pr-12: 우측 pr-12는 스크러버 레일 전용 거터(사진 없음). width
+       * 측정 ref(contentEl)는 이 거터 안쪽 박스에 둬 열 수가 정확해진다. */}
+      <div className="pl-3 pr-12">
       <div
+        ref={setContentEl}
         style={{
           height: virtualizer.getTotalSize(),
           position: "relative",
@@ -368,6 +379,7 @@ export function GroupedPhotoGrid({
             </div>
           );
         })}
+      </div>
       </div>
       </div>
       <Scrubber
