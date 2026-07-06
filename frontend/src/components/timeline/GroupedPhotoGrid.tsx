@@ -12,6 +12,7 @@ import { api } from "../../api/client";
 import type { PhotoBucket, PhotoItem, Space } from "../../api/types";
 import { useTimelineStore } from "../../store/timeline";
 import { Thumb } from "./Thumb";
+import { Scrubber, type ScrubberMarker } from "./Scrubber";
 
 const HEADER_H = 40;
 const GAP = 4;
@@ -61,10 +62,15 @@ export function GroupedPhotoGrid({
     setScrollEl(el);
   }, []);
   const [width, setWidth] = useState(0);
+  const [viewportH, setViewportH] = useState(0);
+  const [scrollTop, setScrollTop] = useState(0);
   useLayoutEffect(() => {
     const el = scrollEl;
     if (!el) return;
-    const ro = new ResizeObserver(() => setWidth(Math.floor(el.clientWidth) - 8));
+    const ro = new ResizeObserver(() => {
+      setWidth(Math.floor(el.clientWidth) - 8);
+      setViewportH(el.clientHeight);
+    });
     ro.observe(el);
     return () => ro.disconnect();
   }, [scrollEl]);
@@ -264,6 +270,30 @@ export function GroupedPhotoGrid({
     if (firstDay && loaded.has(firstDay)) scrolledFor.current = scrollToGroup;
   }, [scrollToGroup, rows, loaded, groups, previewDaysOf, virtualizer]);
 
+  // 사이드 스크러버용 월 마커: 그룹 헤더가 시작하는 콘텐츠 offset. 그룹 키
+  // 길이로 줌 판별(연 "2025" / 월 "2025-12" / 일 "2025-12-30") → 월(YYYY-MM)
+  // 단위로 중복 제거. offset은 가상화 실측(getOffsetForIndex)이라 스크롤과 일치.
+  const totalSize = virtualizer.getTotalSize();
+  const markers = useMemo<ScrubberMarker[]>(() => {
+    const out: ScrubberMarker[] = [];
+    let last = "";
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      if (r.kind !== "header") continue;
+      const k = r.groupKey;
+      const month = k.length <= 4 ? `${k}-01` : k.slice(0, 7);
+      if (month === last) continue;
+      last = month;
+      const off = virtualizer.getOffsetForIndex(i, "start");
+      const offset =
+        typeof off === "number" ? off : Array.isArray(off) ? off[0] : 0;
+      out.push({ month, offset });
+    }
+    return out;
+    // totalSize를 dep에 넣어 로드·측정으로 레이아웃이 바뀌면 재계산.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, totalSize, viewportH]);
+
   if (groups.length === 0) {
     return (
       <p className="p-8 text-center text-sm text-slate-400">사진이 없습니다.</p>
@@ -271,7 +301,12 @@ export function GroupedPhotoGrid({
   }
 
   return (
-    <div ref={setRefs} className="h-full overflow-y-auto px-1">
+    <div className="relative h-full">
+      <div
+        ref={setRefs}
+        className="h-full overflow-y-auto px-1"
+        onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+      >
       <div
         style={{
           height: virtualizer.getTotalSize(),
@@ -334,6 +369,17 @@ export function GroupedPhotoGrid({
           );
         })}
       </div>
+      </div>
+      <Scrubber
+        markers={markers}
+        totalHeight={totalSize}
+        viewportHeight={viewportH}
+        scrollTop={scrollTop}
+        onJump={(offset) => {
+          const el = scrollRef.current;
+          if (el) el.scrollTop = offset;
+        }}
+      />
     </div>
   );
 }
