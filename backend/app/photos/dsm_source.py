@@ -722,50 +722,56 @@ class DsmPhotoSource:
         persons = await self.persons("personal")
         if not persons:
             return {"error": "no persons"}
-        target = next((p for p in persons if not p.name), persons[-1])
-        pid = int(target.id)
         api = _ns("personal", "SYNO.Foto.Browse.Person")
 
-        set_variants = [
-            {"id": pid, "name": name},
-            {"id": json.dumps([pid]), "name": name},
-            {"id_list": json.dumps([pid]), "name": name},
-            {"id": pid, "person_name": name},
-        ]
+        # set 프로브는 이름 없는 인물이 있을 때만(named 인물을 실수로 바꾸지
+        # 않도록). set은 이미 동작 확인됨이라 없어도 무방.
+        unnamed = next((p for p in persons if not p.name), None)
         set_probe: list[dict] = []
         set_working = None
-        for extra in set_variants:
-            try:
-                await self._dsm.call(api, "set", version=1, sid=self._sid, extra=extra)
-                set_probe.append({"keys": list(extra), "ok": True})
-                set_working = list(extra)
-                break
-            except DsmError as exc:
-                set_probe.append(
-                    {"keys": list(extra), "code": exc.code, "msg": str(exc)[:70]}
-                )
+        if unnamed is not None:
+            upid = int(unnamed.id)
+            for extra in [
+                {"id": upid, "name": name},
+                {"id": json.dumps([upid]), "name": name},
+                {"id_list": json.dumps([upid]), "name": name},
+                {"id": upid, "person_name": name},
+            ]:
+                try:
+                    await self._dsm.call(api, "set", version=1, sid=self._sid, extra=extra)
+                    set_probe.append({"keys": list(extra), "ok": True})
+                    set_working = list(extra)
+                    break
+                except DsmError as exc:
+                    set_probe.append(
+                        {"keys": list(extra), "code": exc.code, "msg": str(exc)[:70]}
+                    )
 
+        # merge 키 검증: target을 존재하지 않는 id(bogus)로 둬 실제 병합이
+        # 일어나지 않게 한다 — 키가 맞으면 "대상 없음"류(120 아님), 틀리면 120.
+        pid = int(persons[0].id)
+        bogus = 999_999_999
         merge_variants = [
-            {"id": json.dumps([pid]), "target": pid},
-            {"id": json.dumps([pid]), "target_id": pid},
-            {"source_id": pid, "target_id": pid},
-            {"source": pid, "target": pid},
-            {"id_list": json.dumps([pid]), "target_id": pid},
+            {"id": json.dumps([pid]), "target": bogus},
+            {"id": json.dumps([pid]), "target_id": bogus},
+            {"source_id": pid, "target_id": bogus},
+            {"source": pid, "target": bogus},
+            {"id_list": json.dumps([pid]), "target_id": bogus},
+            {"source_id_list": json.dumps([pid]), "target_id": bogus},
         ]
         merge_probe: list[dict] = []
         for extra in merge_variants:
             try:
                 await self._dsm.call(api, "merge", version=1, sid=self._sid, extra=extra)
-                merge_probe.append({"keys": list(extra), "code": "SUCCESS(무해-자기병합)"})
+                merge_probe.append({"keys": list(extra), "code": "SUCCESS"})
             except DsmError as exc:
                 merge_probe.append(
                     {"keys": list(extra), "code": exc.code, "msg": str(exc)[:70]}
                 )
         return {
-            "target": {"id": target.id, "name": target.name},
-            "set (성공=이름지정됨)": set_probe,
             "set_working_keys": set_working,
-            "merge (120=키틀림, 그외=키맞음)": merge_probe,
+            "set_probe": set_probe,
+            "merge (120=키틀림 / 그외=키맞음, target은 bogus라 실제 병합 안 됨)": merge_probe,
         }
 
     async def places(self, space: str) -> list[PlaceInfo]:
