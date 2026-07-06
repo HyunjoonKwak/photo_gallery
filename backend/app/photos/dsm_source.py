@@ -715,39 +715,44 @@ class DsmPhotoSource:
                 )
         return {"name": name, "merged_into": merged_into}
 
-    async def debug_name_variants(self, person_id: str, name: str) -> dict:
-        """진단용: 인물 이름 지정(set_name)의 여러 API 변형을 실제로 시도해
-        어느 게 되는지 보고. 성공하면 그 변형에서 이름이 실제로 지정되고 멈춘다
-        (사용자가 원하던 동작). 실패는 code/message로 원인 파악용."""
+    async def debug_person_methods(self) -> dict:
+        """진단용: 인물 쓰기 API를 찾는다. 빈 파라미터로 후보 메서드를 호출 —
+        실행되지 않으며(필수 param 없음) code로 존재 여부만 본다: 103=메서드
+        없음, 그 외(120 등)=메서드 존재. 대체 API 이름도 SYNO.API.Info로 탐지."""
         api = _ns("personal", "SYNO.Foto.Browse.Person")
-        pid = int(person_id)
-        variants = [
-            ("set_name", 1, {"id": pid, "name": name}, "GET"),
-            ("set_name", 1, {"id": pid, "name": name}, "POST"),
-            ("set_name", 1, {"id": json.dumps([pid]), "name": name}, "GET"),
-            ("set_name", 2, {"id": pid, "name": name}, "GET"),
-            ("set_name", 3, {"id": pid, "name": name}, "POST"),
-            ("rename", 1, {"id": pid, "name": name}, "GET"),
+        candidates = [
+            "set_name", "rename", "edit", "set", "update", "name", "modify",
+            "set_info", "set_person", "add", "correct", "confirm", "merge",
+            "set_cover", "group", "ungroup", "set_show", "hide", "show",
+            "delete", "remove",
         ]
-        attempts: list[dict] = []
-        for m, ver, extra, http in variants:
-            entry = {
-                "method": m,
-                "version": ver,
-                "http": http,
-                "id_shape": "array" if isinstance(extra["id"], str) else "int",
-            }
+        methods: list[dict] = []
+        for m in candidates:
             try:
-                await self._dsm.call(
-                    api, m, version=ver, sid=self._sid, extra=extra, http_method=http
-                )
-                entry["ok"] = True
-                attempts.append(entry)
-                break
+                await self._dsm.call(api, m, version=1, sid=self._sid, extra={})
+                methods.append({"method": m, "code": "SUCCESS"})
             except DsmError as exc:
-                entry.update(ok=False, code=exc.code, msg=str(exc)[:160])
-                attempts.append(entry)
-        return {"person_id": person_id, "attempts": attempts}
+                methods.append({"method": m, "code": exc.code})
+
+        alt_apis = [
+            "SYNO.Foto.Person",
+            "SYNO.Foto.PersonSetting",
+            "SYNO.Foto.Browse.PersonSetting",
+            "SYNO.Foto.Management.Person",
+            "SYNO.FotoTeam.Browse.Person",
+        ]
+        api_probe: dict[str, str] = {}
+        for a in alt_apis:
+            try:
+                ep = await self._dsm._endpoint(a)
+                api_probe[a] = f"존재 (max_version={ep.max_version})"
+            except DsmError as exc:
+                api_probe[a] = f"없음 (code {exc.code})"
+        return {
+            "person_api": api,
+            "methods (code!=103 이면 존재)": methods,
+            "alt_apis": api_probe,
+        }
 
     async def places(self, space: str) -> list[PlaceInfo]:
         out: list[PlaceInfo] = []

@@ -196,22 +196,14 @@ async def list_persons(
     return PersonsResponse(space=space, persons=await source.persons(space))
 
 
-@router.get("/_debug/name_variants")
-async def debug_name_variants(
-    name: str = Query(...),
+@router.get("/_debug/person_methods")
+async def debug_person_methods(
     source: PhotoSource = Depends(get_photo_source),
 ) -> dict:
-    """진단용(임시): 인물 이름 지정 API 변형을 실제로 시도. 이름 없는 인물이
-    있으면 그 인물에, 없으면 마지막(가장 작은) 인물에 name을 시도한다. 성공한
-    변형에서 실제로 이름이 지정됨."""
-    if not hasattr(source, "debug_name_variants"):
+    """진단용(임시): 인물 쓰기 API 메서드 탐색. 빈 파라미터라 실행 안 됨."""
+    if not hasattr(source, "debug_person_methods"):
         return {"mock": True, "note": "실 NAS에서만 확인 가능합니다."}
-    persons = await source.persons("personal")
-    if not persons:
-        return {"error": "no persons"}
-    target = next((p for p in persons if not p.name), persons[-1])
-    result = await source.debug_name_variants(target.id, name)  # type: ignore[attr-defined]
-    return {"target_person": {"id": target.id, "name": target.name}, **result}
+    return await source.debug_person_methods()  # type: ignore[attr-defined]
 
 
 @router.post("/persons/name", response_model=NamePersonResponse)
