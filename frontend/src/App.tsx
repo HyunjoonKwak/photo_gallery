@@ -12,6 +12,7 @@ import { BottomTabBar } from "./components/BottomTabBar";
 import { BulkProgress } from "./components/BulkProgress";
 import { Toasts } from "./components/Toasts";
 import { PwaUpdater } from "./components/PwaUpdater";
+import { NavControls } from "./components/NavControls";
 import { ConflictDialogHost } from "./components/ConflictDialog";
 import { ZoneManager } from "./components/ZoneManager";
 
@@ -390,6 +391,7 @@ export default function App() {
       <Toasts />
       <ConflictDialogHost />
       <PwaUpdater />
+      <NavControls />
     </div>
   );
 }

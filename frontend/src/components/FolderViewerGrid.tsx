@@ -11,8 +11,15 @@ import { folderBasename } from "./FolderTree";
  * 로, 탭하면 라이트박스. 이동/삭제 없음(정리는 폴더 분류에서). */
 export function FolderViewerGrid() {
   const librarySpace = useTimelineStore((s) => s.space);
+  const registerBack = useTimelineStore((s) => s.registerBack);
   const [path, setPath] = useState<PhotoFolder[]>([]);
   const current = path.length ? path[path.length - 1] : null;
+
+  // 폴더 안에 들어가 있으면 "뒤로"가 한 단계 상위 폴더로.
+  useEffect(() => {
+    if (path.length === 0) return;
+    return registerBack(() => setPath((p) => p.slice(0, -1)));
+  }, [path.length, registerBack]);
 
   const subQuery = useQuery({
     queryKey: ["folders", current?.id ?? null],

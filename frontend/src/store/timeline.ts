@@ -129,6 +129,18 @@ interface TimelineState {
   openLightbox: (id: string) => void;
   closeLightbox: () => void;
   stepLightbox: (dir: 1 | -1) => void;
+
+  // --- 뒤로가기 네비게이션 ---
+  // 화면 안의 드릴다운(폴더 경로·장소 지역 등 컴포넌트 로컬 상태)은 여기에
+  // "한 단계 위로" 핸들러를 등록한다. goBack이 우선순위대로 한 단계 되돌린다.
+  _backHandlers: (() => void)[];
+  registerBack: (fn: () => void) => () => void;
+  /** 한 단계 뒤로. 되돌릴 게 있으면 실행하고 true, 최상위면 false. */
+  goBack: () => boolean;
+  /** 뒤로 갈 곳이 있는지(브라우저 트랩·버튼 표시용). */
+  canGoBack: () => boolean;
+  /** 기본 화면(사진·연 뷰)으로. 앨범/폴더 드릴은 컴포넌트 언마운트로 리셋. */
+  goHome: () => void;
 }
 
 function computePreview(
@@ -297,4 +309,60 @@ export const useTimelineStore = create<TimelineState>()((set, get) => ({
     const next = s.orderedIds[idx + dir];
     if (next) set({ lightboxId: next });
   },
+
+  _backHandlers: [],
+  registerBack: (fn) => {
+    set((s) => ({ _backHandlers: [...s._backHandlers, fn] }));
+    return () =>
+      set((s) => ({ _backHandlers: s._backHandlers.filter((h) => h !== fn) }));
+  },
+  goBack: () => {
+    const s = get();
+    // 우선순위: 라이트박스 → 화면 내 드릴(폴더/장소) → 앨범 그룹 →
+    // 뷰어 줌(→연) → 다른 영역(→사진).
+    if (s.lightboxId) {
+      set({ lightboxId: null });
+      return true;
+    }
+    if (s._backHandlers.length) {
+      s._backHandlers[s._backHandlers.length - 1]();
+      return true;
+    }
+    if (s.groupId) {
+      s.closeGroup();
+      return true;
+    }
+    if (s.section === "viewer" && s.zoom !== "year") {
+      s.setZoom("year");
+      return true;
+    }
+    if (s.section !== "viewer") {
+      s.setSection("viewer");
+      return true;
+    }
+    return false;
+  },
+  canGoBack: () => {
+    const s = get();
+    return Boolean(
+      s.lightboxId ||
+        s._backHandlers.length ||
+        s.groupId ||
+        (s.section === "viewer" && s.zoom !== "year") ||
+        s.section !== "viewer",
+    );
+  },
+  goHome: () =>
+    set({
+      section: "viewer",
+      zoom: "year",
+      focusYear: null,
+      focusMonth: null,
+      focusDay: null,
+      groupId: null,
+      groupLabel: null,
+      viewedOwner: null,
+      activeZone: null,
+      ...resetView(),
+    }),
 }));

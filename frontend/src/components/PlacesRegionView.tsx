@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
 import type { PhotoItem, PlaceInfo, Space } from "../api/types";
+import { useTimelineStore } from "../store/timeline";
 import { Thumb } from "./timeline/Thumb";
 import { UniformPhotoGrid } from "./timeline/UniformPhotoGrid";
 import { PlacesMapView } from "./PlacesMapView";
@@ -54,6 +55,13 @@ interface CountrySection {
 export function PlacesRegionView({ space }: { space: Space }) {
   const [region, setRegion] = useState<RegionGroup | null>(null);
   const [mode, setMode] = useState<"regions" | "map">("regions");
+  const registerBack = useTimelineStore((s) => s.registerBack);
+
+  // 지역 사진을 열었으면 "뒤로"가 지역 목록으로.
+  useEffect(() => {
+    if (!region) return;
+    return registerBack(() => setRegion(null));
+  }, [region, registerBack]);
 
   const q = useQuery({
     queryKey: ["places", space],
