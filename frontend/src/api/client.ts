@@ -150,6 +150,8 @@ export const api = {
     request<BucketItemsResponse>(
       `/api/photos/place-items?space=${space}&id=${encodeURIComponent(id)}${scopeQS()}`,
     ),
+  videos: (space: Space) =>
+    request<BucketItemsResponse>(`/api/photos/videos?space=${space}${scopeQS()}`),
   members: () => request<MembersResponse>("/api/photos/members"),
   // ops carry target_user in the query too: the backend picks the photo
   // source (homes vs own) from the dependency, which reads query params.

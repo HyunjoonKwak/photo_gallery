@@ -226,6 +226,17 @@ async def list_place_items(
     return BucketItemsResponse(space=space, day="", items=items)
 
 
+@router.get("/videos", response_model=BucketItemsResponse)
+async def list_videos(
+    space: Space = Query("team"),
+    source: PhotoSource = Depends(get_photo_source),
+    settings: Settings = Depends(get_settings),
+) -> BucketItemsResponse:
+    """앨범 · 비디오 — 라이브러리 전체의 영상만(최신순)."""
+    items = fill_thumbhashes(settings.sqlite_path, await source.videos(space))
+    return BucketItemsResponse(space=space, day="", items=items)
+
+
 # ------------------------------------------------------------ file operations
 
 

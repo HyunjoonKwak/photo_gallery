@@ -114,6 +114,11 @@ class PhotoSource(Protocol):
         """All items taken at a place."""
         ...
 
+    async def videos(self, space: str) -> list[PhotoItem]:
+        """All videos in a space (앨범 · 비디오), newest first — the library-wide
+        video collection the timeline/folder filters can't produce cheaply."""
+        ...
+
     async def members(self) -> list[MemberInfo]:
         """Family member accounts + 개인 사진 공간 유무 (admin: cross-user)."""
         ...

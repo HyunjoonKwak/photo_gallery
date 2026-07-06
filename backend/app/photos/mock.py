@@ -496,6 +496,15 @@ class MockPhotoSource:
             it for it in self._classify_pool(space) if self._in_group(it.id, mod, rem)
         ]
 
+    async def videos(self, space: str) -> list[PhotoItem]:
+        out = [
+            it
+            for it in self._classify_pool(space)
+            if it.type == "video" and it.id not in self._deleted
+        ]
+        out.sort(key=lambda i: i.taken_at, reverse=True)
+        return out
+
     def _folder_extra_count(self, src_folder_id: str, dest_folder_name: str) -> int:
         """소스 폴더가 대상 동명 폴더에 없는(파일명 기준) 사진 수. mock은 flat
         구조라 직속 사진만 비교한다. 0이면 완전 포함(완전 일치)."""

@@ -631,6 +631,43 @@ class DsmPhotoSource:
     async def place_items(self, space: str, place_id: str) -> list[PhotoItem]:
         return await self._filtered_items(space, {"geocoding_id": int(place_id)})
 
+    async def videos(self, space: str) -> list[PhotoItem]:
+        # 라이브러리 전체를 페이징하며 type=="video"만 (buckets 패턴 복제).
+        # DSM에 파일유형 필터 파라미터가 있는지는 실 NAS 프로브 미검증이라,
+        # 앱단 필터로 동작(있으면 추후 최적화). 휴지통/tombstone 제외.
+        trash_ids = await self._trash_item_ids(space)
+        tomb = _tombstoned_items(self._sid)
+        out: list[PhotoItem] = []
+        offset = 0
+        while True:
+            data = await self._dsm.call(
+                _ns(space, "SYNO.Foto.Browse.Item"),
+                "list",
+                version=1,
+                sid=self._sid,
+                extra={
+                    "offset": offset,
+                    "limit": _PAGE,
+                    "additional": json.dumps(
+                        ["thumbnail", "resolution", "video_meta"]
+                    ),
+                },
+            )
+            page = data.get("list", [])
+            for it in page:
+                iid = str(it.get("id"))
+                if (
+                    it.get("type") == "video"
+                    and iid not in trash_ids
+                    and iid not in tomb
+                ):
+                    out.append(self._to_item(it))
+            if len(page) < _PAGE:
+                break
+            offset += _PAGE
+        out.sort(key=lambda i: i.taken_at, reverse=True)
+        return out
+
     async def folder_count(self, folder_id: str) -> int:
         # Browse.Item "count" takes the same filters as "list" — one cheap call
         # instead of paging every item just to count it.

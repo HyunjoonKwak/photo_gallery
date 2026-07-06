@@ -290,3 +290,6 @@ class HomesPhotoSource(_FsRootMixin, DsmPhotoSource):
         if space == "personal":
             return []
         return await super().search_items(space, keyword)
+
+    async def videos(self, space: str) -> list[PhotoItem]:
+        return [] if space == "personal" else await super().videos(space)

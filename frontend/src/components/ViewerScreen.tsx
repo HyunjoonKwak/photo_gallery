@@ -1,6 +1,5 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useMemo } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
-import { useVirtualizer } from "@tanstack/react-virtual";
 import { api } from "../api/client";
 import type { PhotoBucket, PhotoItem, Space } from "../api/types";
 import {
@@ -12,6 +11,7 @@ import {
 } from "../lib/rollup";
 import { useTimelineStore, type ViewerZoom } from "../store/timeline";
 import { Thumb } from "./timeline/Thumb";
+import { UniformPhotoGrid } from "./timeline/UniformPhotoGrid";
 
 /** 사진 뷰어 (감상 전용) — Synology Photos 스타일 연/월/일/폴더 줌.
  * 연 카드 탭→월, 월 카드 탭→일, 일 뷰에서 사진 탭→라이트박스(좌우 넘기기).
@@ -209,8 +209,6 @@ function DayView({
   space: Space;
   month: string | null;
 }) {
-  const setOrdered = useTimelineStore((s) => s.setOrdered);
-  const openLightbox = useTimelineStore((s) => s.openLightbox);
   // month 미지정(토글로 "일" 직행)이면 가장 최근 달.
   const activeMonth = month ?? rollupMonths(buckets)[0]?.key ?? null;
   const days = useMemo(
@@ -237,76 +235,5 @@ function DayView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadedSig, space]);
 
-  useEffect(() => {
-    setOrdered(items);
-  }, [items, setOrdered]);
-
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-  const [width, setWidth] = useState(0);
-  useLayoutEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => setWidth(Math.floor(el.clientWidth)));
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
-  const GAP = 4;
-  const MIN_TILE = 116;
-  const cols = Math.max(1, Math.floor((width + GAP) / (MIN_TILE + GAP)));
-  const tile = cols > 0 ? (width - GAP * (cols - 1)) / cols : MIN_TILE;
-  const rowCount = Math.ceil(items.length / cols);
-
-  const virtualizer = useVirtualizer({
-    count: rowCount,
-    getScrollElement: () => scrollRef.current,
-    estimateSize: () => tile + GAP,
-    overscan: 6,
-  });
-  useEffect(() => {
-    virtualizer.measure();
-  }, [tile, rowCount, virtualizer]);
-
-  return (
-    <div ref={scrollRef} className="h-full overflow-y-auto p-1">
-      <div
-        style={{
-          height: virtualizer.getTotalSize(),
-          position: "relative",
-          width: "100%",
-        }}
-      >
-        {virtualizer.getVirtualItems().map((row) => {
-          const start = row.index * cols;
-          const rowItems = items.slice(start, start + cols);
-          return (
-            <div
-              key={row.key}
-              style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                width: "100%",
-                transform: `translateY(${row.start}px)`,
-                display: "flex",
-                gap: GAP,
-              }}
-            >
-              {rowItems.map((it) => (
-                <button
-                  key={it.id}
-                  data-photo-id={it.id}
-                  onClick={() => openLightbox(it.id)}
-                  style={{ width: tile, height: tile }}
-                  className="overflow-hidden rounded-sm outline-none"
-                >
-                  <Thumb item={it} space={space} />
-                </button>
-              ))}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
+  return <UniformPhotoGrid items={items} space={space} />;
 }

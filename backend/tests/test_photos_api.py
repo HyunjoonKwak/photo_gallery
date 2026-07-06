@@ -172,6 +172,15 @@ def test_places_and_place_items(logged_in):
     assert len(items) == places[0]["item_count"]
 
 
+def test_videos_returns_only_videos_newest_first(logged_in):
+    items = logged_in.get("/api/photos/videos?space=team").json()["items"]
+    assert items, "mock에는 비디오가 있어야 한다"
+    assert all(i["type"] == "video" for i in items)
+    # 최신순 정렬.
+    taken = [i["taken_at"] for i in items]
+    assert taken == sorted(taken, reverse=True)
+
+
 # ------------------------------------------- admin impersonation (spec 4.5)
 
 

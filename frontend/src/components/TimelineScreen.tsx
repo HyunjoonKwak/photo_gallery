@@ -13,8 +13,7 @@ import {
 } from "@dnd-kit/core";
 import { useTimelineStore } from "../store/timeline";
 import { useFileOps } from "../hooks/useFileOps";
-import { ClassifyView } from "./ClassifyView";
-import { FolderPanel } from "./FolderPanel";
+import { AlbumsScreen } from "./AlbumsScreen";
 import { ManageScreen } from "./ManageScreen";
 import { ViewerScreen } from "./ViewerScreen";
 import { Lightbox } from "./Lightbox";
@@ -120,17 +119,9 @@ export function TimelineScreen() {
           setOverFolder(false);
         }}
       >
-        {/* 사진 = 순수 뷰어(연/월/일/폴더). albums는 Phase 3에서 뷰어화 —
-         * 지금은 기존 분류를 임시 노출(무회귀). */}
+        {/* 사진·앨범 = 순수 뷰어, 폴더 분류 = 정리(DnD/액션바). */}
         {section === "viewer" && <ViewerScreen key={space} />}
-        {section === "albums" && (
-          <div className="flex h-full">
-            <FolderPanel />
-            <main className="relative min-w-0 flex-1">
-              <ClassifyView key={space} />
-            </main>
-          </div>
-        )}
+        {section === "albums" && <AlbumsScreen key={space} />}
         {section === "manage" && <ManageScreen />}
         <DragOverlay dropAnimation={null}>
           {dragIds && (
