@@ -52,6 +52,50 @@ async def test_trash_item_ids_collects_ids_under_trash_tree():
     assert await src._trash_item_ids("team") == {"901", "902"}
 
 
+async def test_trash_item_ids_recurses_nested_folder_deletes():
+    """폴더 재귀 삭제는 서브트리를 통째로 #trash/t<ns>/<folder>/…로 옮겨
+    임의 깊이가 된다 → 중첩된 사진까지 수집해야 타임라인에서 빠진다."""
+    dsm = _RoutingDsm(
+        [
+            (
+                "SYNO.FotoTeam.Browse.Folder",
+                lambda e: e.get("id") == 0,
+                {"list": [{"id": 10, "name": "/#trash"}]},
+            ),
+            (
+                "SYNO.FotoTeam.Browse.Folder",
+                lambda e: e.get("id") == 10,
+                {"list": [{"id": 11, "name": "/#trash/t123"}]},
+            ),
+            # t123 안에 삭제된 폴더 '가족앨범'(id 12)이 통째로 들어옴.
+            (
+                "SYNO.FotoTeam.Browse.Folder",
+                lambda e: e.get("id") == 11,
+                {"list": [{"id": 12, "name": "/#trash/t123/가족앨범"}]},
+            ),
+            # 그 안에 다시 하위 폴더 '2024'(id 13).
+            (
+                "SYNO.FotoTeam.Browse.Folder",
+                lambda e: e.get("id") == 12,
+                {"list": [{"id": 13, "name": "/#trash/t123/가족앨범/2024"}]},
+            ),
+            # 각 폴더의 직속 사진 (중간 폴더 12에도 1장, 리프 13에 2장).
+            (
+                "SYNO.FotoTeam.Browse.Item",
+                lambda e: e.get("folder_id") == 12,
+                {"list": [{"id": 901}]},
+            ),
+            (
+                "SYNO.FotoTeam.Browse.Item",
+                lambda e: e.get("folder_id") == 13,
+                {"list": [{"id": 902}, {"id": 903}]},
+            ),
+        ]
+    )
+    src = DsmPhotoSource(dsm, _sid())
+    assert await src._trash_item_ids("team") == {"901", "902", "903"}
+
+
 async def test_trash_ids_empty_for_personal_space():
     src = DsmPhotoSource(_RoutingDsm([]), _sid())
     assert await src._trash_item_ids("personal") == frozenset()

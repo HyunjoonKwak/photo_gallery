@@ -266,12 +266,13 @@ class DsmPhotoSource:
             )
             ids: set[str] = set()
             if trash is not None:
-                # Trash layout is one level deep (#trash/t<ns>/files); include
-                # the root itself in case files ever land there directly.
-                folder_ids = [int(trash["id"])] + [
-                    int(f["id"])
-                    for f in await self._list_children("team", int(trash["id"]))
-                ]
+                # 단순 삭제는 #trash/t<ns>/files(2단계)지만, 폴더 재귀 삭제는
+                # #trash/t<ns>/<folder>/…로 서브트리를 통째로 옮겨 임의 깊이가
+                # 된다. 따라서 #trash 아래 모든 하위 폴더를 재귀 수집해야
+                # 중첩된 사진까지 타임라인에서 빠진다(2026-07-06 사용자 보고).
+                folder_ids = await self._descendant_folder_ids(
+                    "team", int(trash["id"])
+                )
                 for fid in folder_ids:
                     offset = 0
                     while True:
@@ -394,6 +395,20 @@ class DsmPhotoSource:
             if len(page) < 1000:
                 break
             offset += 1000
+        return out
+
+    async def _descendant_folder_ids(self, space: str, root_id: int) -> list[int]:
+        """root_id + 그 아래 모든 하위 폴더 id (재귀). 폴더 통째 삭제로 앱
+        휴지통이 여러 단계 깊어질 수 있어, 트래시 아이템 수집 전 서브트리
+        전체를 훑는다. 트래시는 대기 삭제만 담겨 대개 작다."""
+        out = [root_id]
+        stack = [root_id]
+        while stack:
+            fid = stack.pop()
+            for f in await self._list_children(space, fid):
+                cid = int(f["id"])
+                out.append(cid)
+                stack.append(cid)
         return out
 
     async def _filtered_items(self, space: str, filters: dict) -> list[PhotoItem]:
