@@ -616,6 +616,23 @@ class DsmPhotoSource:
     async def person_items(self, space: str, person_id: str) -> list[PhotoItem]:
         return await self._filtered_items(space, {"person_id": int(person_id)})
 
+    async def debug_persons_raw(self, space: str) -> dict:
+        """진단용: Person list 원본 응답(첫 3명)을 가공 없이 반환. 사람 탭에
+        👤 placeholder만 뜨는 경우(=cover_item_id 미확보) 실 NAS의 썸네일
+        정보가 실제로 어느 필드에 오는지 확인하려는 용도."""
+        data = await self._dsm.call(
+            _ns(space, "SYNO.Foto.Browse.Person"),
+            "list",
+            version=1,
+            sid=self._sid,
+            extra={
+                "offset": 0,
+                "limit": 3,
+                "additional": json.dumps(["thumbnail"]),
+            },
+        )
+        return {"space": space, "persons": data.get("list", [])[:3]}
+
     async def places(self, space: str) -> list[PlaceInfo]:
         out: list[PlaceInfo] = []
         offset = 0
