@@ -683,10 +683,10 @@ class DsmPhotoSource:
             None,
         )
 
-        # 1) 이름 지정 (확실한 API).
+        # 1) 이름 지정 — 실 NAS 확인(2026-07): 메서드는 `set`(set_name 아님).
         await self._dsm.call(
             _ns(space, "SYNO.Foto.Browse.Person"),
-            "set_name",
+            "set",
             version=1,
             sid=self._sid,
             extra={"id": int(person_id), "name": name},
@@ -694,9 +694,8 @@ class DsmPhotoSource:
 
         merged_into: str | None = None
         if target is not None:
-            # 2) 같은 이름 인물로 병합 (best-effort — 메서드/파라미터 실 NAS
-            # 검증 필요). set_name이 이미 자동 병합했다면 여기서 실패할 수 있어
-            # 삼켜도 사용자엔 병합으로 표기(이름은 같아졌으므로).
+            # 2) 같은 이름 인물로 병합 — 메서드 `merge` 존재 확인. 파라미터는
+            # best-effort(id 리스트를 target으로), 실패해도 이름은 적용됨.
             merged_into = str(target.id)
             try:
                 await self._dsm.call(
@@ -705,8 +704,8 @@ class DsmPhotoSource:
                     version=1,
                     sid=self._sid,
                     extra={
-                        "source_id": int(person_id),
-                        "target_id": int(target.id),
+                        "id": json.dumps([int(person_id)]),
+                        "target": int(target.id),
                     },
                 )
             except DsmError as exc:
@@ -715,43 +714,58 @@ class DsmPhotoSource:
                 )
         return {"name": name, "merged_into": merged_into}
 
-    async def debug_person_methods(self) -> dict:
-        """진단용: 인물 쓰기 API를 찾는다. 빈 파라미터로 후보 메서드를 호출 —
-        실행되지 않으며(필수 param 없음) code로 존재 여부만 본다: 103=메서드
-        없음, 그 외(120 등)=메서드 존재. 대체 API 이름도 SYNO.API.Info로 탐지."""
+    async def debug_person_write(self, name: str) -> dict:
+        """진단용: `set`(이름)·`merge`(병합)의 정확한 파라미터를 찾는다.
+        set 변형은 성공 시 이름 없는 인물에 실제로 이름이 지정됨(가역).
+        merge 변형은 source=target=같은 인물(자기 병합=무해)로 키만 검증한다
+        (120=파라미터 키 틀림, 그 외=키 맞음)."""
+        persons = await self.persons("personal")
+        if not persons:
+            return {"error": "no persons"}
+        target = next((p for p in persons if not p.name), persons[-1])
+        pid = int(target.id)
         api = _ns("personal", "SYNO.Foto.Browse.Person")
-        candidates = [
-            "set_name", "rename", "edit", "set", "update", "name", "modify",
-            "set_info", "set_person", "add", "correct", "confirm", "merge",
-            "set_cover", "group", "ungroup", "set_show", "hide", "show",
-            "delete", "remove",
-        ]
-        methods: list[dict] = []
-        for m in candidates:
-            try:
-                await self._dsm.call(api, m, version=1, sid=self._sid, extra={})
-                methods.append({"method": m, "code": "SUCCESS"})
-            except DsmError as exc:
-                methods.append({"method": m, "code": exc.code})
 
-        alt_apis = [
-            "SYNO.Foto.Person",
-            "SYNO.Foto.PersonSetting",
-            "SYNO.Foto.Browse.PersonSetting",
-            "SYNO.Foto.Management.Person",
-            "SYNO.FotoTeam.Browse.Person",
+        set_variants = [
+            {"id": pid, "name": name},
+            {"id": json.dumps([pid]), "name": name},
+            {"id_list": json.dumps([pid]), "name": name},
+            {"id": pid, "person_name": name},
         ]
-        api_probe: dict[str, str] = {}
-        for a in alt_apis:
+        set_probe: list[dict] = []
+        set_working = None
+        for extra in set_variants:
             try:
-                ep = await self._dsm._endpoint(a)
-                api_probe[a] = f"존재 (max_version={ep.max_version})"
+                await self._dsm.call(api, "set", version=1, sid=self._sid, extra=extra)
+                set_probe.append({"keys": list(extra), "ok": True})
+                set_working = list(extra)
+                break
             except DsmError as exc:
-                api_probe[a] = f"없음 (code {exc.code})"
+                set_probe.append(
+                    {"keys": list(extra), "code": exc.code, "msg": str(exc)[:70]}
+                )
+
+        merge_variants = [
+            {"id": json.dumps([pid]), "target": pid},
+            {"id": json.dumps([pid]), "target_id": pid},
+            {"source_id": pid, "target_id": pid},
+            {"source": pid, "target": pid},
+            {"id_list": json.dumps([pid]), "target_id": pid},
+        ]
+        merge_probe: list[dict] = []
+        for extra in merge_variants:
+            try:
+                await self._dsm.call(api, "merge", version=1, sid=self._sid, extra=extra)
+                merge_probe.append({"keys": list(extra), "code": "SUCCESS(무해-자기병합)"})
+            except DsmError as exc:
+                merge_probe.append(
+                    {"keys": list(extra), "code": exc.code, "msg": str(exc)[:70]}
+                )
         return {
-            "person_api": api,
-            "methods (code!=103 이면 존재)": methods,
-            "alt_apis": api_probe,
+            "target": {"id": target.id, "name": target.name},
+            "set (성공=이름지정됨)": set_probe,
+            "set_working_keys": set_working,
+            "merge (120=키틀림, 그외=키맞음)": merge_probe,
         }
 
     async def places(self, space: str) -> list[PlaceInfo]:

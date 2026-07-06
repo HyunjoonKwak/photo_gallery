@@ -196,14 +196,16 @@ async def list_persons(
     return PersonsResponse(space=space, persons=await source.persons(space))
 
 
-@router.get("/_debug/person_methods")
-async def debug_person_methods(
+@router.get("/_debug/person_write")
+async def debug_person_write(
+    name: str = Query(...),
     source: PhotoSource = Depends(get_photo_source),
 ) -> dict:
-    """진단용(임시): 인물 쓰기 API 메서드 탐색. 빈 파라미터라 실행 안 됨."""
-    if not hasattr(source, "debug_person_methods"):
+    """진단용(임시): set(이름)·merge(병합) 파라미터 확정. set 성공 시 이름 없는
+    인물에 실제로 이름 지정(가역), merge는 자기병합으로 키만 검증(무해)."""
+    if not hasattr(source, "debug_person_write"):
         return {"mock": True, "note": "실 NAS에서만 확인 가능합니다."}
-    return await source.debug_person_methods()  # type: ignore[attr-defined]
+    return await source.debug_person_write(name)  # type: ignore[attr-defined]
 
 
 @router.post("/persons/name", response_model=NamePersonResponse)

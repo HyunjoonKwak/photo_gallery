@@ -69,7 +69,8 @@ async def test_dsm_name_person_sets_name_only_when_unique():
     dsm = _NameStub([_person(1, "엄마")])
     await DsmPhotoSource(dsm, _sid()).name_person("personal", "2", "아빠")
     methods = [(m, e) for (a, m, e) in dsm.calls if "Browse.Person" in a]
-    set_calls = [e for (m, e) in methods if m == "set_name"]
+    # 실 NAS 확인: 이름 지정 메서드는 `set`(set_name 아님).
+    set_calls = [e for (m, e) in methods if m == "set"]
     merge_calls = [e for (m, e) in methods if m == "merge"]
     assert set_calls and set_calls[0]["id"] == 2 and set_calls[0]["name"] == "아빠"
     assert not merge_calls  # 같은 이름 없음 → 병합 안 함
@@ -79,7 +80,7 @@ async def test_dsm_name_person_merges_into_existing_name():
     dsm = _NameStub([_person(1, "엄마")])
     res = await DsmPhotoSource(dsm, _sid()).name_person("personal", "2", "엄마")
     methods = [(m, e) for (a, m, e) in dsm.calls if "Browse.Person" in a]
-    assert any(m == "set_name" for (m, e) in methods)
+    assert any(m == "set" for (m, e) in methods)  # 이름 먼저 지정
     merge = [e for (m, e) in methods if m == "merge"]
-    assert merge and merge[0]["source_id"] == 2 and merge[0]["target_id"] == 1
+    assert merge and merge[0]["target"] == 1  # 병합 대상
     assert res["merged_into"] == "1"
