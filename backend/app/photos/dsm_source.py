@@ -662,51 +662,6 @@ class DsmPhotoSource:
     async def person_items(self, space: str, person_id: str) -> list[PhotoItem]:
         return await self._filtered_items(space, {"person_id": int(person_id)})
 
-    async def debug_merge_confirm(self) -> dict:
-        """진단용: 확정된 키(target_id/merged_id)로 병합의 값 형식(배열 vs
-        스칼라)을 확정. 같은 이름 인물 쌍을 실제 병합 시도하며 원본 응답 캡처.
-        성공하면 실제 병합됨(중복 정리)."""
-        persons = await self.persons("personal")
-        by_name: dict[str, list] = {}
-        for p in persons:
-            if p.name:
-                by_name.setdefault(p.name, []).append(p)
-        dup = next((g for g in by_name.values() if len(g) >= 2), None)
-        if dup is None:
-            return {
-                "note": "같은 이름 인물 쌍이 없습니다. 사람 탭에서 이름 없는 "
-                "인물을 기존 이름으로 지정해 중복을 만든 뒤 다시 여세요.",
-                "names": sorted(by_name),
-            }
-        keeper, src = dup[0], dup[1]
-        s, t = int(src.id), int(keeper.id)
-        api = _ns("personal", "SYNO.Foto.Browse.Person")
-        combos = [
-            {"target_id": t, "merged_id": json.dumps([s])},
-            {"target_id": t, "merged_id": s},
-            {"target_id": t, "merged_id": str(s)},
-            {"target_id": json.dumps(t), "merged_id": json.dumps([s])},
-        ]
-        attempts: list[dict] = []
-        worked = None
-        for extra in combos:
-            body = await self._dsm.call_raw(
-                api, "merge", version=1, sid=self._sid, extra=extra
-            )
-            ok = isinstance(body, dict) and body.get("success") is True
-            attempts.append(
-                {"merged_id": extra["merged_id"], "target_id": extra["target_id"], "raw": body}
-            )
-            if ok:
-                worked = extra
-                break
-        return {
-            "keeper": {"id": keeper.id, "name": keeper.name},
-            "merged_source_id": src.id,
-            "worked": worked,
-            "attempts": attempts,
-        }
-
     async def name_person(self, space: str, person_id: str, name: str) -> dict:
         """인물 이름 지정 + 같은 이름 자동 병합.
 
