@@ -694,8 +694,8 @@ class DsmPhotoSource:
 
         merged_into: str | None = None
         if target is not None:
-            # 2) 같은 이름 인물로 병합 — 메서드 `merge` 존재 확인. 파라미터는
-            # best-effort(id 리스트를 target으로), 실패해도 이름은 적용됨.
+            # 2) 같은 이름 인물로 병합 — 실 NAS raw 오류로 확정(2026-07):
+            # merge(target_id=유지할 인물, merged_id=병합해 넣을 인물[]).
             merged_into = str(target.id)
             try:
                 await self._dsm.call(
@@ -704,64 +704,16 @@ class DsmPhotoSource:
                     version=1,
                     sid=self._sid,
                     extra={
-                        "id": json.dumps([int(person_id)]),
-                        "target": int(target.id),
+                        "target_id": int(target.id),
+                        "merged_id": json.dumps([int(person_id)]),
                     },
                 )
             except DsmError as exc:
                 logger.warning(
-                    "person merge best-effort 실패(이름은 지정됨): %s", exc
+                    "person merge 실패(이름은 지정됨): %s", exc
                 )
         return {"name": name, "merged_into": merged_into}
 
-    async def debug_merge_trial(self) -> dict:
-        """진단용: 같은 이름 인물 쌍(예 '엄마' 둘)을 실제로 병합 시도하며 맞는
-        파라미터를 찾는다. 서로 다른 실제 id라야 판별 가능(자기병합은 항상
-        120). 성공하면 실제로 병합됨(=사용자가 원하던 결과)."""
-        persons = await self.persons("personal")
-        by_name: dict[str, list] = {}
-        for p in persons:
-            if p.name:
-                by_name.setdefault(p.name, []).append(p)
-        dup = next((g for g in by_name.values() if len(g) >= 2), None)
-        if dup is None:
-            return {
-                "note": "같은 이름 인물 쌍이 없습니다. 사람 탭에서 '이름 없는 "
-                "인물'을 기존 이름(예 엄마)으로 지정해 중복을 만든 뒤 다시 여세요.",
-                "names": sorted(by_name),
-            }
-        keeper, src = dup[0], dup[1]  # keeper 유지, src를 병합
-        s, t = int(src.id), int(keeper.id)
-        api = _ns("personal", "SYNO.Foto.Browse.Person")
-        # (version, extra) 조합. call_raw로 원본 응답(error.errors 상세)까지 캡처.
-        combos = [
-            (1, {"id": json.dumps([s]), "target": t}),
-            (2, {"id": json.dumps([s]), "target": t}),
-            (3, {"id": json.dumps([s]), "target": t}),
-            (1, {"id": json.dumps([s]), "target_id": t}),
-            (1, {"id": json.dumps([s, t])}),
-            (1, {"source": json.dumps([s]), "target": t}),
-            (1, {"person": json.dumps([s]), "target": t}),
-            (1, {"id_list": json.dumps([s]), "target": t}),
-        ]
-        attempts: list[dict] = []
-        worked = None
-        for ver, extra in combos:
-            body = await self._dsm.call_raw(
-                api, "merge", version=ver, sid=self._sid, extra=extra
-            )
-            ok = isinstance(body, dict) and body.get("success") is True
-            entry = {"version": ver, "keys": list(extra), "raw": body}
-            attempts.append(entry)
-            if ok:
-                worked = {"version": ver, "keys": list(extra)}
-                break
-        return {
-            "keeper": {"id": keeper.id, "name": keeper.name},
-            "merged_source_id": src.id,
-            "worked": worked,
-            "attempts": attempts,
-        }
 
     async def places(self, space: str) -> list[PlaceInfo]:
         out: list[PlaceInfo] = []

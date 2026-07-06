@@ -82,5 +82,7 @@ async def test_dsm_name_person_merges_into_existing_name():
     methods = [(m, e) for (a, m, e) in dsm.calls if "Browse.Person" in a]
     assert any(m == "set" for (m, e) in methods)  # 이름 먼저 지정
     merge = [e for (m, e) in methods if m == "merge"]
-    assert merge and merge[0]["target"] == 1  # 병합 대상
+    # 실 NAS raw 오류로 확정: target_id(유지) + merged_id(병합 대상[]).
+    assert merge and merge[0]["target_id"] == 1
+    assert "2" in merge[0]["merged_id"]  # json.dumps([2])
     assert res["merged_into"] == "1"
