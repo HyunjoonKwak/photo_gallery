@@ -575,6 +575,22 @@ class MockPhotoSource:
         self._person_names[person_id] = name
         return {"name": name, "merged_into": None}
 
+    async def merge_duplicate_persons(self, space: str) -> dict:
+        persons = await self.persons(space)
+        by_name: dict[str, list] = {}
+        for p in persons:
+            if p.name:
+                by_name.setdefault(p.name, []).append(p)
+        merged = 0
+        for group in by_name.values():
+            if len(group) < 2:
+                continue
+            keeper = group[0]
+            for src in group[1:]:
+                self._person_merged[src.id] = keeper.id
+                merged += 1
+        return {"merged": merged}
+
     async def places(self, space: str) -> list[PlaceInfo]:
         pool = self._classify_pool(space)
         out = [

@@ -94,12 +94,36 @@ function PeopleGrid({
     queryFn: () => api.persons(space),
     staleTime: 5 * 60_000,
   });
+  const qc = useQueryClient();
+  const pushToast = useToastStore((s) => s.push);
   const persons = q.data?.persons ?? [];
   // 기존에 지정된 이름들 — 이름 입력 시 선택지로 제공(선택=병합, 새로 입력=신규).
   const existingNames = useMemo(
     () => [...new Set(persons.map((p) => p.name).filter(Boolean))],
     [persons],
   );
+  // 같은 이름 인물이 둘 이상이면 중복 병합 버튼 노출.
+  const hasDuplicates = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const p of persons)
+      if (p.name) counts.set(p.name, (counts.get(p.name) ?? 0) + 1);
+    return [...counts.values()].some((n) => n >= 2);
+  }, [persons]);
+
+  const mergeDup = useMutation({
+    mutationFn: () => api.mergeDuplicatePersons(),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ["persons", space] });
+      qc.invalidateQueries({ queryKey: ["album-items", space] });
+      pushToast(
+        res.merged > 0
+          ? `중복 인물 ${res.merged}명을 병합했습니다.`
+          : "병합할 중복 인물이 없습니다.",
+      );
+    },
+    onError: () => pushToast("중복 병합에 실패했습니다."),
+  });
+
   if (q.isPending)
     return <p className="p-6 text-sm text-slate-400">불러오는 중…</p>;
   if (persons.length === 0)
@@ -110,6 +134,18 @@ function PeopleGrid({
     );
   return (
     <div className="h-full overflow-y-auto p-4">
+      {hasDuplicates && (
+        <div className="mb-3 flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          <span>같은 이름의 인물이 여럿 있습니다.</span>
+          <button
+            onClick={() => mergeDup.mutate()}
+            disabled={mergeDup.isPending}
+            className="rounded bg-amber-500 px-2.5 py-1 text-xs font-medium text-white disabled:opacity-50"
+          >
+            {mergeDup.isPending ? "병합 중…" : "중복 이름 병합"}
+          </button>
+        </div>
+      )}
       <div className="flex flex-wrap gap-1">
         {persons.map((p) => (
           <PersonCard

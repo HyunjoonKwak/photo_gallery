@@ -43,6 +43,7 @@ from ..schemas import (
     MoveFoldersRequest,
     MoveRequest,
     OperationResponse,
+    MergeDuplicatePersonsResponse,
     NamePersonRequest,
     NamePersonResponse,
     PersonsResponse,
@@ -210,6 +211,16 @@ async def name_person(
         name=result["name"],
         merged_into=result.get("merged_into"),
     )
+
+
+@router.post("/persons/merge-duplicates", response_model=MergeDuplicatePersonsResponse)
+async def merge_duplicate_persons(
+    _session: Session = Depends(get_current_session),
+    source: PhotoSource = Depends(get_photo_source),
+) -> MergeDuplicatePersonsResponse:
+    """같은 이름의 인물이 여럿이면 하나로 병합(개인 공간 전용)."""
+    result = await source.merge_duplicate_persons("personal")
+    return MergeDuplicatePersonsResponse(merged=result["merged"])
 
 
 @router.get("/person-items", response_model=BucketItemsResponse)

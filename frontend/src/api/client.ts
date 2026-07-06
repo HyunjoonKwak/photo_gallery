@@ -148,6 +148,10 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ person_id: personId, name }),
     }),
+  mergeDuplicatePersons: () =>
+    request<{ merged: number }>(`/api/photos/persons/merge-duplicates`, {
+      method: "POST",
+    }),
   personItems: (space: Space, id: string) =>
     request<BucketItemsResponse>(
       `/api/photos/person-items?space=${space}&id=${encodeURIComponent(id)}${scopeQS()}`,

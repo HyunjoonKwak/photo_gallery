@@ -127,6 +127,10 @@ class NamePersonResponse(BaseModel):
     merged_into: str | None = None  # 같은 이름 인물로 병합됐으면 그 id
 
 
+class MergeDuplicatePersonsResponse(BaseModel):
+    merged: int  # 합쳐 없앤 중복 인물 수
+
+
 class PlaceInfo(BaseModel):
     """A geocoded place group from Synology Photos (GPS 기반).
 

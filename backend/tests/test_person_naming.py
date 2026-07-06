@@ -86,3 +86,14 @@ async def test_dsm_name_person_merges_into_existing_name():
     assert merge and merge[0]["target_id"] == 1
     assert "2" in merge[0]["merged_id"]  # json.dumps([2])
     assert res["merged_into"] == "1"
+
+
+async def test_dsm_merge_duplicate_persons():
+    # 같은 이름 '곽현준' 둘(count 20 유지 · 5 병합) → merge(target_id=1,[2]).
+    dsm = _NameStub(
+        [_person(1, "곽현준") | {"item_count": 20}, _person(2, "곽현준") | {"item_count": 5}]
+    )
+    res = await DsmPhotoSource(dsm, _sid()).merge_duplicate_persons("personal")
+    assert res["merged"] == 1
+    merge = [e for (a, m, e) in dsm.calls if m == "merge"]
+    assert merge and merge[0]["target_id"] == 1 and "2" in merge[0]["merged_id"]

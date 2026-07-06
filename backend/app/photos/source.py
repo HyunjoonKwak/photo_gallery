@@ -114,6 +114,11 @@ class PhotoSource(Protocol):
         반환 dict: {"name", "merged_into": 병합 대상 id 또는 None}."""
         ...
 
+    async def merge_duplicate_persons(self, space: str) -> dict:
+        """같은 이름의 인물이 여럿이면 하나(가장 큰 그룹)로 합친다.
+        반환 dict: {"merged": 합쳐 없앤 인물 수}."""
+        ...
+
     async def places(self, space: str) -> list[PlaceInfo]:
         """Geocoded place groups of one space."""
         ...

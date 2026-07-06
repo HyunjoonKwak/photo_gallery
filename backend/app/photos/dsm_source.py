@@ -715,6 +715,33 @@ class DsmPhotoSource:
         return {"name": name, "merged_into": merged_into}
 
 
+    async def merge_duplicate_persons(self, space: str) -> dict:
+        # 같은 이름 인물들을 가장 큰 그룹(persons가 개수 내림차순)으로 병합.
+        # merge(target_id=유지, merged_id=[나머지들]) — 실 NAS 확정 파라미터.
+        persons = await self.persons(space)
+        by_name: dict[str, list] = {}
+        for p in persons:
+            if p.name:
+                by_name.setdefault(p.name, []).append(p)
+        merged = 0
+        for group in by_name.values():
+            if len(group) < 2:
+                continue
+            keeper = group[0]
+            sources = [int(p.id) for p in group[1:]]
+            await self._dsm.call(
+                _ns(space, "SYNO.Foto.Browse.Person"),
+                "merge",
+                version=1,
+                sid=self._sid,
+                extra={
+                    "target_id": int(keeper.id),
+                    "merged_id": json.dumps(sources),
+                },
+            )
+            merged += len(sources)
+        return {"merged": merged}
+
     async def places(self, space: str) -> list[PlaceInfo]:
         out: list[PlaceInfo] = []
         offset = 0
