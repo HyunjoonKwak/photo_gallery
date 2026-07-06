@@ -35,6 +35,9 @@ export function Lightbox() {
   );
   const globalSpace = useTimelineStore((s) => s.space);
   const space = item?.space ?? globalSpace;
+  // 감상 영역(사진/앨범)에서는 순수 뷰어 — 이동/삭제 없이 정보+넘기기만.
+  // 정리는 폴더 분류(manage)에서만.
+  const readonly = useTimelineStore((s) => s.section !== "manage");
   const ops = useFileOps();
   const [showInfo, setShowInfo] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
@@ -72,13 +75,14 @@ export function Lightbox() {
       if (e.key === "ArrowRight") useTimelineStore.getState().stepLightbox(1);
       else if (e.key === "ArrowLeft") useTimelineStore.getState().stepLightbox(-1);
       else if (e.key === "i" || e.key === "I") setShowInfo((v) => !v);
-      else if (e.key === "Delete" || e.key === "Backspace") deleteAndAdvance();
+      else if ((e.key === "Delete" || e.key === "Backspace") && !readonly)
+        deleteAndAdvance();
       else if (e.key === "?") setShowHelp((v) => !v);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [item]);
+  }, [item, readonly]);
 
   // Prefetch neighbors so stepping feels instant (photos only — videos are
   // streamed on demand).
@@ -253,20 +257,25 @@ export function Lightbox() {
           className="absolute right-4 top-4 flex gap-2"
           onClick={(e) => e.stopPropagation()}
         >
-          <button
-            onClick={() => setShowMove(true)}
-            title="폴더로 이동"
-            className="rounded-full bg-black/50 px-3 py-2 text-sm text-white/80 hover:bg-black/70 hover:text-white"
-          >
-            이동
-          </button>
-          <button
-            onClick={deleteAndAdvance}
-            title="휴지통으로 이동 (Delete)"
-            className="rounded-full bg-black/50 px-3 py-2 text-sm text-red-300 hover:bg-black/70 hover:text-red-200"
-          >
-            삭제
-          </button>
+          {/* 정리 버튼은 폴더 분류(manage)에서만 — 감상 영역은 순수 뷰어 */}
+          {!readonly && (
+            <>
+              <button
+                onClick={() => setShowMove(true)}
+                title="폴더로 이동"
+                className="rounded-full bg-black/50 px-3 py-2 text-sm text-white/80 hover:bg-black/70 hover:text-white"
+              >
+                이동
+              </button>
+              <button
+                onClick={deleteAndAdvance}
+                title="휴지통으로 이동 (Delete)"
+                className="rounded-full bg-black/50 px-3 py-2 text-sm text-red-300 hover:bg-black/70 hover:text-red-200"
+              >
+                삭제
+              </button>
+            </>
+          )}
           <button
             onClick={() => setShowInfo((v) => !v)}
             title="정보 (i)"
@@ -369,7 +378,7 @@ export function Lightbox() {
       )}
 
       {/* In-viewer move (spec 9.4: 라이트박스에서도 정리 가능) */}
-      {showMove && (
+      {showMove && !readonly && (
         <div onClick={(e) => e.stopPropagation()}>
           <FolderPickerDialog
             mode="move"
@@ -396,7 +405,9 @@ export function Lightbox() {
             <h3 className="mb-3 text-sm font-bold text-white">키보드 단축키</h3>
             <table className="text-sm text-slate-300">
               <tbody>
-                {SHORTCUTS.map(([key, desc]) => (
+                {SHORTCUTS.filter(
+                  ([key]) => !readonly || key !== "Delete",
+                ).map(([key, desc]) => (
                   <tr key={key}>
                     <td className="pr-6 font-mono text-blue-300">{key}</td>
                     <td className="py-0.5">{desc}</td>

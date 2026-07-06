@@ -16,8 +16,8 @@ import { useFileOps } from "../hooks/useFileOps";
 import { ClassifyView } from "./ClassifyView";
 import { FolderPanel } from "./FolderPanel";
 import { ManageScreen } from "./ManageScreen";
+import { ViewerScreen } from "./ViewerScreen";
 import { Lightbox } from "./Lightbox";
-import { TimelineView } from "./timeline/TimelineView";
 import { DragOverlayContent } from "./timeline/DragOverlayContent";
 import { SelectionActionBar } from "./timeline/SelectionActionBar";
 
@@ -120,17 +120,9 @@ export function TimelineScreen() {
           setOverFolder(false);
         }}
       >
-        {/* Phase 1: viewer=기존 타임라인, albums=기존 분류를 임시 노출(무회귀).
-         * Phase 2/3에서 순수 뷰어(ViewerScreen)·AlbumsScreen으로 대체. */}
-        {section === "viewer" && (
-          <div className="flex h-full">
-            <FolderPanel />
-            <main className="relative min-w-0 flex-1">
-              {/* key=space: switching tabs resets lazy-load/selection state cleanly */}
-              <TimelineView key={space} />
-            </main>
-          </div>
-        )}
+        {/* 사진 = 순수 뷰어(연/월/일/폴더). albums는 Phase 3에서 뷰어화 —
+         * 지금은 기존 분류를 임시 노출(무회귀). */}
+        {section === "viewer" && <ViewerScreen key={space} />}
         {section === "albums" && (
           <div className="flex h-full">
             <FolderPanel />
