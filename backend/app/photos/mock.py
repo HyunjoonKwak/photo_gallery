@@ -95,9 +95,15 @@ _PERSONS = [
     ("p-2", "엄마", 4, 1),
     ("p-3", "", 5, 2),  # unnamed face group — UI placeholder case
 ]
+# (id, country, country_id, first_level, second_level, mod, rem) — 실 NAS
+# 지오코딩 계층(country→first_level)을 흉내. 같은 first_level(Seoul)에 그룹이
+# 여럿인 케이스도 포함(지역 클릭 시 합쳐 보이는 동작 데모).
 _PLACES = [
-    ("g-1", "대한민국 서울", 4, 0),
-    ("g-2", "대한민국 제주", 6, 1),
+    ("g-1", "South Korea", 1, "Seoul", "", 3, 0),
+    ("g-2", "South Korea", 1, "Seoul", "Gangnam-gu", 5, 1),
+    ("g-3", "South Korea", 1, "Suwon-si", "", 6, 2),
+    ("g-4", "Japan", 2, "Tokyo", "", 7, 3),
+    ("g-5", "Australia", 1087, "Sydney", "", 4, 4),
 ]
 # Scanning every generated day is wasteful for a mock — cap the lookback.
 _CLASSIFY_DAYS_BACK = 60
@@ -524,10 +530,14 @@ class MockPhotoSource:
             PlaceInfo(
                 id=gid,
                 space=space,
-                name=name,
+                name=second or first,
                 item_count=sum(1 for it in pool if self._in_group(it.id, mod, rem)),
+                country=country,
+                country_id=country_id,
+                first_level=first,
+                second_level=second or None,
             )
-            for gid, name, mod, rem in _PLACES
+            for gid, country, country_id, first, second, mod, rem in _PLACES
         ]
         out.sort(key=lambda g: -(g.item_count or 0))
         return [g for g in out if g.item_count]
@@ -538,7 +548,7 @@ class MockPhotoSource:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="장소를 찾을 수 없습니다."
             )
-        _, _, mod, rem = spec
+        mod, rem = spec[5], spec[6]
         return [
             it for it in self._classify_pool(space) if self._in_group(it.id, mod, rem)
         ]

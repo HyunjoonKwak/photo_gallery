@@ -84,6 +84,10 @@ export interface PlaceInfo {
   space: Space;
   name: string;
   item_count: number | null;
+  country: string | null;
+  country_id: number | null;
+  first_level: string | null; // 시/도 레벨 e.g. "Seoul"
+  second_level: string | null; // 더 세부 e.g. "Gangnam-gu"
 }
 
 export interface PlacesResponse {

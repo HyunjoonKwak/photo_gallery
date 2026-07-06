@@ -114,12 +114,19 @@ class PersonsResponse(BaseModel):
 
 
 class PlaceInfo(BaseModel):
-    """A geocoded place group from Synology Photos (GPS 기반)."""
+    """A geocoded place group from Synology Photos (GPS 기반).
+
+    실 NAS(DSM 7.2) Geocoding list는 country/first_level/second_level 계층을
+    준다 → 프론트가 국가→지역(first_level)으로 묶는다."""
 
     id: str
     space: str
     name: str
     item_count: int | None = None
+    country: str | None = None  # e.g. "South Korea"
+    country_id: int | None = None
+    first_level: str | None = None  # 시/도 레벨 e.g. "Seoul", "Sydney"
+    second_level: str | None = None  # 더 세부 e.g. "Gangnam-gu" (종종 빈값)
 
 
 class PlacesResponse(BaseModel):

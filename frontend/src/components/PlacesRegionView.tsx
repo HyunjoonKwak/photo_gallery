@@ -1,20 +1,50 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
-import type { PlaceInfo, Space } from "../api/types";
+import type { PhotoItem, PlaceInfo, Space } from "../api/types";
 import { Thumb } from "./timeline/Thumb";
 import { UniformPhotoGrid } from "./timeline/UniformPhotoGrid";
 
-/** 장소(지역별) 뷰어 — Synology Photos의 GPS 지오코딩 그룹(`places`)을 국가→
- * 지역 2단 폴더형으로 보여준다. 국가 카드 탭 → 그 국가의 지역 카드(폴더형 +
- * 직속 사진 4장 미리보기) → 지역 탭 → 사진 썸네일 그리드(라이트박스). 순수
- * 뷰어(정리는 폴더 분류에서). 지도 뷰는 좌표 확보 후 후속 단계.
- *
- * 그룹 이름 파싱: 첫 토큰=국가, 나머지=지역(예 "대한민국 서울"). 실 NAS의
- * 지오코딩 name 포맷은 미검증이라 방어적으로 처리(토큰 1개면 국가=지역). */
+/** 장소(지역별) 뷰어 — Synology Photos의 GPS 지오코딩 그룹(`places`)을
+ * 국가 → 지역(first_level) 2단으로 묶어 폴더형으로 보여준다. 국가 카드 탭 →
+ * 그 국가의 지역 카드(폴더형 + 사진 4장 미리보기) → 지역 탭 → 사진 썸네일
+ * 그리드(라이트박스). 한 first_level(예 Seoul)에 지오코딩 그룹이 여럿이면
+ * 지역 진입 시 그 그룹들의 사진을 합쳐 보여준다. 순수 뷰어. */
+
+// 실 NAS 지오코딩 country는 영문("South Korea") — 흔한 국가만 한글 표기,
+// 나머지는 원문 그대로.
+const COUNTRY_KO: Record<string, string> = {
+  "South Korea": "대한민국",
+  Korea: "대한민국",
+  Japan: "일본",
+  China: "중국",
+  "Hong Kong": "홍콩",
+  Taiwan: "대만",
+  "United States": "미국",
+  USA: "미국",
+  Australia: "호주",
+  "United Kingdom": "영국",
+  France: "프랑스",
+  Germany: "독일",
+  Italy: "이탈리아",
+  Spain: "스페인",
+  Thailand: "태국",
+  Vietnam: "베트남",
+  Singapore: "싱가포르",
+  Canada: "캐나다",
+};
+const countryLabel = (c: string) => COUNTRY_KO[c] ?? c;
+
+interface RegionGroup {
+  first_level: string;
+  total: number;
+  placeIds: string[]; // item_count 내림차순
+  coverId: string; // 미리보기용(가장 큰 그룹)
+}
+
 export function PlacesRegionView({ space }: { space: Space }) {
   const [country, setCountry] = useState<string | null>(null);
-  const [region, setRegion] = useState<PlaceInfo | null>(null);
+  const [region, setRegion] = useState<RegionGroup | null>(null);
 
   const q = useQuery({
     queryKey: ["places", space],
@@ -27,22 +57,46 @@ export function PlacesRegionView({ space }: { space: Space }) {
   const countries = useMemo(() => {
     const m = new Map<string, PlaceInfo[]>();
     for (const p of places) {
-      const c = countryOf(p.name);
+      const c = p.country || "기타";
       const list = m.get(c);
       if (list) list.push(p);
       else m.set(c, [p]);
     }
     return [...m.entries()]
-      .map(([name, regions]) => ({
+      .map(([name, group]) => ({
         name,
-        regions,
-        total: regions.reduce((s, r) => s + (r.item_count ?? 0), 0),
+        label: countryLabel(name),
+        total: group.reduce((s, r) => s + (r.item_count ?? 0), 0),
+        group,
       }))
       .sort((a, b) => b.total - a.total);
   }, [places]);
 
-  const currentRegions =
-    country != null ? countries.find((c) => c.name === country)?.regions ?? [] : [];
+  // 선택 국가의 지역(first_level)별 그룹.
+  const regions = useMemo<RegionGroup[]>(() => {
+    if (country == null) return [];
+    const inCountry = countries.find((c) => c.name === country)?.group ?? [];
+    const m = new Map<string, PlaceInfo[]>();
+    for (const p of inCountry) {
+      const key = p.first_level || p.name || "기타 지역";
+      const list = m.get(key);
+      if (list) list.push(p);
+      else m.set(key, [p]);
+    }
+    return [...m.entries()]
+      .map(([first_level, group]) => {
+        const sorted = [...group].sort(
+          (a, b) => (b.item_count ?? 0) - (a.item_count ?? 0),
+        );
+        return {
+          first_level,
+          total: sorted.reduce((s, r) => s + (r.item_count ?? 0), 0),
+          placeIds: sorted.map((p) => p.id),
+          coverId: sorted[0].id,
+        };
+      })
+      .sort((a, b) => b.total - a.total);
+  }, [country, countries]);
 
   if (q.isPending)
     return <p className="p-6 text-sm text-slate-400">불러오는 중…</p>;
@@ -63,9 +117,7 @@ export function PlacesRegionView({ space }: { space: Space }) {
             setRegion(null);
           }}
           className={`rounded px-1.5 py-0.5 ${
-            country
-              ? "text-blue-600 hover:bg-slate-100"
-              : "font-semibold text-slate-700"
+            country ? "text-blue-600 hover:bg-slate-100" : "font-semibold text-slate-700"
           }`}
         >
           🌏 장소
@@ -81,7 +133,7 @@ export function PlacesRegionView({ space }: { space: Space }) {
                   : "font-semibold text-slate-800"
               }`}
             >
-              {country}
+              {countryLabel(country)}
             </button>
           </span>
         )}
@@ -89,7 +141,7 @@ export function PlacesRegionView({ space }: { space: Space }) {
           <span className="flex items-center gap-1">
             <span className="text-slate-300">/</span>
             <span className="px-1.5 py-0.5 font-semibold text-slate-800">
-              {regionLabel(region, country ?? "")}
+              {region.first_level}
             </span>
           </span>
         )}
@@ -102,16 +154,13 @@ export function PlacesRegionView({ space }: { space: Space }) {
           <div className="h-full overflow-y-auto p-4">
             <div
               className="grid gap-3"
-              style={{
-                gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))",
-              }}
+              style={{ gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" }}
             >
-              {currentRegions.map((r) => (
+              {regions.map((r) => (
                 <RegionCard
-                  key={r.id}
+                  key={r.first_level}
                   space={space}
                   region={r}
-                  label={regionLabel(r, country)}
                   onOpen={() => setRegion(r)}
                 />
               ))}
@@ -121,9 +170,7 @@ export function PlacesRegionView({ space }: { space: Space }) {
           <div className="h-full overflow-y-auto p-4">
             <div
               className="grid gap-3"
-              style={{
-                gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
-              }}
+              style={{ gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))" }}
             >
               {countries.map((c) => (
                 <button
@@ -133,10 +180,11 @@ export function PlacesRegionView({ space }: { space: Space }) {
                 >
                   <span className="text-3xl">🌐</span>
                   <span className="truncate text-sm font-medium text-slate-700">
-                    {c.name}
+                    {c.label}
                   </span>
                   <span className="text-xs text-slate-400">
-                    {c.total.toLocaleString()}장 · 지역 {c.regions.length}
+                    {c.total.toLocaleString()}장 · 지역{" "}
+                    {new Set(c.group.map((p) => p.first_level || p.name)).size}
                   </span>
                 </button>
               ))}
@@ -148,28 +196,26 @@ export function PlacesRegionView({ space }: { space: Space }) {
   );
 }
 
-/** 지역 카드 — 그 지역 사진 4장을 2×2 미리보기로(폴더형). */
+/** 지역 카드 — 대표 그룹 사진 4장을 2×2 미리보기로(폴더형). */
 function RegionCard({
   space,
   region,
-  label,
   onOpen,
 }: {
   space: Space;
-  region: PlaceInfo;
-  label: string;
+  region: RegionGroup;
   onOpen: () => void;
 }) {
   const q = useQuery({
-    queryKey: ["album-items", space, "place", region.id],
-    queryFn: () => api.placeItems(space, region.id),
+    queryKey: ["album-items", space, "place", region.coverId],
+    queryFn: () => api.placeItems(space, region.coverId),
     staleTime: 60_000,
   });
   const preview = (q.data?.items ?? []).slice(0, 4);
   return (
     <button
       onClick={onOpen}
-      title={label}
+      title={region.first_level}
       className="group flex flex-col gap-1.5 rounded-xl p-2 text-left hover:bg-slate-100"
     >
       <div className="grid aspect-square grid-cols-2 grid-rows-2 gap-0.5 overflow-hidden rounded-lg bg-slate-200">
@@ -189,45 +235,43 @@ function RegionCard({
       </div>
       <div className="flex items-center justify-between px-0.5">
         <span className="truncate text-xs font-medium text-slate-700">
-          📍 {label}
+          📍 {region.first_level}
         </span>
-        {region.item_count != null && (
-          <span className="shrink-0 text-[10px] text-slate-400">
-            {region.item_count.toLocaleString()}
-          </span>
-        )}
+        <span className="shrink-0 text-[10px] text-slate-400">
+          {region.total.toLocaleString()}
+        </span>
       </div>
     </button>
   );
 }
 
-function RegionPhotos({ space, region }: { space: Space; region: PlaceInfo }) {
-  const q = useQuery({
-    queryKey: ["album-items", space, "place", region.id],
-    queryFn: () => api.placeItems(space, region.id),
+/** 지역의 사진 — first_level에 속한 지오코딩 그룹들의 사진을 합쳐(id 중복
+ * 제거·촬영일 정렬) 그리드로. */
+function RegionPhotos({ space, region }: { space: Space; region: RegionGroup }) {
+  const queries = useQueries({
+    queries: region.placeIds.map((id) => ({
+      queryKey: ["album-items", space, "place", id],
+      queryFn: () => api.placeItems(space, id),
+      staleTime: 60_000,
+    })),
   });
-  const items = useMemo(
-    () => (q.data?.items ?? []).map((it) => ({ ...it, space })),
-    [q.data, space],
-  );
-  if (q.isPending)
+  const pending = queries.some((r) => r.isPending);
+  const items = useMemo(() => {
+    const byId = new Map<string, PhotoItem>();
+    for (const r of queries) {
+      for (const it of r.data?.items ?? []) {
+        if (!byId.has(it.id)) byId.set(it.id, { ...it, space });
+      }
+    }
+    return [...byId.values()].sort((a, b) =>
+      a.taken_at < b.taken_at ? 1 : a.taken_at > b.taken_at ? -1 : 0,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queries.map((r) => r.data?.items?.length ?? 0).join("|"), space]);
+
+  if (pending && items.length === 0)
     return <p className="p-6 text-sm text-slate-400">불러오는 중…</p>;
   if (items.length === 0)
     return <p className="p-6 text-sm text-slate-400">사진이 없습니다.</p>;
   return <UniformPhotoGrid items={items} space={space} />;
-}
-
-/** 지오코딩 그룹 이름에서 국가(첫 토큰) 추출. 빈 이름은 "기타". */
-function countryOf(name: string): string {
-  const n = (name || "").trim();
-  if (!n) return "기타";
-  return n.split(/\s+/)[0];
-}
-
-/** 국가 접두어를 뗀 지역명. 토큰이 하나뿐이면 그대로. */
-function regionLabel(place: PlaceInfo, country: string): string {
-  const n = (place.name || "").trim();
-  if (!n) return "기타 지역";
-  const rest = n.startsWith(country) ? n.slice(country.length).trim() : n;
-  return rest || n;
 }
