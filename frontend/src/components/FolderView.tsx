@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTimelineStore } from "../store/timeline";
 import { useFileOps } from "../hooks/useFileOps";
 import { useResizableWidth } from "../hooks/useResizableWidth";
@@ -180,6 +180,25 @@ export function FolderView() {
   const currentB = pathB.length ? pathB[pathB.length - 1] : null;
   const activeCurrent = activePane === 0 ? currentA : currentB;
   const inactiveCurrent = activePane === 0 ? currentB : currentA;
+
+  // 뒤로가기: 폴더에 들어가 있으면 활성 페인을 한 단계 위로(브라우저 뒤로가기·
+  // 화면 뒤로 버튼 공용). 최신 상태는 ref로 읽는다.
+  const registerBack = useTimelineStore((s) => s.registerBack);
+  const navRef = useRef({ pathA, pathB, activePane, setPathA, setPathB });
+  navRef.current = { pathA, pathB, activePane, setPathA, setPathB };
+  const inFolder = pathA.length > 0 || pathB.length > 0;
+  useEffect(() => {
+    if (!inFolder) return;
+    return registerBack(() => {
+      const n = navRef.current;
+      const popA = () => n.setPathA((p) => p.slice(0, -1));
+      const popB = () => n.setPathB((p) => p.slice(0, -1));
+      if (n.activePane === 0 && n.pathA.length) popA();
+      else if (n.activePane === 1 && n.pathB.length) popB();
+      else if (n.pathA.length) popA();
+      else popB();
+    });
+  }, [inFolder, registerBack]);
 
   const activate = (pane: 0 | 1) => {
     if (pane !== activePane) {
