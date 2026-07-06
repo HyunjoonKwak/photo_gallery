@@ -113,6 +113,20 @@ class PersonsResponse(BaseModel):
     persons: list[PersonInfo]
 
 
+class NamePersonRequest(BaseModel):
+    """이름 없는(또는 기존) 인물에 이름 지정. 같은 이름이 이미 있으면 자동 병합."""
+
+    space: str = "personal"
+    person_id: str
+    name: str
+
+
+class NamePersonResponse(BaseModel):
+    person_id: str
+    name: str
+    merged_into: str | None = None  # 같은 이름 인물로 병합됐으면 그 id
+
+
 class PlaceInfo(BaseModel):
     """A geocoded place group from Synology Photos (GPS 기반).
 

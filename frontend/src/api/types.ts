@@ -78,6 +78,12 @@ export interface PersonsResponse {
   persons: PersonInfo[];
 }
 
+export interface NamePersonResponse {
+  person_id: string;
+  name: string;
+  merged_into: string | null; // 같은 이름 인물로 병합됐으면 그 id
+}
+
 /** GPS 지오코딩 기반 장소 그룹. */
 export interface PlaceInfo {
   id: string;

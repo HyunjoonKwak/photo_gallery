@@ -274,7 +274,23 @@ class MockPhotoSource:
         self._folder_renames: dict[str, str] = {}
         # 충돌 rename 시뮬레이션: 이동된 아이템 id → 바뀐 파일명 (name_1.ext)
         self._filename_override: dict[str, str] = {}
+        # 인물 이름 지정/병합 시뮬레이션.
+        self._person_names: dict[str, str] = {}  # pid → 지정한 이름
+        self._person_merged: dict[str, str] = {}  # source pid → target pid
         self._seed_folder_contents()
+
+    def _person_specs_for(self, pid: str) -> list[tuple[int, int]]:
+        """pid 본인 + 이 pid로 병합된 소스들의 (mod, rem) 파티션."""
+        specs: list[tuple[int, int]] = []
+        own = next((p for p in _PERSONS if p[0] == pid), None)
+        if own:
+            specs.append((own[2], own[3]))
+        for src, tgt in self._person_merged.items():
+            if tgt == pid:
+                s = next((p for p in _PERSONS if p[0] == src), None)
+                if s:
+                    specs.append((s[2], s[3]))
+        return specs
 
     def _seed_folder_contents(self) -> None:
         """리프 폴더에 생성 아이템 몇 장씩 배정 — 폴더 뷰어를 MOCK_MODE에서
@@ -495,18 +511,29 @@ class MockPhotoSource:
         _, _, idx = _parse_id(item_id)
         return idx % mod == rem
 
-    async def persons(self, space: str) -> list[PersonInfo]:
+    def _person_members(self, space: str, pid: str) -> list[PhotoItem]:
+        """pid(본인 + 병합된 소스)의 멤버 사진 (id 중복 제거)."""
         pool = self._classify_pool(space)
+        byid: dict[str, PhotoItem] = {}
+        for mod, rem in self._person_specs_for(pid):
+            for it in pool:
+                if self._in_group(it.id, mod, rem):
+                    byid[it.id] = it
+        return list(byid.values())
+
+    async def persons(self, space: str) -> list[PersonInfo]:
         out: list[PersonInfo] = []
-        for pid, name, mod, rem in _PERSONS:
-            members = [it for it in pool if self._in_group(it.id, mod, rem)]
+        for pid, name, _mod, _rem in _PERSONS:
+            if pid in self._person_merged:  # 다른 인물로 병합돼 사라짐
+                continue
+            members = self._person_members(space, pid)
             if not members:
                 continue
             out.append(
                 PersonInfo(
                     id=pid,
                     space=space,
-                    name=name,
+                    name=self._person_names.get(pid, name),
                     item_count=len(members),
                     cover_item_id=members[0].id,
                     cover_cache_key="mock",
@@ -516,15 +543,37 @@ class MockPhotoSource:
         return out
 
     async def person_items(self, space: str, person_id: str) -> list[PhotoItem]:
-        spec = next((p for p in _PERSONS if p[0] == person_id), None)
-        if spec is None:
+        if next((p for p in _PERSONS if p[0] == person_id), None) is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="인물을 찾을 수 없습니다."
             )
-        _, _, mod, rem = spec
-        return [
-            it for it in self._classify_pool(space) if self._in_group(it.id, mod, rem)
-        ]
+        return self._person_members(space, person_id)
+
+    async def name_person(self, space: str, person_id: str, name: str) -> dict:
+        if next((p for p in _PERSONS if p[0] == person_id), None) is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="인물을 찾을 수 없습니다."
+            )
+        name = name.strip()
+        if not name:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="이름이 비어 있습니다."
+            )
+        # 같은 이름의 기존(병합 안 된) 인물이 있으면 그리로 병합.
+        target = next(
+            (
+                p
+                for p in await self.persons(space)
+                if p.name.strip() == name and p.id != person_id
+            ),
+            None,
+        )
+        if target is not None:
+            self._person_merged[person_id] = target.id
+            self._person_names.pop(person_id, None)
+            return {"name": name, "merged_into": target.id}
+        self._person_names[person_id] = name
+        return {"name": name, "merged_into": None}
 
     async def places(self, space: str) -> list[PlaceInfo]:
         pool = self._classify_pool(space)

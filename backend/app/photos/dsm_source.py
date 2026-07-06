@@ -662,6 +662,59 @@ class DsmPhotoSource:
     async def person_items(self, space: str, person_id: str) -> list[PhotoItem]:
         return await self._filtered_items(space, {"person_id": int(person_id)})
 
+    async def name_person(self, space: str, person_id: str, name: str) -> dict:
+        """인물 이름 지정 + 같은 이름 자동 병합.
+
+        set_name(이름 지정)은 실 NAS에서 확실하나, 병합 API 메서드/파라미터는
+        **미검증**이라 best-effort로 처리한다: 이름을 먼저 지정하고, 같은 이름의
+        기존 인물이 있으면 병합을 시도하되 실패해도(메서드 상이/자동병합 등)
+        이름은 이미 적용됐으므로 계속 진행한다. 관련: name_person(mock)."""
+        name = name.strip()
+        if not name:
+            raise DsmError(100, "이름이 비어 있습니다.")
+
+        persons = await self.persons(space)
+        target = next(
+            (
+                p
+                for p in persons
+                if p.name.strip() == name and str(p.id) != str(person_id)
+            ),
+            None,
+        )
+
+        # 1) 이름 지정 (확실한 API).
+        await self._dsm.call(
+            _ns(space, "SYNO.Foto.Browse.Person"),
+            "set_name",
+            version=1,
+            sid=self._sid,
+            extra={"id": int(person_id), "name": name},
+        )
+
+        merged_into: str | None = None
+        if target is not None:
+            # 2) 같은 이름 인물로 병합 (best-effort — 메서드/파라미터 실 NAS
+            # 검증 필요). set_name이 이미 자동 병합했다면 여기서 실패할 수 있어
+            # 삼켜도 사용자엔 병합으로 표기(이름은 같아졌으므로).
+            merged_into = str(target.id)
+            try:
+                await self._dsm.call(
+                    _ns(space, "SYNO.Foto.Browse.Person"),
+                    "merge",
+                    version=1,
+                    sid=self._sid,
+                    extra={
+                        "source_id": int(person_id),
+                        "target_id": int(target.id),
+                    },
+                )
+            except DsmError as exc:
+                logger.warning(
+                    "person merge best-effort 실패(이름은 지정됨): %s", exc
+                )
+        return {"name": name, "merged_into": merged_into}
+
     async def places(self, space: str) -> list[PlaceInfo]:
         out: list[PlaceInfo] = []
         offset = 0

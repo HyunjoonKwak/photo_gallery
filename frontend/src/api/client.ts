@@ -18,6 +18,7 @@ import type {
   MoveRequest,
   OperationResponse,
   OperationsResponse,
+  NamePersonResponse,
   PersonsResponse,
   PlacesResponse,
   ProgressResponse,
@@ -142,6 +143,11 @@ export const api = {
     ),
   persons: (space: Space) =>
     request<PersonsResponse>(`/api/photos/persons?space=${space}${scopeQS()}`),
+  namePerson: (personId: string, name: string) =>
+    request<NamePersonResponse>(`/api/photos/persons/name`, {
+      method: "POST",
+      body: JSON.stringify({ person_id: personId, name }),
+    }),
   personItems: (space: Space, id: string) =>
     request<BucketItemsResponse>(
       `/api/photos/person-items?space=${space}&id=${encodeURIComponent(id)}${scopeQS()}`,

@@ -43,6 +43,8 @@ from ..schemas import (
     MoveFoldersRequest,
     MoveRequest,
     OperationResponse,
+    NamePersonRequest,
+    NamePersonResponse,
     PersonsResponse,
     PlacesResponse,
     RemoveFolderRequest,
@@ -192,6 +194,22 @@ async def list_persons(
     source: PhotoSource = Depends(get_photo_source),
 ) -> PersonsResponse:
     return PersonsResponse(space=space, persons=await source.persons(space))
+
+
+@router.post("/persons/name", response_model=NamePersonResponse)
+async def name_person(
+    req: NamePersonRequest,
+    _session: Session = Depends(get_current_session),
+    source: PhotoSource = Depends(get_photo_source),
+) -> NamePersonResponse:
+    """인물에 이름 지정(같은 이름 있으면 자동 병합). 얼굴 인식은 개인 공간
+    전용이라 space는 personal 고정 취급."""
+    result = await source.name_person("personal", req.person_id, req.name)
+    return NamePersonResponse(
+        person_id=req.person_id,
+        name=result["name"],
+        merged_into=result.get("merged_into"),
+    )
 
 
 @router.get("/person-items", response_model=BucketItemsResponse)

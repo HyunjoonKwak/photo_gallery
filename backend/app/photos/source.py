@@ -109,6 +109,11 @@ class PhotoSource(Protocol):
         """All items containing a person."""
         ...
 
+    async def name_person(self, space: str, person_id: str, name: str) -> dict:
+        """인물에 이름 지정. 같은 이름의 인물이 이미 있으면 자동 병합.
+        반환 dict: {"name", "merged_into": 병합 대상 id 또는 None}."""
+        ...
+
     async def places(self, space: str) -> list[PlaceInfo]:
         """Geocoded place groups of one space."""
         ...

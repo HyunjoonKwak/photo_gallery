@@ -1,8 +1,9 @@
-import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, thumbnailUrl } from "../api/client";
 import type { PersonInfo, Space } from "../api/types";
 import { useTimelineStore, type AlbumKind } from "../store/timeline";
+import { useToastStore } from "../store/toast";
 import { UniformPhotoGrid } from "./timeline/UniformPhotoGrid";
 import { DateGroupedGrid } from "./timeline/DateGroupedGrid";
 import { PlacesRegionView } from "./PlacesRegionView";
@@ -109,6 +110,7 @@ function PeopleGrid({
           <PersonCard
             key={p.id}
             person={p}
+            space={space}
             onOpen={() => onOpen(p.id, p.name || "이름 없는 인물")}
           />
         ))}
@@ -119,48 +121,123 @@ function PeopleGrid({
 
 function PersonCard({
   person,
+  space,
   onOpen,
 }: {
   person: PersonInfo;
+  space: Space;
   onOpen: () => void;
 }) {
   const label = person.name || "이름 없는 인물";
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(person.name);
+  const qc = useQueryClient();
+  const pushToast = useToastStore((s) => s.push);
+
+  const mutation = useMutation({
+    mutationFn: (name: string) => api.namePerson(person.id, name),
+    onSuccess: (res) => {
+      setEditing(false);
+      qc.invalidateQueries({ queryKey: ["persons", space] });
+      qc.invalidateQueries({ queryKey: ["album-items", space] });
+      pushToast(
+        res.merged_into
+          ? `"${res.name}"(으)로 병합했습니다.`
+          : `이름을 "${res.name}"(으)로 지정했습니다.`,
+      );
+    },
+    onError: () =>
+      pushToast("이름 지정에 실패했습니다. 잠시 후 다시 시도해 주세요."),
+  });
+
+  const submit = () => {
+    const n = value.trim();
+    if (n && n !== person.name) mutation.mutate(n);
+    else setEditing(false);
+  };
+
   return (
-    <button
-      onClick={onOpen}
-      title={label}
-      className="flex w-24 flex-col items-center gap-1.5 rounded-xl p-2 hover:bg-slate-100"
-    >
-      {person.cover_item_id ? (
-        <img
-          src={thumbnailUrl(
-            person.space,
-            person.cover_item_id,
-            person.cover_cache_key ?? "",
-            "sm",
-          )}
-          alt={label}
-          className="h-16 w-16 rounded-full bg-slate-200 object-cover"
-          loading="lazy"
-        />
+    <div className="flex w-24 flex-col items-center gap-1.5 rounded-xl p-2 hover:bg-slate-100">
+      <button onClick={onOpen} title={label} className="outline-none">
+        {person.cover_item_id ? (
+          <img
+            src={thumbnailUrl(
+              person.space,
+              person.cover_item_id,
+              person.cover_cache_key ?? "",
+              "sm",
+            )}
+            alt={label}
+            className="h-16 w-16 rounded-full bg-slate-200 object-cover"
+            loading="lazy"
+          />
+        ) : (
+          <span className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-200 text-2xl">
+            👤
+          </span>
+        )}
+      </button>
+
+      {editing ? (
+        <div className="flex w-full flex-col items-stretch gap-1">
+          <input
+            autoFocus
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") submit();
+              if (e.key === "Escape") {
+                setEditing(false);
+                setValue(person.name);
+              }
+            }}
+            placeholder="이름 입력"
+            className="w-full rounded border border-slate-300 px-1 py-0.5 text-center text-xs outline-none focus:border-blue-400"
+          />
+          <div className="flex gap-1">
+            <button
+              onClick={submit}
+              disabled={mutation.isPending}
+              className="flex-1 rounded bg-blue-500 py-0.5 text-[10px] font-medium text-white disabled:opacity-50"
+            >
+              {mutation.isPending ? "…" : "확인"}
+            </button>
+            <button
+              onClick={() => {
+                setEditing(false);
+                setValue(person.name);
+              }}
+              className="flex-1 rounded bg-slate-200 py-0.5 text-[10px] text-slate-600"
+            >
+              취소
+            </button>
+          </div>
+        </div>
       ) : (
-        <span className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-200 text-2xl">
-          👤
-        </span>
+        <button
+          onClick={() => {
+            setValue(person.name);
+            setEditing(true);
+          }}
+          title="이름 지정/변경"
+          className="flex w-full items-center justify-center gap-0.5 outline-none"
+        >
+          <span
+            className={`truncate text-xs ${
+              person.name ? "text-slate-700" : "italic text-slate-400"
+            }`}
+          >
+            {label}
+          </span>
+          <span className="shrink-0 text-[10px] text-slate-400">✏️</span>
+        </button>
       )}
-      <span
-        className={`w-full truncate text-center text-xs ${
-          person.name ? "text-slate-700" : "italic text-slate-400"
-        }`}
-      >
-        {label}
-      </span>
-      {person.item_count != null && (
+      {!editing && person.item_count != null && (
         <span className="-mt-1 text-[10px] text-slate-400">
           {person.item_count.toLocaleString()}장
         </span>
       )}
-    </button>
+    </div>
   );
 }
 
