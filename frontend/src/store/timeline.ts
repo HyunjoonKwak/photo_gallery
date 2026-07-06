@@ -22,8 +22,28 @@ function rangeIds(orderedIds: string[], a: string, b: string): string[] {
   return orderedIds.slice(lo, hi + 1);
 }
 
-export type ViewMode = "timeline" | "folders" | "dedup" | "classify" | "search";
+/** 상위 3영역: 사진 뷰어(감상) / 앨범(사람·장소·비디오) / 폴더 분류(정리). */
+export type Section = "viewer" | "albums" | "manage";
+/** 사진 뷰어 줌 레벨. */
+export type ViewerZoom = "year" | "month" | "day" | "folder";
+/** 앨범 종류. */
+export type AlbumKind = "people" | "places" | "videos";
+/** 폴더 분류 서브탭. */
+export type ManageTab = "folders" | "dedup" | "search";
 export type FolderDisplay = "grid" | "list";
+
+/** 화면/라이브러리 전환 시 감상·선택 상태 초기화 묶음(매번 새 컬렉션). */
+function resetView() {
+  return {
+    selected: EMPTY_SET,
+    anchorId: null,
+    previewIds: EMPTY_SET,
+    hoverId: null,
+    orderedIds: [] as string[],
+    itemsById: new Map<string, PhotoItem>(),
+    lightboxId: null,
+  };
+}
 
 const FOLDER_DISPLAY_KEY = "nasphoto.folderDisplay";
 
@@ -38,8 +58,31 @@ function initialFolderDisplay(): FolderDisplay {
 interface TimelineState {
   space: Space;
   setSpace: (space: Space) => void;
-  viewMode: ViewMode;
-  setViewMode: (mode: ViewMode) => void;
+  // --- 상위 영역 + 영역별 서브상태 ---
+  section: Section;
+  setSection: (s: Section) => void;
+  /** 사진 뷰어 줌 + 드릴/스크롤 컨텍스트. */
+  zoom: ViewerZoom;
+  focusYear: string | null; // "2024"
+  focusMonth: string | null; // "2024-03"
+  focusDay: string | null; // "2024-03-15"
+  setZoom: (z: ViewerZoom) => void;
+  drillTo: (ctx: {
+    zoom: ViewerZoom;
+    year?: string;
+    month?: string;
+    day?: string;
+  }) => void;
+  /** 앨범: 종류 + 열린 그룹(인물/장소). */
+  albumKind: AlbumKind;
+  groupId: string | null;
+  groupLabel: string | null;
+  setAlbumKind: (k: AlbumKind) => void;
+  openGroup: (id: string, label: string) => void;
+  closeGroup: () => void;
+  /** 폴더 분류 서브탭. */
+  manageTab: ManageTab;
+  setManageTab: (t: ManageTab) => void;
   /** Cross-view navigation: open the folder view at this breadcrumb path
    * (set by e.g. the timeline's folder panel; consumed by FolderView). */
   pendingFolderPath: PhotoFolder[] | null;
@@ -100,38 +143,62 @@ function computePreview(
 
 export const useTimelineStore = create<TimelineState>()((set, get) => ({
   space: "team",
-  setSpace: (space) =>
-    set({
-      space,
-      selected: EMPTY_SET,
-      anchorId: null,
-      previewIds: EMPTY_SET,
-      hoverId: null,
-      orderedIds: [],
-      itemsById: new Map(),
-      lightboxId: null,
-    }),
-  viewMode: "timeline",
-  setViewMode: (viewMode) =>
-    set({ viewMode, selected: EMPTY_SET, anchorId: null, lightboxId: null }),
+  setSpace: (space) => set({ space, ...resetView() }),
+
+  section: "viewer",
+  // 타인/1차 구역은 폴더 분류에서만 표현 가능 → 다른 영역으로 갈 땐 자기
+  // 라이브러리로 스냅백(공용/개인)하고 감상 상태를 초기화한다.
+  setSection: (section) =>
+    set((s) => ({
+      section,
+      ...(section !== "manage" && (s.viewedOwner || s.activeZone)
+        ? { viewedOwner: null, activeZone: null }
+        : {}),
+      ...resetView(),
+    })),
+
+  zoom: "year",
+  focusYear: null,
+  focusMonth: null,
+  focusDay: null,
+  setZoom: (zoom) => set({ zoom, ...resetView() }),
+  drillTo: (ctx) =>
+    set((s) => ({
+      zoom: ctx.zoom,
+      focusYear: ctx.year ?? s.focusYear,
+      focusMonth: ctx.month ?? s.focusMonth,
+      focusDay: ctx.day ?? s.focusDay,
+      ...resetView(),
+    })),
+
+  albumKind: "people",
+  groupId: null,
+  groupLabel: null,
+  setAlbumKind: (albumKind) =>
+    set({ albumKind, groupId: null, groupLabel: null, ...resetView() }),
+  openGroup: (groupId, groupLabel) =>
+    set({ groupId, groupLabel, ...resetView() }),
+  closeGroup: () => set({ groupId: null, groupLabel: null, ...resetView() }),
+
+  manageTab: "folders",
+  setManageTab: (manageTab) => set({ manageTab, ...resetView() }),
+
   pendingFolderPath: null,
   openFolderView: (path) =>
     set({
-      viewMode: "folders",
+      section: "manage",
+      manageTab: "folders",
       pendingFolderPath: path,
-      selected: EMPTY_SET,
-      anchorId: null,
-      lightboxId: null,
+      ...resetView(),
     }),
   consumePendingFolderPath: () => set({ pendingFolderPath: null }),
   searchQuery: "",
   runSearch: (query) =>
     set({
       searchQuery: query,
-      viewMode: "search",
-      selected: EMPTY_SET,
-      anchorId: null,
-      lightboxId: null,
+      section: "manage",
+      manageTab: "search",
+      ...resetView(),
     }),
   folderDisplay: initialFolderDisplay(),
   setFolderDisplay: (folderDisplay) => {
@@ -144,16 +211,15 @@ export const useTimelineStore = create<TimelineState>()((set, get) => ({
   },
   viewedOwner: null,
   // Switching whose photos we organize: another member's personal space is
-  // folder-view only (Photos' timeline/AI index is per-session), so jump
-  // there and reset selection state.
+  // folder-view only (Photos' timeline/AI index is per-session), so jump to
+  // 폴더 분류/folders and reset selection state.
   setViewedOwner: (viewedOwner) =>
     set({
       viewedOwner,
       activeZone: null,
-      viewMode: "folders",
-      selected: EMPTY_SET,
-      anchorId: null,
-      lightboxId: null,
+      section: "manage",
+      manageTab: "folders",
+      ...resetView(),
     }),
   activeZone: null,
   selectLibrary: ({ space, owner, zone }) =>
@@ -161,15 +227,11 @@ export const useTimelineStore = create<TimelineState>()((set, get) => ({
       space,
       viewedOwner: owner,
       activeZone: zone ?? null,
-      // 타인·1차 구역은 폴더 보기 전용 → 자동 전환; 그 외엔 현재 뷰 유지
-      ...(owner || zone ? { viewMode: "folders" as ViewMode } : {}),
-      selected: EMPTY_SET,
-      anchorId: null,
-      previewIds: EMPTY_SET,
-      hoverId: null,
-      orderedIds: [],
-      itemsById: new Map(),
-      lightboxId: null,
+      // 타인·1차 구역은 폴더 분류 전용 → 그리로 강제; 그 외엔 현재 영역 유지
+      ...(owner || zone
+        ? { section: "manage" as Section, manageTab: "folders" as ManageTab }
+        : {}),
+      ...resetView(),
     }),
 
   selected: EMPTY_SET,

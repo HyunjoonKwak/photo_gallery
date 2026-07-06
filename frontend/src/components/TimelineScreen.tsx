@@ -14,10 +14,8 @@ import {
 import { useTimelineStore } from "../store/timeline";
 import { useFileOps } from "../hooks/useFileOps";
 import { ClassifyView } from "./ClassifyView";
-import { DedupView } from "./DedupView";
 import { FolderPanel } from "./FolderPanel";
-import { FolderView } from "./FolderView";
-import { SearchView } from "./SearchView";
+import { ManageScreen } from "./ManageScreen";
 import { Lightbox } from "./Lightbox";
 import { TimelineView } from "./timeline/TimelineView";
 import { DragOverlayContent } from "./timeline/DragOverlayContent";
@@ -34,7 +32,7 @@ import { SelectionActionBar } from "./timeline/SelectionActionBar";
  */
 export function TimelineScreen() {
   const space = useTimelineStore((s) => s.space);
-  const viewMode = useTimelineStore((s) => s.viewMode);
+  const section = useTimelineStore((s) => s.section);
   const ops = useFileOps();
 
   // Mouse: 8px 이동이면 드래그 (클릭과 구분). Touch: 300ms 길게 누른 뒤
@@ -122,7 +120,9 @@ export function TimelineScreen() {
           setOverFolder(false);
         }}
       >
-        {viewMode === "timeline" && (
+        {/* Phase 1: viewer=기존 타임라인, albums=기존 분류를 임시 노출(무회귀).
+         * Phase 2/3에서 순수 뷰어(ViewerScreen)·AlbumsScreen으로 대체. */}
+        {section === "viewer" && (
           <div className="flex h-full">
             <FolderPanel />
             <main className="relative min-w-0 flex-1">
@@ -131,27 +131,15 @@ export function TimelineScreen() {
             </main>
           </div>
         )}
-        {viewMode === "folders" && <FolderView />}
-        {viewMode === "dedup" && <DedupView key={space} />}
-        {viewMode === "search" && (
+        {section === "albums" && (
           <div className="flex h-full">
-            {/* Folder panel doubles as drop target for organizing results. */}
-            <FolderPanel />
-            <main className="relative min-w-0 flex-1">
-              <SearchView key={space} />
-            </main>
-          </div>
-        )}
-        {viewMode === "classify" && (
-          <div className="flex h-full">
-            {/* Same folder panel as the timeline: drop target + quick jump,
-             * so classified groups can be dragged straight into folders. */}
             <FolderPanel />
             <main className="relative min-w-0 flex-1">
               <ClassifyView key={space} />
             </main>
           </div>
         )}
+        {section === "manage" && <ManageScreen />}
         <DragOverlay dropAnimation={null}>
           {dragIds && (
             <DragOverlayContent

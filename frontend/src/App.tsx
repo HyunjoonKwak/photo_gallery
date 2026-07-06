@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./api/client";
 import type { Space } from "./api/types";
 import { useAuthStore } from "./store/auth";
-import { useTimelineStore, type ViewMode } from "./store/timeline";
+import { useTimelineStore, type Section } from "./store/timeline";
 import { LoginForm } from "./components/LoginForm";
 import { ApiInfoPanel } from "./components/ApiInfoPanel";
 import { TimelineScreen } from "./components/TimelineScreen";
@@ -14,44 +14,34 @@ import { Toasts } from "./components/Toasts";
 import { ConflictDialogHost } from "./components/ConflictDialog";
 import { ZoneManager } from "./components/ZoneManager";
 
-// 보기(무엇을 볼지) — 주 메뉴. 아이콘으로 성격을 구분.
-const VIEWS: { mode: ViewMode; label: string; icon: string }[] = [
-  { mode: "timeline", label: "타임라인", icon: "📅" },
-  { mode: "folders", label: "폴더", icon: "📁" },
-  { mode: "classify", label: "분류", icon: "✨" },
-  { mode: "dedup", label: "중복 정리", icon: "🔁" },
+// 상위 3영역 — 주 메뉴. 감상(사진/앨범)과 정리(폴더 분류)를 가른다.
+export const SECTIONS: { section: Section; label: string; icon: string }[] = [
+  { section: "viewer", label: "사진", icon: "🖼" },
+  { section: "albums", label: "앨범", icon: "📔" },
+  { section: "manage", label: "폴더 분류", icon: "🗂" },
 ];
 
-/** 주 메뉴: 보기 방식(타임라인/폴더/중복 정리) 전환.
- * 모바일은 하단 탭 바(BottomTabBar)가 대신하므로 md 이상에서만 표시. */
-function ViewToggle() {
-  const viewMode = useTimelineStore((s) => s.viewMode);
-  const setViewMode = useTimelineStore((s) => s.setViewMode);
-  // 1차 구역은 FileStation 폴더 탐색만(촬영일 인덱스 없음) — 폴더 외 뷰 잠금.
-  const activeZone = useTimelineStore((s) => s.activeZone);
+/** 주 메뉴: 3영역 전환. 모바일은 하단 탭 바가 대신하므로 md 이상에서만 표시. */
+function SectionToggle() {
+  const section = useTimelineStore((s) => s.section);
+  const setSection = useTimelineStore((s) => s.setSection);
   return (
     <nav className="hidden shrink-0 gap-0.5 sm:gap-1 md:flex">
-      {VIEWS.map((v) => {
-        const locked = !!activeZone && v.mode !== "folders";
-        return (
-          <button
-            key={v.mode}
-            disabled={locked}
-            onClick={() => setViewMode(v.mode)}
-            title={locked ? "1차 구역은 폴더 보기만 지원합니다" : v.label}
-            className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-2 py-1.5 text-sm font-medium transition-colors sm:px-3 ${
-              locked
-                ? "cursor-not-allowed text-slate-300"
-                : viewMode === v.mode
-                  ? "bg-slate-800 text-white"
-                  : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-            }`}
-          >
-            <span className="text-base leading-none">{v.icon}</span>
-            <span className="hidden md:inline">{v.label}</span>
-          </button>
-        );
-      })}
+      {SECTIONS.map((v) => (
+        <button
+          key={v.section}
+          onClick={() => setSection(v.section)}
+          title={v.label}
+          className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-2 py-1.5 text-sm font-medium transition-colors sm:px-3 ${
+            section === v.section
+              ? "bg-slate-800 text-white"
+              : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+          }`}
+        >
+          <span className="text-base leading-none">{v.icon}</span>
+          <span className="hidden md:inline">{v.label}</span>
+        </button>
+      ))}
     </nav>
   );
 }
@@ -94,6 +84,8 @@ function LibrarySelector({ account, isAdmin }: { account: string; isAdmin: boole
   const space = useTimelineStore((s) => s.space);
   const viewedOwner = useTimelineStore((s) => s.viewedOwner);
   const activeZone = useTimelineStore((s) => s.activeZone);
+  // 타인/1차 구역은 폴더 분류(정리)에서만 — 감상 영역엔 공용/내사진만.
+  const section = useTimelineStore((s) => s.section);
   const selectLibrary = useTimelineStore((s) => s.selectLibrary);
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -166,7 +158,8 @@ function LibrarySelector({ account, isAdmin }: { account: string; isAdmin: boole
             >
               👤 내 사진
             </button>
-            {isAdmin && members.length > 0 && (
+            {/* 타인/1차 구역/구역 관리는 폴더 분류에서만 (정리 전용 축) */}
+            {section === "manage" && isAdmin && members.length > 0 && (
               <>
                 <p className="px-3 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
                   관리자 · 구성원 사진
@@ -187,34 +180,37 @@ function LibrarySelector({ account, isAdmin }: { account: string; isAdmin: boole
                 ))}
               </>
             )}
-            {/* 1차 구역 (기기 백업) */}
-            <p className="px-3 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-              1차 구역 · 기기 백업
-            </p>
-            {zones.map((z) => (
-              <button
-                key={z.id}
-                onClick={() =>
-                  pick({
-                    space: "personal",
-                    owner: null,
-                    zone: { id: z.id, label: z.label },
-                  })
-                }
-                className={itemCls(activeZone?.id === z.id)}
-              >
-                📦 {z.label}
-              </button>
-            ))}
-            <button
-              onClick={() => {
-                setOpen(false);
-                setManageOpen(true);
-              }}
-              className="mt-0.5 flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-xs text-indigo-600 hover:bg-indigo-50"
-            >
-              ⚙️ 구역 관리…
-            </button>
+            {section === "manage" && (
+              <>
+                <p className="px-3 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                  1차 구역 · 기기 백업
+                </p>
+                {zones.map((z) => (
+                  <button
+                    key={z.id}
+                    onClick={() =>
+                      pick({
+                        space: "personal",
+                        owner: null,
+                        zone: { id: z.id, label: z.label },
+                      })
+                    }
+                    className={itemCls(activeZone?.id === z.id)}
+                  >
+                    📦 {z.label}
+                  </button>
+                ))}
+                <button
+                  onClick={() => {
+                    setOpen(false);
+                    setManageOpen(true);
+                  }}
+                  className="mt-0.5 flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-xs text-indigo-600 hover:bg-indigo-50"
+                >
+                  ⚙️ 구역 관리…
+                </button>
+              </>
+            )}
           </div>
         </>
       )}
@@ -330,7 +326,7 @@ export default function App() {
           <div className="hidden h-6 w-px bg-slate-200 lg:block" aria-hidden />
           <LibrarySelector account={user.account} isAdmin={user.role === "admin"} />
           <div className="hidden h-6 w-px bg-slate-200 sm:block" aria-hidden />
-          <ViewToggle />
+          <SectionToggle />
           <SearchBox />
           {user.mock_mode && (
             <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">

@@ -15,7 +15,7 @@ export function SearchView() {
   const query = useTimelineStore((s) => s.searchQuery);
   const setOrdered = useTimelineStore((s) => s.setOrdered);
   const replaceSelection = useTimelineStore((s) => s.replaceSelection);
-  const setViewMode = useTimelineStore((s) => s.setViewMode);
+  const setManageTab = useTimelineStore((s) => s.setManageTab);
 
   const resultQuery = useQuery({
     queryKey: ["search", space, query],
@@ -69,7 +69,7 @@ export function SearchView() {
           파일명·폴더명·태그 기준 · 선택 후 액션바/드래그로 정리
         </span>
         <button
-          onClick={() => setViewMode("timeline")}
+          onClick={() => setManageTab("folders")}
           className="ml-auto rounded-lg px-2 py-1 text-xs text-slate-500 hover:bg-slate-100"
         >
           ✕ 닫기
