@@ -4,6 +4,7 @@ import { api, thumbnailUrl } from "../api/client";
 import type { PersonInfo, Space } from "../api/types";
 import { useTimelineStore, type AlbumKind } from "../store/timeline";
 import { UniformPhotoGrid } from "./timeline/UniformPhotoGrid";
+import { DateGroupedGrid } from "./timeline/DateGroupedGrid";
 import { PlacesRegionView } from "./PlacesRegionView";
 
 /** 앨범(감상) — 사람/장소/비디오. Synology Photos 내장 AI 그룹(얼굴·GPS)과
@@ -201,5 +202,6 @@ function VideosGrid({ space }: { space: Space }) {
     return <p className="p-6 text-sm text-slate-400">불러오는 중…</p>;
   if (items.length === 0)
     return <p className="p-6 text-sm text-slate-400">비디오가 없습니다.</p>;
-  return <UniformPhotoGrid items={items} space={space} />;
+  // 일자별 헤더 + 우측 날짜 스크러버(사진 뷰어 일 뷰와 동일 감상 형태).
+  return <DateGroupedGrid items={items} space={space} />;
 }
