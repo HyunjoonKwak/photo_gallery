@@ -15,7 +15,7 @@ import { Thumb } from "./Thumb";
 
 const HEADER_H = 40;
 const GAP = 4;
-const MIN_TILE = 116;
+const DEFAULT_MIN_TILE = 116;
 
 type Row =
   | { kind: "header"; key: string; groupKey: string; label: string }
@@ -39,6 +39,7 @@ export function GroupedPhotoGrid({
   groupKeyOf,
   labelOf,
   maxRows,
+  minTile = DEFAULT_MIN_TILE,
   onPhotoClick,
   scrollToGroup,
 }: {
@@ -47,6 +48,7 @@ export function GroupedPhotoGrid({
   groupKeyOf: (day: string) => string;
   labelOf: (groupKey: string) => string;
   maxRows: number; // Infinity = 그룹 전부
+  minTile?: number; // 타일 최소 폭(px) — 열 수/타일 크기 결정
   onPhotoClick: (item: PhotoItem) => void;
   scrollToGroup?: string | null;
 }) {
@@ -66,8 +68,8 @@ export function GroupedPhotoGrid({
     ro.observe(el);
     return () => ro.disconnect();
   }, [scrollEl]);
-  const cols = Math.max(1, Math.floor((width + GAP) / (MIN_TILE + GAP)));
-  const tile = cols > 0 ? (width - GAP * (cols - 1)) / cols : MIN_TILE;
+  const cols = Math.max(1, Math.floor((width + GAP) / (minTile + GAP)));
+  const tile = cols > 0 ? (width - GAP * (cols - 1)) / cols : minTile;
 
   // buckets → 그룹 (최신순 유지).
   const groups = useMemo<Group[]>(() => {

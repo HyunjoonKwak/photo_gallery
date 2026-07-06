@@ -8,9 +8,9 @@ import { GroupedPhotoGrid } from "./timeline/GroupedPhotoGrid";
 import { FolderViewerGrid } from "./FolderViewerGrid";
 
 /** 사진 뷰어 (감상 전용) — Synology Photos 스타일 연/월/일/폴더 줌.
- * 연·월은 그룹(연도/월)별 5줄 미리보기 썸네일, 일은 그날 전부. 연 뷰 사진 탭→
- * 그 사진의 월로(전체 월 연속에서 스크롤), 월·일 뷰 사진 탭→라이트박스.
- * 순수 뷰어(선택/이동/삭제 없음). */
+ * 연=연도별 작은 타일 10줄 미리보기(+"n장 더"), 월·일=해당 월/일 사진 전부.
+ * 연 뷰 사진 탭→그 사진의 월로(전체 월 연속에서 스크롤), 월·일 뷰 사진 탭→
+ * 라이트박스. 순수 뷰어(선택/이동/삭제 없음). */
 
 // 그룹 키/라벨 (모듈 상수 — GroupedPhotoGrid deps 안정).
 const yearKey = (d: string) => d.slice(0, 4);
@@ -58,7 +58,8 @@ export function ViewerScreen() {
             buckets={buckets}
             groupKeyOf={yearKey}
             labelOf={yearLbl}
-            maxRows={5}
+            maxRows={10}
+            minTile={58}
             onPhotoClick={toMonth}
           />
         ) : zoom === "month" ? (
@@ -68,7 +69,7 @@ export function ViewerScreen() {
             buckets={buckets}
             groupKeyOf={monthKey}
             labelOf={monthLabel}
-            maxRows={5}
+            maxRows={Infinity}
             onPhotoClick={toLightbox}
             scrollToGroup={focusMonth}
           />
