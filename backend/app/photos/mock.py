@@ -16,6 +16,7 @@ across accounts — a mock artifact; real per-user data arrives with DSM.
 from __future__ import annotations
 
 import asyncio
+import posixpath
 import re
 from datetime import date, timedelta
 from random import Random
@@ -950,3 +951,147 @@ class MockPhotoSource:
 
 
 mock_source = MockPhotoSource()
+
+
+# --------------------------------------------------- 1차 구역(zone) mock
+# 홈(base=/homes/<account>) 기준 상대경로 트리 — browse(등록 UI)와 zone 소스가
+# 공유하는 결정적 가짜 구조. leaf 폴더에만 사진이 있다(1차 = 기기 백업 더미).
+_ZONE_DIRS: dict[str, list[str]] = {
+    "": ["MobileBackup", "Drive"],
+    "MobileBackup": ["2024-01", "2024-02", "2024-03"],
+    "Drive": ["스캔"],
+}
+_ZONE_LEAVES = frozenset(
+    {"MobileBackup/2024-01", "MobileBackup/2024-02", "MobileBackup/2024-03", "Drive/스캔"}
+)
+
+
+def _zone_rel(path: str) -> str:
+    """/homes/<account>/A/B -> 'A/B' (홈 base 아래 상대경로)."""
+    parts = path.strip("/").split("/")  # [homes, account, A, B]
+    return "/".join(parts[2:]) if len(parts) > 2 else ""
+
+
+def mock_zone_subdirs(path: str) -> list[tuple[str, str]]:
+    """(이름, 절대경로) 하위 폴더 — browse + zone folders 공용."""
+    rel = _zone_rel(path)
+    base = path.rstrip("/")
+    return [(name, f"{base}/{name}") for name in _ZONE_DIRS.get(rel, [])]
+
+
+def _zone_leaf_files(path: str) -> list[str]:
+    """leaf 폴더의 가짜 사진 절대경로 목록(결정적)."""
+    rel = _zone_rel(path)
+    if rel not in _ZONE_LEAVES:
+        return []
+    base = path.rstrip("/")
+    n = 3 + (crc32(rel.encode()) % 4)
+    tag = rel.replace("/", "_")
+    return [f"{base}/IMG_{tag}_{i:03d}.jpg" for i in range(n)]
+
+
+def _zone_item(path: str) -> PhotoItem:
+    r = Random(crc32(path.encode()))
+    return PhotoItem(
+        id=path,
+        filename=posixpath.basename(path),
+        taken_at="2024-01-01T00:00:00",
+        width=400,
+        height=300,
+        size=r.randint(800_000, 6_000_000),
+        cache_key="zone",
+        type="photo",
+        placeholder_color=f"hsl({r.randint(0, 359)} 45% 78%)",
+        folder=posixpath.dirname(path),
+    )
+
+
+class MockZonePhotoSource(MockPhotoSource):
+    """1차 구역 mock: 등록된 root 아래 결정적 폴더 트리를 FileStation처럼 노출하고,
+    2차(개인)로의 이동을 시뮬레이션한다. 완전 왕복(개인 폴더 재등장)까진 안 하고
+    'zone에서 사라짐 + 되돌리기 복원'까지 재현(UI 계약 검증에 충분)."""
+
+    def __init__(self, root_path: str) -> None:
+        super().__init__()
+        self._root = root_path
+        self._zone_moved: set[str] = set()
+
+    async def folders(self, parent_id: str | None = None) -> list[PhotoFolder]:
+        base = parent_id or self._root
+        out: list[PhotoFolder] = []
+        for _name, abs_path in mock_zone_subdirs(base):
+            rel = abs_path.removeprefix(self._root) or "/"
+            out.append(
+                PhotoFolder(
+                    id=abs_path,
+                    name=rel,
+                    space="personal",
+                    parent_id=None if base == self._root else base,
+                    depth=max(0, rel.strip("/").count("/")),
+                )
+            )
+        return out
+
+    async def folder_items(self, folder_id: str) -> list[PhotoItem]:
+        return [
+            _zone_item(p)
+            for p in _zone_leaf_files(folder_id)
+            if p not in self._zone_moved
+        ]
+
+    async def folder_count(self, folder_id: str) -> int:
+        return len(await self.folder_items(folder_id))
+
+    async def thumbnail(
+        self, space: str, item_id: str, cache_key: str, size: str
+    ) -> tuple[bytes, str]:
+        item = _zone_item(item_id) if item_id.startswith("/") else self._resolve_item(item_id)
+        return _svg_thumbnail(item, size), "image/svg+xml"
+
+    async def item_detail(self, space: str, item_id: str) -> ItemDetail:
+        return ItemDetail(id=item_id, folder=posixpath.dirname(item_id), exif={}, address=None)
+
+    async def move(
+        self,
+        space: str,
+        item_ids: list[str],
+        dest_folder_id: str,
+        copy: bool,
+        on_progress=None,
+        conflict_strategy: str = "skip",
+    ) -> MoveOutcome:
+        # zone→2차: 대상(개인 Photos 폴더)에 실제로 심지 않고, 이동한 zone 사진을
+        # 숨겨(사라짐) undo로 되돌린다. moved에 원본 경로를 기록해 undo가 복원.
+        outcome = MoveOutcome(dest_space="personal", dest_name="내 사진(2차)")
+        for iid in item_ids:
+            outcome.moved.append(
+                PlacedItem(
+                    id=iid, space="personal",
+                    folder_id=posixpath.dirname(iid), day="",
+                )
+            )
+            if not copy:
+                self._zone_moved.add(iid)
+        return outcome
+
+    async def place(self, placements, on_progress=None) -> Affected:
+        for p in placements:
+            self._zone_moved.discard(p.id)
+        return []
+
+    async def conflicts(self, space, item_ids, dest_folder_id):
+        return []  # zone→2차는 새 이벤트 폴더라 파일명 충돌을 가정하지 않음
+
+
+_mock_zones: dict[str, MockZonePhotoSource] = {}
+
+
+def get_mock_zone(root_path: str) -> MockZonePhotoSource:
+    """Process-local zone source per root (이동 상태 유지)."""
+    if root_path not in _mock_zones:
+        _mock_zones[root_path] = MockZonePhotoSource(root_path)
+    return _mock_zones[root_path]
+
+
+def reset_mock_zones() -> None:
+    _mock_zones.clear()

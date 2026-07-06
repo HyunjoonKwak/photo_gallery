@@ -8,9 +8,11 @@ from ..config import Settings, get_settings
 from ..dsm.client import DsmClient
 from ..photos.dsm_source import DsmPhotoSource
 from ..photos.homes_source import HomesPhotoSource
-from ..photos.mock import mock_source
+from ..photos.mock import get_mock_zone, mock_source
 from ..photos.source import PhotoSource
+from ..photos.zone_source import ZonePhotoSource
 from ..session_store import Session, get_session
+from ..zone_store import get_zone
 
 
 def get_dsm_client(request: Request) -> DsmClient:
@@ -50,8 +52,27 @@ def get_photo_source(
     # space to /homes/<user>/Photos via FileStation. Rides on the dependency
     # so every photo endpoint accepts it without per-route plumbing.
     target_user: str | None = Query(default=None, max_length=128),
+    # 1차 구역: ?zone=<id> reroutes browsing to a registered FileStation folder
+    # outside Photos (본인 소유). Mutually exclusive with target_user.
+    zone: str | None = Query(default=None, max_length=64),
 ) -> PhotoSource:
     """The photo data source for this request: mock (dev) or real DSM."""
+    if zone and target_user:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="zone과 target_user는 함께 쓸 수 없습니다.",
+        )
+    # Zone first — ownership is the access rule (본인이 등록한 zone만 조회).
+    if zone:
+        z = get_zone(settings.sqlite_path, session.account, zone)
+        if z is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="구역을 찾을 수 없습니다."
+            )
+        if settings.mock_mode:
+            return get_mock_zone(z.root_path)
+        return ZonePhotoSource(dsm, session.sid, z.root_path)
+
     impersonating = bool(target_user) and target_user != session.account
     # Permission first — the rule must not depend on mock vs real mode.
     if impersonating and session.role != "admin":

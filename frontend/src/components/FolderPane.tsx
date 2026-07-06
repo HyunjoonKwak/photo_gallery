@@ -241,7 +241,7 @@ export function FolderPane({
   // spaces there was confusing; the other library stays reachable via the
   // collapsed tree section on the left.
   const librarySpace = useTimelineStore((s) =>
-    s.viewedOwner ? "personal" : s.space,
+    s.viewedOwner || s.activeZone ? "personal" : s.space,
   );
   const subQuery = useQuery({
     queryKey: ["folders", current?.id ?? null],

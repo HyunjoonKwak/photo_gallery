@@ -1,21 +1,22 @@
-"""Admin impersonation source: another member's personal space (spec 4.5).
+"""FileStation-backed photo sources for folders outside the logged-in user's
+Synology Photos index.
 
-Synology Photos' API only exposes the *logged-in* user's personal space, so an
-admin organizing someone else's photos goes through FileStation instead —
-``/homes/<user>/Photos`` browsing (List), thumbnails (Thumb), and the existing
-CopyMove/trash pipeline (admin permissions enforce access; 실 NAS 프로브
-2026-07-03: List·Thumb 동작 확인).
+Two use cases share one mechanism (browsing a raw filesystem tree by absolute
+path instead of the Photos index):
 
-Design: impersonation ONLY changes what "personal space" means. This class
-subclasses ``DsmPhotoSource`` so the team space and the whole move/delete/undo
-machinery are inherited; items/folders of the target's personal space use
-**absolute paths as ids** (Foto ids are numeric — ``/``-prefixed ids mark the
-FileStation world). ``_item_meta``/``_dest_dir`` translate those paths, which
-is all move/delete need.
+- ``HomesPhotoSource`` — admin impersonation (spec 4.5): another member's
+  personal space ``/homes/<user>/Photos``. Photos' API only exposes the
+  logged-in user's own space, so an admin organizing someone else's photos goes
+  through FileStation.
+- ``ZonePhotoSource`` (zone_source.py) — the user's own "1차 구역" (기기 백업)
+  folder that sits OUTSIDE ``/homes/<me>/Photos`` so it stays off the timeline.
 
-Not supported for another user's space (Photos' index is per-session):
-timeline buckets, persons/places, search, EXIF — those return empty and the
-UI says folder view is the way to browse someone else's photos.
+Both subclass ``DsmPhotoSource`` and reuse the whole move/delete/undo machinery;
+the only difference is that items/folders of the FileStation root use **absolute
+paths as ids** (Foto ids are numeric — a ``/``-prefixed id marks the FileStation
+world). The path handling lives in ``_FsRootMixin`` (keyed only on the abstract
+``_root_path``); each subclass supplies that root and any space-specific
+overrides. ``_item_meta``/``_dest_dir`` translate path ids for move/delete.
 """
 
 from __future__ import annotations
@@ -39,27 +40,26 @@ _PHOTO_EXT = (
     ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".heic", ".heif", ".webp",
     ".tif", ".tiff", ".mp4", ".mov", ".m4v", ".avi", ".mkv",
 )
+_VIDEO_EXT = (".mp4", ".mov", ".m4v", ".avi", ".mkv")
 
 
 def _is_path_id(some_id: str) -> bool:
     return some_id.startswith("/")
 
 
-class HomesPhotoSource(DsmPhotoSource):
-    """DsmPhotoSource with the personal space remapped to a member's home."""
+class _FsRootMixin:
+    """FileStation path-id handling rooted at an abstract ``_root_path``.
 
-    def __init__(self, dsm: DsmClient, sid: str, target_user: str) -> None:
-        super().__init__(dsm, sid)
-        self._target = target_user
+    Mixed in BEFORE ``DsmPhotoSource`` in the MRO so ``super()`` in each method
+    falls through to the Foto implementation for non-path (numeric) ids. Every
+    method here only acts when the id is a ``/``-prefixed absolute path.
+    """
 
+    # Subclasses must expose the absolute FileStation root (e.g. a home's Photos
+    # dir, or a 기기 백업 zone folder).
     @property
-    def _home_root(self) -> str:
-        return f"/homes/{self._target}/Photos"
-
-    def _share_prefix(self, space: str) -> str:
-        if space == "personal":
-            return self._home_root
-        return super()._share_prefix(space)
+    def _root_path(self) -> str:  # pragma: no cover - abstract
+        raise NotImplementedError
 
     # ------------------------------------------------------------ browsing
     async def _fs_list(self, path: str, *, files: bool) -> list[dict]:
@@ -80,8 +80,8 @@ class HomesPhotoSource(DsmPhotoSource):
         return data.get("files", [])
 
     def _rel(self, path: str) -> str:
-        """Display name: path relative to the target's Photos root."""
-        return path.removeprefix(self._home_root) or "/"
+        """Display name: path relative to the FileStation root."""
+        return path.removeprefix(self._root_path) or "/"
 
     def _fs_folder(self, f: dict, parent_id: str | None) -> PhotoFolder:
         rel = self._rel(f["path"])
@@ -93,13 +93,11 @@ class HomesPhotoSource(DsmPhotoSource):
             depth=max(0, rel.strip("/").count("/")),
         )
 
-    _VIDEO_EXT = (".mp4", ".mov", ".m4v", ".avi", ".mkv")
-
     def _fs_item(self, f: dict) -> PhotoItem:
         t = (f.get("additional") or {}).get("time") or {}
         mtime = int(t.get("mtime", 0))
         size = (f.get("additional") or {}).get("size")
-        is_video = f.get("name", "").lower().endswith(self._VIDEO_EXT)
+        is_video = f.get("name", "").lower().endswith(_VIDEO_EXT)
         return PhotoItem(
             type="video" if is_video else "photo",
             id=f["path"],
@@ -115,25 +113,18 @@ class HomesPhotoSource(DsmPhotoSource):
             folder=self._rel(posixpath.dirname(f["path"])),
         )
 
+    async def _fs_children_folders(self, path: str) -> list[PhotoFolder]:
+        """Sub-folders directly under an absolute path, as path-id folders.
+        The parent id is None only at the root (drives breadcrumb reset)."""
+        parent = None if path == self._root_path else path
+        dirs = await self._fs_list(path, files=False)
+        return [self._fs_folder(f, parent) for f in dirs if f.get("name") != "@eaDir"]
+
     async def folders(self, parent_id: str | None = None) -> list[PhotoFolder]:
         if parent_id is None:
-            team = await super().folders(None)
-            team_only = [f for f in team if f.space == "team"]
-            try:
-                dirs = await self._fs_list(self._home_root, files=False)
-            except Exception:  # 대상 홈에 Photos가 없으면(408) 빈 개인 트리
-                dirs = []
-            personal = [
-                self._fs_folder(f, None) for f in dirs if f.get("name") != "@eaDir"
-            ]
-            return team_only + personal
+            return await self._fs_children_folders(self._root_path)
         if _is_path_id(parent_id):
-            dirs = await self._fs_list(parent_id, files=False)
-            return [
-                self._fs_folder(f, parent_id)
-                for f in dirs
-                if f.get("name") != "@eaDir"
-            ]
+            return await self._fs_children_folders(parent_id)
         return await super().folders(parent_id)
 
     async def folder_items(self, folder_id: str) -> list[PhotoItem]:
@@ -171,7 +162,6 @@ class HomesPhotoSource(DsmPhotoSource):
     ):
         if not _is_path_id(item_id):
             return await super().video_stream(space, item_id, range_header)
-        # 타인 개인 공간(경로형 id)은 FileStation Download 로 스트리밍.
         return await self._dsm.stream_binary(
             "SYNO.FileStation.Download",
             "download",
@@ -198,25 +188,6 @@ class HomesPhotoSource(DsmPhotoSource):
         if item_ids and _is_path_id(item_ids[0]):
             return {i: self._rel(posixpath.dirname(i)) for i in item_ids}
         return await super().item_folders(space, item_ids)
-
-    # ------------------------------------- unsupported for another user
-    # Photos' timeline/AI/search indexes are per-session — empty, not wrong.
-    async def buckets(self, space: str) -> list[PhotoBucket]:
-        return [] if space == "personal" else await super().buckets(space)
-
-    async def items(self, space: str, day: str) -> list[PhotoItem]:
-        return [] if space == "personal" else await super().items(space, day)
-
-    async def persons(self, space: str) -> list[PersonInfo]:
-        return [] if space == "personal" else await super().persons(space)
-
-    async def places(self, space: str) -> list[PlaceInfo]:
-        return [] if space == "personal" else await super().places(space)
-
-    async def search_items(self, space: str, keyword: str) -> list[PhotoItem]:
-        if space == "personal":
-            return []
-        return await super().search_items(space, keyword)
 
     async def create_folder(
         self, space: str, name: str, parent_id: str | None = None
@@ -265,3 +236,57 @@ class HomesPhotoSource(DsmPhotoSource):
         if _is_path_id(dest_folder_id):
             return dest_folder_id, "personal"
         return await super()._dest_dir(dest_folder_id)
+
+
+class HomesPhotoSource(_FsRootMixin, DsmPhotoSource):
+    """Admin impersonation: the PERSONAL space is remapped to a member's home.
+
+    Not supported for another user's space (Photos' index is per-session):
+    timeline buckets, persons/places, search, EXIF — those return empty and the
+    UI says folder view is the way to browse someone else's photos.
+    """
+
+    def __init__(self, dsm: DsmClient, sid: str, target_user: str) -> None:
+        super().__init__(dsm, sid)
+        self._target = target_user
+
+    @property
+    def _root_path(self) -> str:
+        return f"/homes/{self._target}/Photos"
+
+    # Impersonation hijacks the personal share so inherited Foto path building
+    # (rarely reached here) points at the target's home rather than /home/Photos.
+    def _share_prefix(self, space: str) -> str:
+        if space == "personal":
+            return self._root_path
+        return super()._share_prefix(space)
+
+    async def folders(self, parent_id: str | None = None) -> list[PhotoFolder]:
+        if parent_id is None:
+            team = await DsmPhotoSource.folders(self, None)
+            team_only = [f for f in team if f.space == "team"]
+            try:
+                personal = await self._fs_children_folders(self._root_path)
+            except Exception:  # 대상 홈에 Photos가 없으면(408) 빈 개인 트리
+                personal = []
+            return team_only + personal
+        return await super().folders(parent_id)
+
+    # ------------------------------------- unsupported for another user
+    # Photos' timeline/AI/search indexes are per-session — empty, not wrong.
+    async def buckets(self, space: str) -> list[PhotoBucket]:
+        return [] if space == "personal" else await super().buckets(space)
+
+    async def items(self, space: str, day: str) -> list[PhotoItem]:
+        return [] if space == "personal" else await super().items(space, day)
+
+    async def persons(self, space: str) -> list[PersonInfo]:
+        return [] if space == "personal" else await super().persons(space)
+
+    async def places(self, space: str) -> list[PlaceInfo]:
+        return [] if space == "personal" else await super().places(space)
+
+    async def search_items(self, space: str, keyword: str) -> list[PhotoItem]:
+        if space == "personal":
+            return []
+        return await super().search_items(space, keyword)

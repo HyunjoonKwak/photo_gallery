@@ -3,11 +3,13 @@ import type { PhotoFolder } from "../../api/types";
 import { recentFolders, rememberFolder } from "../../lib/recentFolders";
 import { FolderTree, folderBasename } from "../FolderTree";
 
-export type PickerMode = "move" | "copy" | "toTeam";
+export type PickerMode = "move" | "copy" | "toTeam" | "toPersonal";
 
-/** Destination picker for 이동/복사/공용으로 보내기.
- * "공용으로 보내기" defaults to copy — families usually want the personal
- * original kept (spec ch.4) — with a move/copy toggle to override.
+/** Destination picker for 이동/복사/공용으로 보내기/2차로 보내기.
+ * "공용으로 보내기"는 복사 기본(원본을 개인에 남김, spec ch.4). "2차로 보내기"
+ * (1차 구역→개인 Photos)는 이동 기본. 둘 다 토글로 뒤집을 수 있다.
+ * ``toPersonal``은 현재 스코프(zone)를 붙이지 않는 목적지 트리(개인/공용 Photos)를
+ * 보여준다 — 소스는 zone이어도 목적지는 Photos 안이라야 한다.
  */
 export function FolderPickerDialog({
   mode,
@@ -20,8 +22,10 @@ export function FolderPickerDialog({
   onConfirm: (folder: PhotoFolder, copyMode: boolean) => void;
   onClose: () => void;
 }) {
-  const [copyMode, setCopyMode] = useState(mode !== "move");
+  const copyable = mode === "toTeam" || mode === "toPersonal";
+  const [copyMode, setCopyMode] = useState(mode === "copy" || mode === "toTeam");
   const [selected, setSelected] = useState<PhotoFolder | null>(null);
+  const isDest = mode === "toPersonal"; // 스코프 미부착 목적지 트리
   // Recent destinations — 반복 정리 시 트리 탐색 없이 원클릭 선택.
   const recents = useMemo(
     () =>
@@ -32,9 +36,11 @@ export function FolderPickerDialog({
   const title =
     mode === "toTeam"
       ? `${count}장 공용으로 보내기`
-      : mode === "copy"
-        ? `${count}장 복사`
-        : `${count}장 이동`;
+      : mode === "toPersonal"
+        ? `${count}장 내 사진(2차)으로`
+        : mode === "copy"
+          ? `${count}장 복사`
+          : `${count}장 이동`;
 
   return (
     <div
@@ -82,7 +88,12 @@ export function FolderPickerDialog({
           <h4 className="px-1 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
             공용 폴더
           </h4>
-          <FolderTree space="team" onSelect={setSelected} selectedId={selected?.id} />
+          <FolderTree
+            space="team"
+            onSelect={setSelected}
+            selectedId={selected?.id}
+            dest={isDest}
+          />
           {mode !== "toTeam" && (
             <>
               <h4 className="px-1 pb-1 pt-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
@@ -92,19 +103,22 @@ export function FolderPickerDialog({
                 space="personal"
                 onSelect={setSelected}
                 selectedId={selected?.id}
+                dest={isDest}
               />
             </>
           )}
         </div>
 
-        {mode === "toTeam" && (
+        {copyable && (
           <label className="mt-3 flex items-center gap-2 text-sm text-slate-600">
             <input
               type="checkbox"
               checked={copyMode}
               onChange={(e) => setCopyMode(e.target.checked)}
             />
-            원본을 개인 폴더에 남기기 (복사)
+            {mode === "toTeam"
+              ? "원본을 개인 폴더에 남기기 (복사)"
+              : "원본을 1차 구역에 남기기 (복사)"}
           </label>
         )}
 
@@ -120,12 +134,12 @@ export function FolderPickerDialog({
             onClick={() => {
               if (selected) {
                 rememberFolder(selected);
-                onConfirm(selected, mode === "copy" ? true : copyMode && mode === "toTeam");
+                onConfirm(selected, mode === "copy" ? true : copyMode && copyable);
               }
             }}
             className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-40"
           >
-            {mode === "copy" ? "복사" : mode === "toTeam" && copyMode ? "복사" : "이동"}
+            {mode === "copy" || (copyable && copyMode) ? "복사" : "이동"}
           </button>
         </div>
       </div>

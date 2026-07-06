@@ -54,8 +54,14 @@ interface TimelineState {
   /** Admin only: the member whose photos are being organized (spec 4.5). */
   viewedOwner: string | null;
   setViewedOwner: (owner: string | null) => void;
-  /** Library selector (A안): 공용 / 내 사진 / 타인 사진을 한 축으로 전환. */
-  selectLibrary: (lib: { space: Space; owner: string | null }) => void;
+  /** 1차 구역(기기 백업): 활성 시 FileStation 폴더 뷰만. owner와 배타적. */
+  activeZone: { id: string; label: string } | null;
+  /** Library selector: 공용 / 내 사진 / 타인 / 1차 구역을 한 축으로 전환. */
+  selectLibrary: (lib: {
+    space: Space;
+    owner: string | null;
+    zone?: { id: string; label: string } | null;
+  }) => void;
 
   // --- selection ---
   selected: ReadonlySet<string>;
@@ -143,17 +149,20 @@ export const useTimelineStore = create<TimelineState>()((set, get) => ({
   setViewedOwner: (viewedOwner) =>
     set({
       viewedOwner,
+      activeZone: null,
       viewMode: "folders",
       selected: EMPTY_SET,
       anchorId: null,
       lightboxId: null,
     }),
-  selectLibrary: ({ space, owner }) =>
+  activeZone: null,
+  selectLibrary: ({ space, owner, zone }) =>
     set({
       space,
       viewedOwner: owner,
-      // 타인 라이브러리는 폴더 보기 전용 → 자동 전환; 그 외엔 현재 뷰 유지
-      ...(owner ? { viewMode: "folders" as ViewMode } : {}),
+      activeZone: zone ?? null,
+      // 타인·1차 구역은 폴더 보기 전용 → 자동 전환; 그 외엔 현재 뷰 유지
+      ...(owner || zone ? { viewMode: "folders" as ViewMode } : {}),
       selected: EMPTY_SET,
       anchorId: null,
       previewIds: EMPTY_SET,

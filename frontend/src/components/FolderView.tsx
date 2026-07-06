@@ -153,15 +153,17 @@ export function FolderView() {
     if (photoSelCount > 0) setFolderSel(new Map());
   }, [photoSelCount]);
 
-  // Whose photos we're organizing changed → old breadcrumbs point into the
-  // previous owner's tree (path-style ids) — reset to root.
+  // 정리 대상 라이브러리가 바뀜(구성원 전환 또는 1차 구역 전환) → 옛 브레드크럼은
+  // 이전 트리(경로형 id)를 가리키므로 루트로 리셋.
   const viewedOwner = useTimelineStore((s) => s.viewedOwner);
+  const activeZone = useTimelineStore((s) => s.activeZone);
+  const activeZoneId = activeZone?.id ?? null;
   useEffect(() => {
     setPathA([]);
     setPathB([]);
     setActivePane(0);
     setFolderSel(new Map());
-  }, [viewedOwner]);
+  }, [viewedOwner, activeZoneId]);
 
   // Cross-view jump (e.g. timeline's folder panel): open the requested folder
   // in pane A and make it the active pane.
@@ -249,20 +251,25 @@ export function FolderView() {
             className="hidden shrink-0 overflow-y-auto border-r border-slate-200 bg-white px-2 py-2 md:block"
           >
             {/* 새 폴더/삭제는 우측 페인 브레드크럼으로 통합(단일·분할 공용) */}
-            {/* 선택 라이브러리 트리만 펼침; 반대쪽은 접힌 헤더(펼치기 가능) */}
-            {(viewedOwner || useTimelineStore.getState().space === "personal"
-              ? (["personal", "team"] as const)
-              : (["team", "personal"] as const)
+            {/* 1차 구역은 zone 트리만(공용/개인 Foto 없음); 그 외엔 선택 라이브러리
+             * 트리를 펼치고 반대쪽은 접힌 헤더 */}
+            {(activeZone
+              ? (["personal"] as const)
+              : viewedOwner || useTimelineStore.getState().space === "personal"
+                ? (["personal", "team"] as const)
+                : (["team", "personal"] as const)
             ).map((sp, i) => (
               <TreeSection
                 key={sp}
                 space={sp}
                 label={
-                  sp === "team"
-                    ? "공용"
-                    : viewedOwner
-                      ? `${viewedOwner}의 개인`
-                      : "개인"
+                  activeZone
+                    ? activeZone.label
+                    : sp === "team"
+                      ? "공용"
+                      : viewedOwner
+                        ? `${viewedOwner}의 개인`
+                        : "개인"
                 }
                 defaultOpen={i === 0}
                 droppable

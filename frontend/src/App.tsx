@@ -12,6 +12,7 @@ import { BottomTabBar } from "./components/BottomTabBar";
 import { BulkProgress } from "./components/BulkProgress";
 import { Toasts } from "./components/Toasts";
 import { ConflictDialogHost } from "./components/ConflictDialog";
+import { ZoneManager } from "./components/ZoneManager";
 
 // 보기(무엇을 볼지) — 주 메뉴. 아이콘으로 성격을 구분.
 const VIEWS: { mode: ViewMode; label: string; icon: string }[] = [
@@ -81,9 +82,11 @@ function SearchBox() {
 function LibrarySelector({ account, isAdmin }: { account: string; isAdmin: boolean }) {
   const space = useTimelineStore((s) => s.space);
   const viewedOwner = useTimelineStore((s) => s.viewedOwner);
+  const activeZone = useTimelineStore((s) => s.activeZone);
   const selectLibrary = useTimelineStore((s) => s.selectLibrary);
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [manageOpen, setManageOpen] = useState(false);
   const membersQuery = useQuery({
     queryKey: ["members"],
     queryFn: api.members,
@@ -92,14 +95,22 @@ function LibrarySelector({ account, isAdmin }: { account: string; isAdmin: boole
   const members = (membersQuery.data?.members ?? []).filter(
     (m) => m.name !== account,
   );
+  const zonesQuery = useQuery({ queryKey: ["zones"], queryFn: api.listZones });
+  const zones = zonesQuery.data?.zones ?? [];
 
-  const label = viewedOwner
-    ? `👥 ${viewedOwner}의 사진`
-    : space === "team"
-      ? "📚 공용 사진"
-      : "👤 내 사진";
+  const label = activeZone
+    ? `📦 ${activeZone.label}`
+    : viewedOwner
+      ? `👥 ${viewedOwner}의 사진`
+      : space === "team"
+        ? "📚 공용 사진"
+        : "👤 내 사진";
 
-  const pick = (lib: { space: Space; owner: string | null }) => {
+  const pick = (lib: {
+    space: Space;
+    owner: string | null;
+    zone?: { id: string; label: string } | null;
+  }) => {
     setOpen(false);
     selectLibrary(lib);
     // 라이브러리가 통째로 바뀜 — 캐시 전체 무효화
@@ -116,9 +127,11 @@ function LibrarySelector({ account, isAdmin }: { account: string; isAdmin: boole
       <button
         onClick={() => setOpen((v) => !v)}
         className={`flex items-center gap-1.5 whitespace-nowrap rounded-xl px-3 py-1.5 text-sm font-semibold transition-colors ${
-          viewedOwner
-            ? "bg-amber-500 text-white hover:bg-amber-600"
-            : "bg-slate-100 text-slate-800 hover:bg-slate-200"
+          activeZone
+            ? "bg-indigo-600 text-white hover:bg-indigo-700"
+            : viewedOwner
+              ? "bg-amber-500 text-white hover:bg-amber-600"
+              : "bg-slate-100 text-slate-800 hover:bg-slate-200"
         }`}
       >
         {label}
@@ -131,14 +144,14 @@ function LibrarySelector({ account, isAdmin }: { account: string; isAdmin: boole
           <div className="absolute left-0 top-full z-40 mt-1 w-56 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg">
             <button
               onClick={() => pick({ space: "team", owner: null })}
-              className={itemCls(!viewedOwner && space === "team")}
+              className={itemCls(!viewedOwner && !activeZone && space === "team")}
             >
               📚 공용 사진
               <span className="ml-auto text-[10px] text-slate-400">가족 공유</span>
             </button>
             <button
               onClick={() => pick({ space: "personal", owner: null })}
-              className={itemCls(!viewedOwner && space === "personal")}
+              className={itemCls(!viewedOwner && !activeZone && space === "personal")}
             >
               👤 내 사진
             </button>
@@ -163,9 +176,38 @@ function LibrarySelector({ account, isAdmin }: { account: string; isAdmin: boole
                 ))}
               </>
             )}
+            {/* 1차 구역 (기기 백업) */}
+            <p className="px-3 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+              1차 구역 · 기기 백업
+            </p>
+            {zones.map((z) => (
+              <button
+                key={z.id}
+                onClick={() =>
+                  pick({
+                    space: "personal",
+                    owner: null,
+                    zone: { id: z.id, label: z.label },
+                  })
+                }
+                className={itemCls(activeZone?.id === z.id)}
+              >
+                📦 {z.label}
+              </button>
+            ))}
+            <button
+              onClick={() => {
+                setOpen(false);
+                setManageOpen(true);
+              }}
+              className="mt-0.5 flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-xs text-indigo-600 hover:bg-indigo-50"
+            >
+              ⚙️ 구역 관리…
+            </button>
           </div>
         </>
       )}
+      {manageOpen && <ZoneManager onClose={() => setManageOpen(false)} />}
     </div>
   );
 }
@@ -192,6 +234,32 @@ function ImpersonationBanner() {
           queryClient.clear();
         }}
         className="rounded-lg bg-amber-600 px-2 py-0.5 text-xs hover:bg-amber-700"
+      >
+        내 사진으로 돌아가기
+      </button>
+    </div>
+  );
+}
+
+/** 1차 구역(기기 백업) 열람 중임을 알리는 배너 — 임퍼소네이션(주황)과 구분되는
+ * 인디고. "고른 사진을 내 타임라인(2차)으로 옮기세요" 안내 + 복귀. */
+function ZoneBanner() {
+  const activeZone = useTimelineStore((s) => s.activeZone);
+  const selectLibrary = useTimelineStore((s) => s.selectLibrary);
+  const queryClient = useQueryClient();
+  if (!activeZone) return null;
+  return (
+    <div className="flex items-center justify-center gap-3 bg-indigo-600 px-4 py-1.5 text-sm font-medium text-white">
+      <span>
+        1차 구역: {activeZone.label} · 타임라인에 안 나오는 백업 폴더입니다 —
+        고른 사진을 <b>내 타임라인(2차)으로 이동/복사</b>하세요
+      </span>
+      <button
+        onClick={() => {
+          selectLibrary({ space: "personal", owner: null });
+          queryClient.clear();
+        }}
+        className="rounded-lg bg-indigo-700 px-2 py-0.5 text-xs hover:bg-indigo-800"
       >
         내 사진으로 돌아가기
       </button>
@@ -302,6 +370,7 @@ export default function App() {
       </header>
 
       <ImpersonationBanner />
+      <ZoneBanner />
 
       {/* pb-14: 모바일 하단 탭 바 높이만큼 콘텐츠 영역 확보 */}
       <div className="min-h-0 flex-1 pb-14 md:pb-0">

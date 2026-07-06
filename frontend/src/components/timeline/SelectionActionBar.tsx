@@ -10,6 +10,7 @@ import { FolderPickerDialog, type PickerMode } from "./FolderPickerDialog";
 export function SelectionActionBar() {
   const count = useTimelineStore((s) => s.selected.size);
   const clear = useTimelineStore((s) => s.clearSelection);
+  const activeZone = useTimelineStore((s) => s.activeZone);
   const ops = useFileOps();
   const [picker, setPicker] = useState<PickerMode | null>(null);
 
@@ -38,19 +39,32 @@ export function SelectionActionBar() {
         <span className="mr-2 text-sm font-semibold text-white">
           {count}장 선택됨
         </span>
-        <button className={btn} disabled={ops.isBusy} onClick={() => setPicker("move")}>
-          이동
-        </button>
-        <button className={btn} disabled={ops.isBusy} onClick={() => setPicker("copy")}>
-          복사
-        </button>
-        <button
-          className={btn}
-          disabled={ops.isBusy}
-          onClick={() => setPicker("toTeam")}
-        >
-          공용으로 보내기
-        </button>
+        {activeZone ? (
+          // 1차 구역: 고른 사진을 개인 Photos(2차)로. 이동/복사는 피커 토글.
+          <button
+            className={`${btn} bg-indigo-500/30 text-indigo-100 hover:bg-indigo-500/50`}
+            disabled={ops.isBusy}
+            onClick={() => setPicker("toPersonal")}
+          >
+            2차로 보내기
+          </button>
+        ) : (
+          <>
+            <button className={btn} disabled={ops.isBusy} onClick={() => setPicker("move")}>
+              이동
+            </button>
+            <button className={btn} disabled={ops.isBusy} onClick={() => setPicker("copy")}>
+              복사
+            </button>
+            <button
+              className={btn}
+              disabled={ops.isBusy}
+              onClick={() => setPicker("toTeam")}
+            >
+              공용으로 보내기
+            </button>
+          </>
+        )}
         <button
           className="rounded-lg px-3 py-1.5 text-sm text-red-300 hover:bg-red-900/40 disabled:opacity-40"
           disabled={ops.isBusy}

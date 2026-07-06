@@ -22,16 +22,20 @@ function FolderTreeNode({
   onSelect,
   selectedId,
   droppable,
+  dest = false,
 }: {
   folder: PhotoFolder;
   onSelect?: (f: PhotoFolder) => void;
   selectedId?: string;
   droppable: boolean;
+  /** true면 현재 스코프(zone/owner)를 붙이지 않고 개인/공용 Photos 트리를
+   * 가져온다 — 1차→2차 목적지 피커용(별도 쿼리키로 캐시 오염 방지). */
+  dest?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const childrenQuery = useQuery({
-    queryKey: ["folders", folder.id],
-    queryFn: () => api.folders(folder.id),
+    queryKey: dest ? ["dest-folders", folder.id] : ["folders", folder.id],
+    queryFn: () => (dest ? api.destFolders(folder.id) : api.folders(folder.id)),
     enabled: expanded,
   });
   const { isOver, setNodeRef } = useDroppable({
@@ -91,6 +95,7 @@ function FolderTreeNode({
               onSelect={onSelect}
               selectedId={selectedId}
               droppable={droppable}
+              dest={dest}
             />
           ))}
         </div>
@@ -146,13 +151,18 @@ export function FolderTree({
   onSelect,
   selectedId,
   droppable = false,
+  dest = false,
 }: {
   space?: Space;
   onSelect?: (f: PhotoFolder) => void;
   selectedId?: string;
   droppable?: boolean;
+  dest?: boolean;
 }) {
-  const topQuery = useQuery({ queryKey: ["folders", null], queryFn: () => api.folders() });
+  const topQuery = useQuery({
+    queryKey: dest ? ["dest-folders", null] : ["folders", null],
+    queryFn: () => (dest ? api.destFolders() : api.folders()),
+  });
   const tops = (topQuery.data?.folders ?? []).filter(
     (f) => !space || f.space === space,
   );
@@ -172,6 +182,7 @@ export function FolderTree({
           onSelect={onSelect}
           selectedId={selectedId}
           droppable={droppable}
+          dest={dest}
         />
       ))}
     </div>

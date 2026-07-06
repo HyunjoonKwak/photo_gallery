@@ -233,6 +233,29 @@ export interface MembersResponse {
   members: MemberInfo[];
 }
 
+// --- 1차 구역 (기기 백업 zone) ---
+
+export interface ZoneInfo {
+  id: string;
+  root_path: string;
+  label: string;
+}
+
+export interface ZonesResponse {
+  zones: ZoneInfo[];
+}
+
+export interface ZoneBrowseEntry {
+  name: string;
+  path: string;
+}
+
+export interface ZoneBrowseResponse {
+  path: string;
+  parent: string | null;
+  dirs: ZoneBrowseEntry[];
+}
+
 // --- duplicate detection (phase 2) ---
 
 export interface DedupJob {

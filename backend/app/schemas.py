@@ -310,6 +310,38 @@ class MembersResponse(BaseModel):
     members: list[MemberInfo]
 
 
+# --- 1차 구역 (기기 백업 zone) ---
+
+
+class ZoneInfo(BaseModel):
+    id: str
+    root_path: str
+    label: str
+
+
+class ZonesResponse(BaseModel):
+    zones: list[ZoneInfo]
+
+
+class ZoneCreateRequest(BaseModel):
+    root_path: str = Field(min_length=1, max_length=512)
+    label: str = Field(min_length=1, max_length=100)
+
+
+class ZoneBrowseEntry(BaseModel):
+    name: str
+    path: str
+
+
+class ZoneBrowseResponse(BaseModel):
+    """FileStation directory listing for the zone-registration picker (Photos
+    인덱스 밖이라 일반 folders API로는 못 봄)."""
+
+    path: str
+    parent: str | None  # None at the browse root (/homes/<account>)
+    dirs: list[ZoneBrowseEntry]
+
+
 # --- Duplicate detection (phase 2) ---
 
 
