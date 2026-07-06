@@ -27,23 +27,31 @@ const VIEWS: { mode: ViewMode; label: string; icon: string }[] = [
 function ViewToggle() {
   const viewMode = useTimelineStore((s) => s.viewMode);
   const setViewMode = useTimelineStore((s) => s.setViewMode);
+  // 1차 구역은 FileStation 폴더 탐색만(촬영일 인덱스 없음) — 폴더 외 뷰 잠금.
+  const activeZone = useTimelineStore((s) => s.activeZone);
   return (
     <nav className="hidden shrink-0 gap-0.5 sm:gap-1 md:flex">
-      {VIEWS.map((v) => (
-        <button
-          key={v.mode}
-          onClick={() => setViewMode(v.mode)}
-          title={v.label}
-          className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-2 py-1.5 text-sm font-medium transition-colors sm:px-3 ${
-            viewMode === v.mode
-              ? "bg-slate-800 text-white"
-              : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-          }`}
-        >
-          <span className="text-base leading-none">{v.icon}</span>
-          <span className="hidden md:inline">{v.label}</span>
-        </button>
-      ))}
+      {VIEWS.map((v) => {
+        const locked = !!activeZone && v.mode !== "folders";
+        return (
+          <button
+            key={v.mode}
+            disabled={locked}
+            onClick={() => setViewMode(v.mode)}
+            title={locked ? "1차 구역은 폴더 보기만 지원합니다" : v.label}
+            className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-2 py-1.5 text-sm font-medium transition-colors sm:px-3 ${
+              locked
+                ? "cursor-not-allowed text-slate-300"
+                : viewMode === v.mode
+                  ? "bg-slate-800 text-white"
+                  : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+            }`}
+          >
+            <span className="text-base leading-none">{v.icon}</span>
+            <span className="hidden md:inline">{v.label}</span>
+          </button>
+        );
+      })}
     </nav>
   );
 }
@@ -51,7 +59,10 @@ function ViewToggle() {
 /** 사진 검색창: 파일명·폴더명·태그 키워드 — Enter로 검색 뷰 진입. */
 function SearchBox() {
   const runSearch = useTimelineStore((s) => s.runSearch);
+  const activeZone = useTimelineStore((s) => s.activeZone);
   const [value, setValue] = useState("");
+  // 1차 구역은 Photos 검색 인덱스 밖이라 검색이 무의미 — 숨김.
+  if (activeZone) return null;
   const submit = () => {
     const q = value.trim();
     if (q) runSearch(q);
