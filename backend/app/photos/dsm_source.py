@@ -714,69 +714,55 @@ class DsmPhotoSource:
                 )
         return {"name": name, "merged_into": merged_into}
 
-    async def debug_person_write(self, name: str) -> dict:
-        """진단용: `set`(이름)·`merge`(병합)의 정확한 파라미터를 찾는다.
-        set 변형은 성공 시 이름 없는 인물에 실제로 이름이 지정됨(가역).
-        merge 변형은 source=target=같은 인물(자기 병합=무해)로 키만 검증한다
-        (120=파라미터 키 틀림, 그 외=키 맞음)."""
+    async def debug_merge_trial(self) -> dict:
+        """진단용: 같은 이름 인물 쌍(예 '엄마' 둘)을 실제로 병합 시도하며 맞는
+        파라미터를 찾는다. 서로 다른 실제 id라야 판별 가능(자기병합은 항상
+        120). 성공하면 실제로 병합됨(=사용자가 원하던 결과)."""
         persons = await self.persons("personal")
-        if not persons:
-            return {"error": "no persons"}
+        by_name: dict[str, list] = {}
+        for p in persons:
+            if p.name:
+                by_name.setdefault(p.name, []).append(p)
+        dup = next((g for g in by_name.values() if len(g) >= 2), None)
+        if dup is None:
+            return {
+                "note": "같은 이름 인물 쌍이 없습니다. 사람 탭에서 '이름 없는 "
+                "인물'을 기존 이름(예 엄마)으로 지정해 중복을 만든 뒤 다시 여세요.",
+                "names": sorted(by_name),
+            }
+        keeper, src = dup[0], dup[1]  # keeper 유지, src를 병합
+        s, t = int(src.id), int(keeper.id)
         api = _ns("personal", "SYNO.Foto.Browse.Person")
-
-        # set 프로브는 이름 없는 인물이 있을 때만(named 인물을 실수로 바꾸지
-        # 않도록). set은 이미 동작 확인됨이라 없어도 무방.
-        unnamed = next((p for p in persons if not p.name), None)
-        set_probe: list[dict] = []
-        set_working = None
-        if unnamed is not None:
-            upid = int(unnamed.id)
-            for extra in [
-                {"id": upid, "name": name},
-                {"id": json.dumps([upid]), "name": name},
-                {"id_list": json.dumps([upid]), "name": name},
-                {"id": upid, "person_name": name},
-            ]:
-                try:
-                    await self._dsm.call(api, "set", version=1, sid=self._sid, extra=extra)
-                    set_probe.append({"keys": list(extra), "ok": True})
-                    set_working = list(extra)
-                    break
-                except DsmError as exc:
-                    set_probe.append(
-                        {"keys": list(extra), "code": exc.code, "msg": str(exc)[:70]}
-                    )
-
-        # merge 키 검증: 실제 존재하는 id로 "자기 자신 병합"(무해 no-op/의미
-        # 오류)을 시도해 값 유효성 문제를 배제하고 키만 본다. 120=키 틀림,
-        # 그 외(성공/의미오류)=키 맞음. 같은 person을 source·target으로.
-        pid = int(persons[0].id)
-        merge_variants = [
-            {"id": json.dumps([pid]), "target": pid},
-            {"id": json.dumps([pid]), "target_id": pid},
-            {"id": pid, "target_id": pid},
-            {"id": pid, "target": pid},
-            {"source_id": pid, "target_id": pid},
-            {"id": json.dumps([pid, pid])},  # 타깃 없이 리스트만
-            {"id": json.dumps([pid]), "to_id": pid},
-            {"id": json.dumps([pid]), "dest_id": pid},
-            {"id": json.dumps([pid]), "keep_id": pid},
-            {"id": json.dumps([pid]), "main_id": pid},
-            {"from_id": pid, "to_id": pid},
-            {"person_id": json.dumps([pid]), "target_id": pid},
+        shapes = [
+            {"id": json.dumps([s]), "target": t},
+            {"id": json.dumps([s]), "target_id": t},
+            {"source_id": s, "target_id": t},
+            {"id": s, "target_id": t},
+            {"id": json.dumps([t, s])},
+            {"id": json.dumps([s, t])},
+            {"id": json.dumps([s]), "to_id": t},
+            {"id": json.dumps([s]), "dest_id": t},
+            {"id": json.dumps([s]), "keep_id": t},
+            {"id": json.dumps([s]), "person_id": t},
+            {"target": t, "source": json.dumps([s])},
         ]
-        merge_probe: list[dict] = []
-        for extra in merge_variants:
+        attempts: list[dict] = []
+        worked = None
+        for extra in shapes:
             try:
                 await self._dsm.call(api, "merge", version=1, sid=self._sid, extra=extra)
-                merge_probe.append({"keys": list(extra), "code": "SUCCESS"})
+                attempts.append({"keys": list(extra), "ok": True})
+                worked = list(extra)
+                break
             except DsmError as exc:
-                merge_probe.append(
-                    {"keys": list(extra), "code": exc.code, "msg": str(exc)[:70]}
+                attempts.append(
+                    {"keys": list(extra), "code": exc.code, "msg": str(exc)[:60]}
                 )
         return {
-            "set_working_keys": set_working,
-            "merge (120=키틀림 / 그외=키맞음; 자기병합이라 무해)": merge_probe,
+            "keeper": {"id": keeper.id, "name": keeper.name},
+            "merged_source_id": src.id,
+            "worked_keys": worked,
+            "attempts": attempts,
         }
 
     async def places(self, space: str) -> list[PlaceInfo]:
