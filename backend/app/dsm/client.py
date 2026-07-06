@@ -140,6 +140,38 @@ class DsmClient:
         url = f"{self._base}/{endpoint.path}"
         return await self._send(url, params, api=api, method=http_method)
 
+    async def call_raw(
+        self,
+        api: str,
+        method: str,
+        *,
+        version: int | None = None,
+        sid: str | None = None,
+        extra: dict[str, Any] | None = None,
+        http_method: str = "GET",
+    ) -> Any:
+        """진단용: success/error 언래핑 없이 DSM 원본 JSON을 그대로 반환한다
+        (오류의 error.errors 상세로 필요 파라미터를 파악하기 위함)."""
+        endpoint = await self._endpoint(api)
+        params: dict[str, Any] = {
+            "api": api,
+            "version": str(endpoint.pick_version(version)),
+            "method": method,
+        }
+        if extra:
+            params.update({k: v for k, v in extra.items() if v is not None})
+        if sid:
+            params["_sid"] = sid
+        url = f"{self._base}/{endpoint.path}"
+        if http_method == "POST":
+            resp = await self._http.post(url, data=params)
+        else:
+            resp = await self._http.get(url, params=params)
+        try:
+            return resp.json()
+        except ValueError:
+            return {"_status": resp.status_code, "_text": resp.text[:300]}
+
     async def fetch_binary(
         self,
         api: str,

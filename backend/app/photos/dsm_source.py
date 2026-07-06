@@ -733,35 +733,33 @@ class DsmPhotoSource:
         keeper, src = dup[0], dup[1]  # keeper 유지, src를 병합
         s, t = int(src.id), int(keeper.id)
         api = _ns("personal", "SYNO.Foto.Browse.Person")
-        shapes = [
-            {"id": json.dumps([s]), "target": t},
-            {"id": json.dumps([s]), "target_id": t},
-            {"source_id": s, "target_id": t},
-            {"id": s, "target_id": t},
-            {"id": json.dumps([t, s])},
-            {"id": json.dumps([s, t])},
-            {"id": json.dumps([s]), "to_id": t},
-            {"id": json.dumps([s]), "dest_id": t},
-            {"id": json.dumps([s]), "keep_id": t},
-            {"id": json.dumps([s]), "person_id": t},
-            {"target": t, "source": json.dumps([s])},
+        # (version, extra) 조합. call_raw로 원본 응답(error.errors 상세)까지 캡처.
+        combos = [
+            (1, {"id": json.dumps([s]), "target": t}),
+            (2, {"id": json.dumps([s]), "target": t}),
+            (3, {"id": json.dumps([s]), "target": t}),
+            (1, {"id": json.dumps([s]), "target_id": t}),
+            (1, {"id": json.dumps([s, t])}),
+            (1, {"source": json.dumps([s]), "target": t}),
+            (1, {"person": json.dumps([s]), "target": t}),
+            (1, {"id_list": json.dumps([s]), "target": t}),
         ]
         attempts: list[dict] = []
         worked = None
-        for extra in shapes:
-            try:
-                await self._dsm.call(api, "merge", version=1, sid=self._sid, extra=extra)
-                attempts.append({"keys": list(extra), "ok": True})
-                worked = list(extra)
+        for ver, extra in combos:
+            body = await self._dsm.call_raw(
+                api, "merge", version=ver, sid=self._sid, extra=extra
+            )
+            ok = isinstance(body, dict) and body.get("success") is True
+            entry = {"version": ver, "keys": list(extra), "raw": body}
+            attempts.append(entry)
+            if ok:
+                worked = {"version": ver, "keys": list(extra)}
                 break
-            except DsmError as exc:
-                attempts.append(
-                    {"keys": list(extra), "code": exc.code, "msg": str(exc)[:60]}
-                )
         return {
             "keeper": {"id": keeper.id, "name": keeper.name},
             "merged_source_id": src.id,
-            "worked_keys": worked,
+            "worked": worked,
             "attempts": attempts,
         }
 
