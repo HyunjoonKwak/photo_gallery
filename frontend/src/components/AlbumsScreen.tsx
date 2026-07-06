@@ -14,6 +14,11 @@ const KINDS: { k: AlbumKind; label: string; icon: string }[] = [
   { k: "videos", label: "비디오", icon: "🎬" },
 ];
 
+// 인물·장소는 Synology Photos가 개인 공간에서만 인식/그룹핑한다(공유 공간엔
+// 얼굴 그룹·지오코딩이 없음). 그래서 공식 앱처럼 라이브러리(공용/내사진)
+// 토글과 무관하게 항상 개인 공간을 본다. 비디오는 공간별로 존재하므로 토글 유지.
+const AI_SPACE: Space = "personal";
+
 export function AlbumsScreen() {
   const space = useTimelineStore((s) => s.space);
   const albumKind = useTimelineStore((s) => s.albumKind);
@@ -63,11 +68,11 @@ export function AlbumsScreen() {
       <div className="min-h-0 flex-1">
         {albumKind === "people" &&
           (groupId ? (
-            <GroupGrid space={space} kind="person" id={groupId} />
+            <GroupGrid space={AI_SPACE} kind="person" id={groupId} />
           ) : (
-            <PeopleGrid space={space} onOpen={openGroup} />
+            <PeopleGrid space={AI_SPACE} onOpen={openGroup} />
           ))}
-        {albumKind === "places" && <PlacesRegionView space={space} />}
+        {albumKind === "places" && <PlacesRegionView space={AI_SPACE} />}
         {albumKind === "videos" && <VideosGrid space={space} />}
       </div>
     </div>
