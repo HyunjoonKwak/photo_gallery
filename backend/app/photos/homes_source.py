@@ -279,16 +279,22 @@ class _FsRootMixin:
     async def create_folder(
         self, space: str, name: str, parent_id: str | None = None
     ):
-        if parent_id is None or not _is_path_id(parent_id):
+        # zone/homes(FileStation 세계)에서는 **최상위(부모 없음)든 하위(경로형
+        # 부모)든** FileStation.CreateFolder로 만든다. 예전엔 parent_id=None을
+        # super()(Foto)로 넘겨 개인 Photos 루트(/home/Photos)에 만들어, 1차 구역
+        # 최상위에 새 폴더가 "내 사진"에 생기는 버그가 있었다(2026-07-07).
+        # 부모가 비경로 Foto id인 예외 경우만 super()로.
+        if parent_id is not None and not _is_path_id(parent_id):
             return await super().create_folder(space, name, parent_id)
+        folder_path = parent_id if parent_id else self._root_path
         await self._dsm.call(
             "SYNO.FileStation.CreateFolder",
             "create",
             version=2,
             sid=self._sid,
-            extra={"folder_path": parent_id, "name": name},
+            extra={"folder_path": folder_path, "name": name},
         )
-        path = f"{parent_id}/{name}"
+        path = f"{folder_path.rstrip('/')}/{name}"
         return self._fs_folder({"path": path}, parent_id)
 
     async def remove_folder(self, folder_id: str) -> bool:
