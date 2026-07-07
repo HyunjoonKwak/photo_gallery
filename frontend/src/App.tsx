@@ -438,7 +438,7 @@ export default function App() {
             </span>
             <button
               onClick={() => logout.mutate()}
-              className="whitespace-nowrap rounded-lg border border-slate-300 px-2 py-1 hover:bg-slate-50 sm:px-3"
+              className="whitespace-nowrap rounded-lg border border-slate-300 bg-white px-2 py-1 text-slate-700 hover:bg-slate-50 sm:px-3"
             >
               로그아웃
             </button>
