@@ -49,6 +49,7 @@ export function useBackTrap(): void {
     const armNow = () => {
       if (!exiting && activated && !onSentinel()) {
         history.pushState({ __nav: true }, "");
+        navDbg(`arm hlen=${history.length}`);
       }
     };
     // 동기 pushState가 무시되는 브라우저 대비: 다음 틱에도 센티넬을 보장.
@@ -87,13 +88,21 @@ export function useBackTrap(): void {
       if (first) navDbg(`act sent=${onSentinel()} hlen=${history.length}`);
     };
     const onResume = () => armNow();
+    // 가능한 이른·다양한 상호작용에서 센티넬 장전 — 첫 뒤로가기 전에 확실히
+    // 사용자 활성(non-skippable)을 확보하려고 터치/스크롤/클릭까지 넓게 건다.
     window.addEventListener("popstate", onPop);
     window.addEventListener("pointerdown", onGesture);
+    window.addEventListener("touchstart", onGesture, { passive: true });
+    window.addEventListener("click", onGesture);
     window.addEventListener("keydown", onGesture);
+    window.addEventListener("scroll", onGesture, { passive: true, capture: true });
     window.addEventListener("pageshow", onResume);
     document.addEventListener("visibilitychange", onResume);
     return () => {
       window.removeEventListener("popstate", onPop);
+      window.removeEventListener("touchstart", onGesture);
+      window.removeEventListener("click", onGesture);
+      window.removeEventListener("scroll", onGesture, { capture: true } as EventListenerOptions);
       window.removeEventListener("pointerdown", onGesture);
       window.removeEventListener("keydown", onGesture);
       window.removeEventListener("pageshow", onResume);
