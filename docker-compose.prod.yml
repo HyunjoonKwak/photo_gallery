@@ -6,6 +6,10 @@ services:
   nas-photo:
     image: ghcr.io/${GHCR_USERNAME:-hyunjoonkwak}/nas-photo:${IMAGE_TAG:-latest}
     container_name: nas-photo
+    # 소유자 본인 uid로 실행 — 1차 구역 원본(711, 소유자만 read)을 읽어 썸네일을
+    # 직접 리사이즈하기 위함(@eaDir 썸네일 없는 폴더). /data는 이 uid 소유여야 함.
+    # 쓰기/이동/삭제는 마운트가 :ro라 불가하고 계속 DSM API로만 수행(권한 enforce).
+    user: "${APP_UID:-1026}:${APP_GID:-100}"
     ports:
       - "9800:9800"
     volumes:

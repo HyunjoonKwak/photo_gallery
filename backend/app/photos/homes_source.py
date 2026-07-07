@@ -63,6 +63,13 @@ def _read_file_bytes(path: str) -> bytes | None:
         return None
 
 
+def _mount_path(item_id: str) -> str | None:
+    """/homes/<user>/... 경로형 id를 마운트된 실제 디스크 경로로 매핑."""
+    if not (_THUMB_MOUNT_HOMES and item_id.startswith("/homes/")):
+        return None
+    return os.path.join(_THUMB_MOUNT_HOMES, item_id[len("/homes/") :])
+
+
 async def _eadir_thumb(item_id: str, size: str) -> bytes | None:
     """마운트된 볼륨에서 @eaDir 미디어 썸네일(SYNOPHOTO_THUMB)을 직접 읽는다.
     사진·동영상 공통으로 존재. 큰 것(그리드 M / 라이트박스 XL) 우선, 없으면 SM."""
@@ -79,6 +86,36 @@ async def _eadir_thumb(item_id: str, size: str) -> bytes | None:
         if data:
             return data
     return None
+
+
+def _resize_original_sync(path: str, target: int) -> bytes | None:
+    """원본 이미지를 마운트에서 읽어 target(긴 변) 이하로 리사이즈한 JPEG 반환.
+    Synology가 @eaDir 썸네일을 안 만든(또는 초소형만 있는) 폴더용. draft로 JPEG
+    부분 디코딩해 비용을 낮춘다. 디코드 불가(HEIC 등 미지원) 시 None → API 폴백."""
+    from io import BytesIO
+
+    from PIL import Image, ImageOps
+
+    try:
+        with Image.open(path) as im:
+            im.draft("RGB", (target, target))  # JPEG는 축소 스케일로 빠르게 디코딩
+            im = ImageOps.exif_transpose(im).convert("RGB")
+            im.thumbnail((target, target), Image.LANCZOS)
+            buf = BytesIO()
+            im.save(buf, "JPEG", quality=82)
+            return buf.getvalue()
+    except Exception:
+        return None
+
+
+async def _resized_original(item_id: str, size: str) -> bytes | None:
+    if item_id.lower().endswith(_VIDEO_EXT):
+        return None  # 동영상은 프레임 추출 필요 → 여기서 처리 안 함
+    disk = _mount_path(item_id)
+    if not disk:
+        return None
+    target = 1280 if size == "xl" else 320
+    return await asyncio.to_thread(_resize_original_sync, disk, target)
 
 
 class _FsRootMixin:
@@ -190,9 +227,13 @@ class _FsRootMixin:
         disk = await _eadir_thumb(item_id, size)
         if disk is not None:
             return disk, "image/jpeg"
-        # 폴백: File Station 썸네일 API. 사진은 소형 SYNOFILE로 뜨고, 동영상은
-        # SYNOFILE이 없어 404 → 프론트가 ▶ 폴백 타일을 그린다. (마운트 미설정 또는
-        # SYNOPHOTO 썸네일이 없는 파일)
+        # @eaDir SYNOPHOTO가 없는 폴더(Synology 미인덱싱 → 썸네일 없음, 또는 초소형
+        # SYNOFILE만) — 원본을 마운트에서 읽어 백엔드가 직접 리사이즈해 서빙한다.
+        # 사진 전용(동영상은 프레임 추출 필요). 결과는 디스크 캐시에 저장돼 반복 즉시.
+        resized = await _resized_original(item_id, size)
+        if resized is not None:
+            return resized, "image/jpeg"
+        # 폴백: File Station 썸네일 API. (마운트 미설정 또는 원본 디코드 불가한 경우)
         return await self._dsm.fetch_binary(
             "SYNO.FileStation.Thumb",
             "get",
