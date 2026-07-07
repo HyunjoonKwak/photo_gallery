@@ -9,26 +9,31 @@ import { useToastStore } from "../store/toast";
  * 이탈한다. 상태 기반 SPA라 URL 히스토리가 없어, 히스토리에 센티넬 1개를
  * 항상 유지해 뒤로가기(popstate)를 가로챈다.
  *
- * 중요: 이 트랩은 **로그인/세션 확인 게이팅과 무관하게 앱 마운트 즉시** 걸려야
- * 한다. 로그인 화면·"세션 확인 중"에서 뒤로가기를 눌러도 곧장 앱이 종료되던
- * 문제(NavControls가 로그인 후에만 마운트되던 타이밍 구멍)를 막는다. 그래서
- * 센티넬은 모듈 로드 시점(main.tsx)에 미리 깔고, 이 훅은 App 최상위에서
- * 어떤 조기 반환보다 먼저 호출한다.
+ * 핵심(모바일 Chrome): Chrome은 **사용자 제스처 없이 pushState로 만든
+ * 히스토리 항목을 뒤로가기 때 건너뛴다**("history manipulation intervention",
+ * pushState 남용 방지). 그래서 센티넬을 로드 시점에 깔면 안드로이드 설치앱에서
+ * 뒤로가기가 센티넬을 건너뛰고 곧장 앱을 종료(popstate 미발화)한다. 반드시
+ * **첫 사용자 상호작용(sticky activation) 이후**에 센티넬을 깐다. 그 뒤로는
+ * 페이지에 sticky activation이 생겨 이후 pushState는 건너뛰기 대상이 아니고,
+ * popstate 재장전(뒤로가기 제스처 자체가 사용자 활성)도 정상 항목이 된다.
  *
  * 모바일 PWA 견고성:
  * - 센티넬 유무를 클로저 플래그가 아니라 history.state로 판정(재개/재로딩 후
  *   실제 스택과 어긋나지 않게).
  * - 일부 브라우저가 popstate 핸들러 내 동기 pushState를 무시 → 다음 틱 보강.
- * - pageshow/visibilitychange(재개)에도 센티넬 재장전.
+ * - pageshow/visibilitychange(재개)에도 센티넬 재장전(단, 최초 제스처 이후).
  */
 export function useBackTrap(): void {
   useEffect(() => {
     let lastRootBack = 0;
     let exiting = false;
+    let activated = false; // 사용자 상호작용이 한 번이라도 있었나
     const onSentinel = () =>
       Boolean((history.state as { __nav?: boolean } | null)?.__nav);
     const armNow = () => {
-      if (!exiting && !onSentinel()) history.pushState({ __nav: true }, "");
+      if (!exiting && activated && !onSentinel()) {
+        history.pushState({ __nav: true }, "");
+      }
     };
     // 동기 pushState가 무시되는 브라우저 대비: 다음 틱에도 센티넬을 보장.
     const arm = () => {
@@ -53,13 +58,22 @@ export function useBackTrap(): void {
       useToastStore.getState().push("한 번 더 뒤로가기를 누르면 종료됩니다");
       arm(); // 머무름 — 센티넬 재장전
     };
+    // 첫 사용자 제스처에 센티넬 장전(그 전엔 Chrome이 건너뛰어 무용지물).
+    // 이후 상호작용마다 확인(멱등) — 센티넬이 소비된 상태면 다시 채운다.
+    const onGesture = () => {
+      activated = true;
+      armNow();
+    };
     const onResume = () => armNow();
     window.addEventListener("popstate", onPop);
+    window.addEventListener("pointerdown", onGesture);
+    window.addEventListener("keydown", onGesture);
     window.addEventListener("pageshow", onResume);
     document.addEventListener("visibilitychange", onResume);
-    armNow(); // 마운트 시 센티넬 보장(main.tsx에서 이미 깔았어도 멱등)
     return () => {
       window.removeEventListener("popstate", onPop);
+      window.removeEventListener("pointerdown", onGesture);
+      window.removeEventListener("keydown", onGesture);
       window.removeEventListener("pageshow", onResume);
       document.removeEventListener("visibilitychange", onResume);
     };
