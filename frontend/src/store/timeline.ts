@@ -22,12 +22,14 @@ function rangeIds(orderedIds: string[], a: string, b: string): string[] {
   return orderedIds.slice(lo, hi + 1);
 }
 
-/** 상위 3영역: 사진 뷰어(감상) / 앨범(사람·장소·비디오) / 폴더 분류(정리). */
+/** 상위 3영역: 사진 뷰어(감상·모든 렌즈) / 앨범(사용자 큐레이션) / 폴더 분류(정리). */
 export type Section = "viewer" | "albums" | "manage";
-/** 사진 뷰어 줌 레벨. */
-export type ViewerZoom = "year" | "month" | "day" | "folder";
-/** 앨범 종류. */
-export type AlbumKind = "people" | "places" | "videos";
+/** 사진 뷰어 렌즈(감상 축) — 타임라인/폴더/사람/장소/비디오. AI 자동 그룹
+ * (사람·장소·비디오)은 "앨범"이 아니라 감상 렌즈라 뷰어 아래로 편입한다.
+ * "앨범"은 사용자가 만드는 큐레이션 전용. */
+export type ViewerLens = "timeline" | "folder" | "people" | "places" | "videos";
+/** 타임라인 렌즈 내부 줌(연/월/일). */
+export type ViewerZoom = "year" | "month" | "day";
 /** 폴더 분류 서브탭. */
 export type ManageTab = "folders" | "dedup" | "search";
 export type FolderDisplay = "grid" | "list";
@@ -49,11 +51,11 @@ function resetView() {
  * 통째로 저장해, 복원 시 그 화면을 그대로 되살린다(줌·그룹 포함). */
 interface NavSnapshot {
   section: Section;
+  viewerLens: ViewerLens;
   zoom: ViewerZoom;
   focusYear: string | null;
   focusMonth: string | null;
   focusDay: string | null;
-  albumKind: AlbumKind;
   groupId: string | null;
   groupLabel: string | null;
   manageTab: ManageTab;
@@ -81,7 +83,10 @@ interface TimelineState {
   // --- 상위 영역 + 영역별 서브상태 ---
   section: Section;
   setSection: (s: Section) => void;
-  /** 사진 뷰어 줌 + 드릴/스크롤 컨텍스트. */
+  /** 사진 뷰어 렌즈(타임라인/폴더/사람/장소/비디오). */
+  viewerLens: ViewerLens;
+  setViewerLens: (lens: ViewerLens) => void;
+  /** 타임라인 렌즈 줌 + 드릴/스크롤 컨텍스트. */
   zoom: ViewerZoom;
   focusYear: string | null; // "2024"
   focusMonth: string | null; // "2024-03"
@@ -93,11 +98,9 @@ interface TimelineState {
     month?: string;
     day?: string;
   }) => void;
-  /** 앨범: 종류 + 열린 그룹(인물/장소). */
-  albumKind: AlbumKind;
+  /** 사람 렌즈: 열린 인물 그룹. */
   groupId: string | null;
   groupLabel: string | null;
-  setAlbumKind: (k: AlbumKind) => void;
   openGroup: (id: string, label: string) => void;
   closeGroup: () => void;
   /** 폴더 분류 서브탭. */
@@ -172,17 +175,25 @@ interface TimelineState {
   goHome: () => void;
 }
 
-/** 현재 네비게이션 축을 스냅샷으로 뽑는다(뒤로가기 히스토리 push용). */
+/** 현재 네비게이션 축을 스냅샷으로 뽑는다(뒤로가기 히스토리 push용).
+ *
+ * 화면-로컬 드릴(타임라인 줌·사람 그룹)은 **평탄화**해서 담는다(zoom=year,
+ * group=null). 이유: navHistory 항목은 "뒤로가기 1회 = 1항목"이라는 불변을
+ * 지켜야 selectBackDepth가 정확한데, 드릴 상태를 그대로 담으면 복원 시 그 항목이
+ * 여러 단계(줌→연, 그룹 닫기)를 숨겨 깊이 계산이 어긋나고, 되돌아올 때 popstate
+ * 도중 센티넬을 push하게 된다(안드로이드 skippable 재발). 폴더 경로가 영역 전환
+ * 때 초기화되는 것과 동일한 절충 — 렌즈/영역을 넘나든 뒤 돌아오면 그 화면의
+ * 최상단(연 뷰·인물 목록)으로 온다. */
 function navSnapshot(s: TimelineState): NavSnapshot {
   return {
     section: s.section,
-    zoom: s.zoom,
-    focusYear: s.focusYear,
-    focusMonth: s.focusMonth,
-    focusDay: s.focusDay,
-    albumKind: s.albumKind,
-    groupId: s.groupId,
-    groupLabel: s.groupLabel,
+    viewerLens: s.viewerLens,
+    zoom: "year",
+    focusYear: null,
+    focusMonth: null,
+    focusDay: null,
+    groupId: null,
+    groupLabel: null,
     manageTab: s.manageTab,
     space: s.space,
     viewedOwner: s.viewedOwner,
@@ -212,7 +223,11 @@ export function selectBackDepth(s: TimelineState): number {
     (s.lightboxId ? 1 : 0) +
     s.screenBackDepth +
     (s.groupId ? 1 : 0) +
-    (s.section === "viewer" && s.zoom !== "year" ? 1 : 0) +
+    (s.section === "viewer" &&
+    s.viewerLens === "timeline" &&
+    s.zoom !== "year"
+      ? 1
+      : 0) +
     s._navHistory.length
   );
 }
@@ -241,9 +256,29 @@ export const useTimelineStore = create<TimelineState>()((set, get) => ({
         ? {}
         : withNav(s, {
             section,
+            // 영역 전환은 항상 그 영역의 기본 화면으로(뷰어=타임라인·연 뷰).
+            viewerLens: "timeline",
+            zoom: "year",
+            groupId: null,
+            groupLabel: null,
             ...(section !== "manage" && (s.viewedOwner || s.activeZone)
               ? { viewedOwner: null, activeZone: null }
               : {}),
+            ...resetView(),
+          }),
+    ),
+
+  viewerLens: "timeline",
+  // 렌즈 전환은 뒤로가기 히스토리에 쌓아(이전 렌즈로 복귀), 줌·그룹은 초기화.
+  setViewerLens: (viewerLens) =>
+    set((s) =>
+      s.viewerLens === viewerLens
+        ? {}
+        : withNav(s, {
+            viewerLens,
+            zoom: "year",
+            groupId: null,
+            groupLabel: null,
             ...resetView(),
           }),
     ),
@@ -262,20 +297,8 @@ export const useTimelineStore = create<TimelineState>()((set, get) => ({
       ...resetView(),
     })),
 
-  albumKind: "people",
   groupId: null,
   groupLabel: null,
-  setAlbumKind: (albumKind) =>
-    set((s) =>
-      s.albumKind === albumKind
-        ? {}
-        : withNav(s, {
-            albumKind,
-            groupId: null,
-            groupLabel: null,
-            ...resetView(),
-          }),
-    ),
   openGroup: (groupId, groupLabel) =>
     set({ groupId, groupLabel, ...resetView() }),
   closeGroup: () => set({ groupId: null, groupLabel: null, ...resetView() }),
@@ -421,8 +444,8 @@ export const useTimelineStore = create<TimelineState>()((set, get) => ({
     set((s) => (s.screenBackDepth === n ? {} : { screenBackDepth: n })),
   goBack: () => {
     const s = get();
-    // 우선순위(깊은 것부터): 라이트박스 → 화면 내 드릴(폴더/장소) → 앨범 그룹
-    // → 뷰어 줌(→연) → 영역/탭/라이브러리 히스토리(방문 순서 역추적).
+    // 우선순위(깊은 것부터): 라이트박스 → 화면 내 드릴(폴더/장소) → 사람 그룹
+    // → 타임라인 줌(→연) → 영역/렌즈/라이브러리 히스토리(방문 순서 역추적).
     if (s.lightboxId) {
       set({ lightboxId: null });
       return true;
@@ -435,7 +458,7 @@ export const useTimelineStore = create<TimelineState>()((set, get) => ({
       s.closeGroup();
       return true;
     }
-    if (s.section === "viewer" && s.zoom !== "year") {
+    if (s.section === "viewer" && s.viewerLens === "timeline" && s.zoom !== "year") {
       s.setZoom("year");
       return true;
     }
@@ -452,17 +475,12 @@ export const useTimelineStore = create<TimelineState>()((set, get) => ({
   },
   canGoBack: () => {
     const s = get();
-    return Boolean(
-      s.lightboxId ||
-        s._backHandlers.length ||
-        s.groupId ||
-        (s.section === "viewer" && s.zoom !== "year") ||
-        s._navHistory.length,
-    );
+    return selectBackDepth(s) > 0;
   },
   goHome: () =>
     set({
       section: "viewer",
+      viewerLens: "timeline",
       zoom: "year",
       focusYear: null,
       focusMonth: null,

@@ -1,337 +1,46 @@
-import { useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, thumbnailUrl } from "../api/client";
-import type { PersonInfo, Space } from "../api/types";
-import { useTimelineStore, type AlbumKind } from "../store/timeline";
 import { useToastStore } from "../store/toast";
-import { UniformPhotoGrid } from "./timeline/UniformPhotoGrid";
-import { DateGroupedGrid } from "./timeline/DateGroupedGrid";
-import { PlacesRegionView } from "./PlacesRegionView";
 
-/** 앨범(감상) — 사람/장소/비디오. Synology Photos 내장 AI 그룹(얼굴·GPS)과
- * 라이브러리 전체 비디오를 순수 뷰어로 브라우즈. 정리는 폴더 분류에서. */
-const KINDS: { k: AlbumKind; label: string; icon: string }[] = [
-  { k: "people", label: "사람", icon: "👤" },
-  { k: "places", label: "장소", icon: "📍" },
-  { k: "videos", label: "비디오", icon: "🎬" },
-];
-
-// 인물(얼굴 인식)은 Synology Photos가 개인 공간에서만 그룹핑한다(공유 공간엔
-// 얼굴 그룹이 없어 FotoTeam.Browse.Person이 항상 빈 결과). 그래서 공식 앱처럼
-// 라이브러리(공용/내사진) 토글과 무관하게 항상 개인 공간을 본다. 장소(지오
-// 코딩)·비디오는 공용/개인 각각 존재하므로 토글(space)을 따른다.
-const PEOPLE_SPACE: Space = "personal";
-
+/** 앨범(큐레이션 전용) — 사용자가 직접 만드는 Synology 네이티브 앨범.
+ *
+ * IA 재편(2026-07-07): 사람·장소·비디오는 AI 자동 그룹이라 "앨범"이 아닌 감상
+ * 렌즈로 사진 뷰어(ViewerScreen)로 옮겼고, 이 영역은 사용자 큐레이션 전용이 됐다.
+ * 앨범 "생성/추가"는 DSM Photo Album API 연동이 선행(실 NAS 프로브)이라 2단계에서
+ * 붙인다. 지금은 방향을 드러내는 빈 상태 + 안내(생성 버튼은 준비 중). */
 export function AlbumsScreen() {
-  const space = useTimelineStore((s) => s.space);
-  const albumKind = useTimelineStore((s) => s.albumKind);
-  const setAlbumKind = useTimelineStore((s) => s.setAlbumKind);
-  const groupId = useTimelineStore((s) => s.groupId);
-  const groupLabel = useTimelineStore((s) => s.groupLabel);
-  const openGroup = useTimelineStore((s) => s.openGroup);
-  const closeGroup = useTimelineStore((s) => s.closeGroup);
-
+  const pushToast = useToastStore((s) => s.push);
   return (
     <div className="flex h-full flex-col">
       <div
         data-no-boxselect
-        className="flex shrink-0 items-center gap-2 border-b border-slate-200 bg-white px-3 py-1.5 sm:px-4"
+        className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 py-1.5 sm:px-4"
       >
-        <nav className="flex gap-0.5 rounded-lg bg-slate-100 p-0.5">
-          {KINDS.map((v) => (
-            <button
-              key={v.k}
-              onClick={() => setAlbumKind(v.k)}
-              className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                albumKind === v.k
-                  ? "bg-white text-slate-800 shadow-sm"
-                  : "text-slate-500 hover:text-slate-700"
-              }`}
-            >
-              <span>{v.icon}</span>
-              {v.label}
-            </button>
-          ))}
-        </nav>
-        {groupId && (
-          <>
-            <button
-              onClick={closeGroup}
-              className="rounded px-1.5 py-0.5 text-sm text-blue-600 hover:bg-slate-100"
-            >
-              ‹ 뒤로
-            </button>
-            <span className="text-sm font-semibold text-slate-700">
-              {groupLabel}
-            </span>
-          </>
-        )}
-      </div>
-
-      <div className="min-h-0 flex-1">
-        {albumKind === "people" &&
-          (groupId ? (
-            <GroupGrid space={PEOPLE_SPACE} kind="person" id={groupId} />
-          ) : (
-            <PeopleGrid space={PEOPLE_SPACE} onOpen={openGroup} />
-          ))}
-        {albumKind === "places" && <PlacesRegionView space={space} />}
-        {albumKind === "videos" && <VideosGrid space={space} />}
-      </div>
-    </div>
-  );
-}
-
-function PeopleGrid({
-  space,
-  onOpen,
-}: {
-  space: Space;
-  onOpen: (id: string, label: string) => void;
-}) {
-  const q = useQuery({
-    queryKey: ["persons", space],
-    queryFn: () => api.persons(space),
-    staleTime: 5 * 60_000,
-  });
-  const qc = useQueryClient();
-  const pushToast = useToastStore((s) => s.push);
-  const persons = q.data?.persons ?? [];
-  // 기존에 지정된 이름들 — 이름 입력 시 선택지로 제공(선택=병합, 새로 입력=신규).
-  const existingNames = useMemo(
-    () => [...new Set(persons.map((p) => p.name).filter(Boolean))],
-    [persons],
-  );
-  // 같은 이름 인물이 둘 이상이면 중복 병합 버튼 노출.
-  const hasDuplicates = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const p of persons)
-      if (p.name) counts.set(p.name, (counts.get(p.name) ?? 0) + 1);
-    return [...counts.values()].some((n) => n >= 2);
-  }, [persons]);
-
-  const mergeDup = useMutation({
-    mutationFn: () => api.mergeDuplicatePersons(),
-    onSuccess: (res) => {
-      qc.invalidateQueries({ queryKey: ["persons", space] });
-      qc.invalidateQueries({ queryKey: ["album-items", space] });
-      pushToast(
-        res.merged > 0
-          ? `중복 인물 ${res.merged}명을 병합했습니다.`
-          : "병합할 중복 인물이 없습니다.",
-      );
-    },
-    onError: () => pushToast("중복 병합에 실패했습니다."),
-  });
-
-  if (q.isPending)
-    return <p className="p-6 text-sm text-slate-400">불러오는 중…</p>;
-  if (persons.length === 0)
-    return (
-      <p className="p-6 text-sm text-slate-400">
-        인식된 인물이 없습니다 — Synology Photos에서 "인물" 기능을 확인해 보세요.
-      </p>
-    );
-  return (
-    <div className="h-full overflow-y-auto p-4">
-      {hasDuplicates && (
-        <div className="mb-3 flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          <span>같은 이름의 인물이 여럿 있습니다.</span>
-          <button
-            onClick={() => mergeDup.mutate()}
-            disabled={mergeDup.isPending}
-            className="rounded bg-amber-500 px-2.5 py-1 text-xs font-medium text-white disabled:opacity-50"
-          >
-            {mergeDup.isPending ? "병합 중…" : "중복 이름 병합"}
-          </button>
-        </div>
-      )}
-      <div className="flex flex-wrap gap-1">
-        {persons.map((p) => (
-          <PersonCard
-            key={p.id}
-            person={p}
-            space={space}
-            existingNames={existingNames}
-            onOpen={() => onOpen(p.id, p.name || "이름 없는 인물")}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function PersonCard({
-  person,
-  space,
-  existingNames,
-  onOpen,
-}: {
-  person: PersonInfo;
-  space: Space;
-  existingNames: string[];
-  onOpen: () => void;
-}) {
-  const label = person.name || "이름 없는 인물";
-  const [editing, setEditing] = useState(false);
-  const [value, setValue] = useState(person.name);
-  const listId = `names-${person.id}`;
-  const qc = useQueryClient();
-  const pushToast = useToastStore((s) => s.push);
-
-  const mutation = useMutation({
-    mutationFn: (name: string) => api.namePerson(person.id, name),
-    onSuccess: (res) => {
-      setEditing(false);
-      qc.invalidateQueries({ queryKey: ["persons", space] });
-      qc.invalidateQueries({ queryKey: ["album-items", space] });
-      pushToast(
-        res.merged_into
-          ? `"${res.name}"(으)로 병합했습니다.`
-          : `이름을 "${res.name}"(으)로 지정했습니다.`,
-      );
-    },
-    onError: () =>
-      pushToast("이름 지정에 실패했습니다. 잠시 후 다시 시도해 주세요."),
-  });
-
-  const submit = () => {
-    const n = value.trim();
-    if (n && n !== person.name) mutation.mutate(n);
-    else setEditing(false);
-  };
-
-  return (
-    <div className="flex w-24 flex-col items-center gap-1.5 rounded-xl p-2 hover:bg-slate-100">
-      <button onClick={onOpen} title={label} className="outline-none">
-        {person.cover_item_id ? (
-          <img
-            src={thumbnailUrl(
-              person.space,
-              person.cover_item_id,
-              person.cover_cache_key ?? "",
-              "sm",
-            )}
-            alt={label}
-            className="h-16 w-16 rounded-full bg-slate-200 object-cover"
-            loading="lazy"
-          />
-        ) : (
-          <span className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-200 text-2xl">
-            👤
-          </span>
-        )}
-      </button>
-
-      {editing ? (
-        <div className="flex w-full flex-col items-stretch gap-1">
-          <input
-            autoFocus
-            list={listId}
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") submit();
-              if (e.key === "Escape") {
-                setEditing(false);
-                setValue(person.name);
-              }
-            }}
-            placeholder="이름 입력/선택"
-            className="w-full rounded border border-slate-300 px-1 py-0.5 text-center text-xs outline-none focus:border-blue-400"
-          />
-          <datalist id={listId}>
-            {existingNames
-              .filter((n) => n !== person.name)
-              .map((n) => (
-                <option key={n} value={n} />
-              ))}
-          </datalist>
-          <div className="flex gap-1">
-            <button
-              onClick={submit}
-              disabled={mutation.isPending}
-              className="flex-1 rounded bg-blue-500 py-0.5 text-[10px] font-medium text-white disabled:opacity-50"
-            >
-              {mutation.isPending ? "…" : "확인"}
-            </button>
-            <button
-              onClick={() => {
-                setEditing(false);
-                setValue(person.name);
-              }}
-              className="flex-1 rounded bg-slate-200 py-0.5 text-[10px] text-slate-600"
-            >
-              취소
-            </button>
-          </div>
-        </div>
-      ) : (
+        <span className="text-sm font-semibold text-slate-700">내 앨범</span>
         <button
-          onClick={() => {
-            setValue(person.name);
-            setEditing(true);
-          }}
-          title="이름 지정/변경"
-          className="flex w-full items-center justify-center gap-0.5 outline-none"
+          onClick={() =>
+            pushToast("앨범 만들기는 준비 중입니다 (DSM 앨범 연동 예정).")
+          }
+          title="준비 중 — DSM 앨범 API 연동 후 활성화"
+          className="cursor-not-allowed rounded-lg border border-dashed border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-400"
         >
-          <span
-            className={`truncate text-xs ${
-              person.name ? "text-slate-700" : "italic text-slate-400"
-            }`}
-          >
-            {label}
-          </span>
-          <span className="shrink-0 text-[10px] text-slate-400">✏️</span>
+          ＋ 앨범 만들기
         </button>
-      )}
-      {!editing && person.item_count != null && (
-        <span className="-mt-1 text-[10px] text-slate-400">
-          {person.item_count.toLocaleString()}장
-        </span>
-      )}
+      </div>
+
+      <div className="flex min-h-0 flex-1 items-center justify-center p-6">
+        <div className="max-w-sm text-center">
+          <div className="mb-3 text-5xl">📔</div>
+          <h2 className="mb-1 text-base font-semibold text-slate-700">
+            내가 만드는 앨범
+          </h2>
+          <p className="text-sm leading-relaxed text-slate-500">
+            직접 고른 사진을 모아 앨범으로 만드는 기능을 준비하고 있습니다.
+            만든 앨범은 Synology Photos 앱에도 그대로 보입니다.
+          </p>
+          <p className="mt-3 text-xs text-slate-400">
+            사람·장소·비디오는 <b>사진</b> 메뉴의 렌즈로 옮겼습니다.
+          </p>
+        </div>
+      </div>
     </div>
   );
-}
-
-function GroupGrid({
-  space,
-  kind,
-  id,
-}: {
-  space: Space;
-  kind: "person";
-  id: string;
-}) {
-  const q = useQuery({
-    queryKey: ["album-items", space, kind, id],
-    queryFn: () => api.personItems(space, id),
-  });
-  const items = useMemo(
-    () => (q.data?.items ?? []).map((it) => ({ ...it, space })),
-    [q.data, space],
-  );
-  if (q.isPending)
-    return <p className="p-6 text-sm text-slate-400">불러오는 중…</p>;
-  if (items.length === 0)
-    return <p className="p-6 text-sm text-slate-400">사진이 없습니다.</p>;
-  return <UniformPhotoGrid items={items} space={space} />;
-}
-
-function VideosGrid({ space }: { space: Space }) {
-  const q = useQuery({
-    queryKey: ["videos", space],
-    queryFn: () => api.videos(space),
-    staleTime: 5 * 60_000,
-  });
-  const items = useMemo(
-    () => (q.data?.items ?? []).map((it) => ({ ...it, space })),
-    [q.data, space],
-  );
-  if (q.isPending)
-    return <p className="p-6 text-sm text-slate-400">불러오는 중…</p>;
-  if (items.length === 0)
-    return <p className="p-6 text-sm text-slate-400">비디오가 없습니다.</p>;
-  // 일자별 헤더 + 우측 날짜 스크러버(사진 뷰어 일 뷰와 동일 감상 형태).
-  return <DateGroupedGrid items={items} space={space} />;
 }

@@ -1,20 +1,12 @@
 import { useEffect, useState } from "react";
-import { useTimelineStore } from "../store/timeline";
+import { selectBackDepth, useTimelineStore } from "../store/timeline";
 
 /** 화면 탐색 편의: 뒤로/홈/최상단 버튼을 띄운다. 뒤로가기 트랩 자체는
  * useBackTrap(App 최상위, 로그인 게이팅 무관)이 담당한다. */
 export function NavControls() {
   const goHome = useTimelineStore((s) => s.goHome);
-  // canGoBack을 반응형으로: 관련 상태를 직접 구독.
-  const canBack = useTimelineStore((s) =>
-    Boolean(
-      s.lightboxId ||
-        s._backHandlers.length ||
-        s.groupId ||
-        (s.section === "viewer" && s.zoom !== "year") ||
-        s._navHistory.length,
-    ),
-  );
+  // canGoBack을 반응형으로: 뒤로 깊이 셀렉터를 직접 구독(단일 소스).
+  const canBack = useTimelineStore((s) => selectBackDepth(s) > 0);
 
   // --- 최상단 버튼: 내부 스크롤 컨테이너가 내려가 있으면 노출 ---
   const [scrolled, setScrolled] = useState(false);
