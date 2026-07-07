@@ -12,6 +12,7 @@ import { folderBasename } from "./FolderTree";
 export function FolderViewerGrid() {
   const librarySpace = useTimelineStore((s) => s.space);
   const registerBack = useTimelineStore((s) => s.registerBack);
+  const setScreenBackDepth = useTimelineStore((s) => s.setScreenBackDepth);
   const [path, setPath] = useState<PhotoFolder[]>([]);
   const current = path.length ? path[path.length - 1] : null;
 
@@ -20,6 +21,11 @@ export function FolderViewerGrid() {
     if (path.length === 0) return;
     return registerBack(() => setPath((p) => p.slice(0, -1)));
   }, [path.length, registerBack]);
+  // 뒤로 깊이 보고(히스토리 미러링용). 언마운트 시 0으로 리셋.
+  useEffect(() => {
+    setScreenBackDepth(path.length);
+  }, [path.length, setScreenBackDepth]);
+  useEffect(() => () => setScreenBackDepth(0), [setScreenBackDepth]);
 
   const subQuery = useQuery({
     queryKey: ["folders", current?.id ?? null],

@@ -56,12 +56,18 @@ export function PlacesRegionView({ space }: { space: Space }) {
   const [region, setRegion] = useState<RegionGroup | null>(null);
   const [mode, setMode] = useState<"regions" | "map">("regions");
   const registerBack = useTimelineStore((s) => s.registerBack);
+  const setScreenBackDepth = useTimelineStore((s) => s.setScreenBackDepth);
 
   // 지역 사진을 열었으면 "뒤로"가 지역 목록으로.
   useEffect(() => {
     if (!region) return;
     return registerBack(() => setRegion(null));
   }, [region, registerBack]);
+  // 뒤로 깊이 보고(히스토리 미러링용). 언마운트 시 0으로 리셋.
+  useEffect(() => {
+    setScreenBackDepth(region ? 1 : 0);
+  }, [region, setScreenBackDepth]);
+  useEffect(() => () => setScreenBackDepth(0), [setScreenBackDepth]);
 
   const q = useQuery({
     queryKey: ["places", space],

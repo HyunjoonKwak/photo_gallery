@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./api/client";
 import type { Space } from "./api/types";
 import { useAuthStore } from "./store/auth";
-import { useTimelineStore, type Section } from "./store/timeline";
+import { selectBackDepth, useTimelineStore, type Section } from "./store/timeline";
 import { useBackTrap } from "./hooks/useBackTrap";
 import { LoginForm } from "./components/LoginForm";
 import { ApiInfoPanel } from "./components/ApiInfoPanel";
@@ -296,7 +296,8 @@ function BuildBadge() {
       `build ${__BUILD_ID__}\n` +
         `history.length=${history.length}\n` +
         `sentinel=${sentinel}\n` +
-        `navHistory=${s._navHistory.length}\n` +
+        `backDepth=${selectBackDepth(s)}\n` +
+        `navHistory=${s._navHistory.length} screen=${s.screenBackDepth}\n` +
         `standalone=${window.matchMedia("(display-mode: standalone)").matches}\n` +
         `── 이벤트 로그 ──\n` +
         (log.slice(-12).join("\n") || "(없음)"),

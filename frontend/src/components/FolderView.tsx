@@ -216,6 +216,7 @@ export function FolderView() {
   // 뒤로가기: 폴더에 들어가 있으면 활성 페인을 한 단계 위로(브라우저 뒤로가기·
   // 화면 뒤로 버튼 공용). 최신 상태는 ref로 읽는다.
   const registerBack = useTimelineStore((s) => s.registerBack);
+  const setScreenBackDepth = useTimelineStore((s) => s.setScreenBackDepth);
   const navRef = useRef({ pathA, pathB, activePane, setPathA, setPathB });
   navRef.current = { pathA, pathB, activePane, setPathA, setPathB };
   const inFolder = pathA.length > 0 || pathB.length > 0;
@@ -231,6 +232,12 @@ export function FolderView() {
       else popB();
     });
   }, [inFolder, registerBack]);
+  // 뒤로 깊이 보고: 두 페인의 경로 깊이 합(각 단계가 한 번의 뒤로가기). 언마운트
+  // (폴더 분류를 떠남) 시 0으로 리셋해 히스토리 미러가 새지 않게 한다.
+  useEffect(() => {
+    setScreenBackDepth(pathA.length + pathB.length);
+  }, [pathA.length, pathB.length, setScreenBackDepth]);
+  useEffect(() => () => setScreenBackDepth(0), [setScreenBackDepth]);
 
   const activate = (pane: 0 | 1) => {
     if (pane !== activePane) {

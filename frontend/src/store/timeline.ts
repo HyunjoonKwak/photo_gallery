@@ -158,6 +158,12 @@ interface TimelineState {
   // "한 단계 위로" 핸들러를 등록한다. goBack이 우선순위대로 한 단계 되돌린다.
   _backHandlers: (() => void)[];
   registerBack: (fn: () => void) => () => void;
+  // 화면-로컬 드릴다운의 "되돌릴 단계 수"(폴더 경로 깊이·지역 열림 등). 마운트된
+  // 드릴 컴포넌트가 보고한다(동시에 하나만 마운트). 뒤로가기 히스토리 미러링이
+  // 이 수만큼 실제 history 항목을 쌓아, 안드로이드 Chrome이 센티넬을 건너뛰지
+  // 않게 한다(전진 탭 시점에 push → 사용자 활성 유효 → non-skippable).
+  screenBackDepth: number;
+  setScreenBackDepth: (n: number) => void;
   /** 한 단계 뒤로. 되돌릴 게 있으면 실행하고 true, 최상위면 false. */
   goBack: () => boolean;
   /** 뒤로 갈 곳이 있는지(브라우저 트랩·버튼 표시용). */
@@ -195,6 +201,20 @@ function withNav(
     _navHistory: [...s._navHistory, navSnapshot(s)].slice(-NAV_HISTORY_MAX),
     ...patch,
   };
+}
+
+/** 현재 화면에서 최상위(더 되돌릴 것 없음)까지 뒤로가기로 소비되는 "단계 수".
+ * goBack의 우선순위 분기(라이트박스→화면로컬→그룹→줌→영역히스토리)가 각각
+ * 한 단계씩 소비하므로, 그 합이 곧 이 값이다. useBackTrap이 이 수만큼 실제
+ * 브라우저 히스토리 항목을 유지해, 뒤로가기가 1:1로 정확히 매핑되게 한다. */
+export function selectBackDepth(s: TimelineState): number {
+  return (
+    (s.lightboxId ? 1 : 0) +
+    s.screenBackDepth +
+    (s.groupId ? 1 : 0) +
+    (s.section === "viewer" && s.zoom !== "year" ? 1 : 0) +
+    s._navHistory.length
+  );
 }
 
 function computePreview(
@@ -396,6 +416,9 @@ export const useTimelineStore = create<TimelineState>()((set, get) => ({
     return () =>
       set((s) => ({ _backHandlers: s._backHandlers.filter((h) => h !== fn) }));
   },
+  screenBackDepth: 0,
+  setScreenBackDepth: (n) =>
+    set((s) => (s.screenBackDepth === n ? {} : { screenBackDepth: n })),
   goBack: () => {
     const s = get();
     // 우선순위(깊은 것부터): 라이트박스 → 화면 내 드릴(폴더/장소) → 앨범 그룹
