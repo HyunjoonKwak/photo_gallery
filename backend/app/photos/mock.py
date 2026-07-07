@@ -337,6 +337,10 @@ class MockPhotoSource:
         return out
 
     def _folder_by_id(self, folder_id: str) -> PhotoFolder:
+        # "root:<space>" = 그 공간의 최상위(분할 뷰 루트 대상). 합성 폴더로 취급.
+        if folder_id.startswith("root:"):
+            space = folder_id.split(":", 1)[1]
+            return PhotoFolder(id=folder_id, name="", space=space, parent_id=None)
         for f in self._all_folders():
             if f.id == folder_id:
                 return f
@@ -777,6 +781,8 @@ class MockPhotoSource:
         taken = {f.name for f in self._all_folders()}
         names: list[str] = []
         undo: list[dict] = []
+        # 루트 대상은 접두어 없이 최상위 이름. (dest.name == "" → "base")
+        join = lambda base: base if not dest.name else f"{dest.name}/{base}"
         for fid in folder_ids:
             if fid == dest_folder_id:
                 raise HTTPException(
@@ -785,7 +791,13 @@ class MockPhotoSource:
                 )
             f = self._folder_by_id(fid)
             base = f.name.split("/")[-1]
-            target = f"{dest.name}/{base}"
+            # 이미 대상 바로 아래(루트면 최상위)면 이동은 no-op — 자기 자신과의
+            # 이름 충돌을 피한다(DSM move_folders의 동일 가드와 대응).
+            parent = f.name.rsplit("/", 1)[0] if "/" in f.name else ""
+            if parent == dest.name and not copy:
+                names.append(base)
+                continue
+            target = join(base)
             if target in taken:
                 if conflict_strategy == "merge":
                     self._merge_mock(f, target, copy, undo)
@@ -794,10 +806,10 @@ class MockPhotoSource:
                 if conflict_strategy != "rename":
                     continue  # skip
                 n = 1
-                while f"{dest.name}/{base}_{n}" in taken:
+                while join(f"{base}_{n}") in taken:
                     n += 1
                 base = f"{base}_{n}"
-                target = f"{dest.name}/{base}"
+                target = join(base)
             taken.add(target)
             names.append(base)
             if copy:
@@ -956,7 +968,8 @@ class MockPhotoSource:
     ) -> MoveOutcome:
         # space is ignored: the mock encodes the space in each item id.
         dest = self._folder_by_id(dest_folder_id)
-        outcome = MoveOutcome(dest_space=dest.space, dest_name=dest.name)
+        dest_name = "최상위" if dest_folder_id.startswith("root:") else dest.name
+        outcome = MoveOutcome(dest_space=dest.space, dest_name=dest_name)
         affected: set[tuple[str, str]] = set()
         existing = self._folder_filenames(dest.id)
         taken = set(existing)

@@ -20,6 +20,7 @@ function DualActions({
   folderSel,
   onFoldersDone,
   sourceArea,
+  destArea,
 }: {
   activePane: 0 | 1;
   sourceCurrent: PhotoFolder | null;
@@ -29,6 +30,8 @@ function DualActions({
   onFoldersDone: () => void;
   /** 소스(활성) 페인의 영역 — 이동은 이 스코프로(예 1차구역 소스). */
   sourceArea: AreaScope;
+  /** 대상(비활성) 페인의 영역 — 대상 페인이 루트일 때 이 영역의 최상위로 보낸다. */
+  destArea: AreaScope;
 }) {
   const selected = useTimelineStore((s) => s.selected);
   const ops = useFileOps();
@@ -37,17 +40,29 @@ function DualActions({
   const folderMode = nf > 0;
   const arrow = activePane === 0 ? "→" : "←";
   const sameFolder = destCurrent != null && destCurrent.id === sourceCurrent?.id;
+  // 대상 페인이 루트일 때: 개인/공용 최상위로 보낼 수 있다(1차 백업→2차 정리).
+  // 1차 구역·타인 라이브러리 루트는 대상으로 지원하지 않는다(경로 해석 범위 밖).
+  const rootDestOk = !destArea.zone && !destArea.targetUser;
+  const rootDestId = `root:${destArea.space}`;
+  // 대상 = 열린 폴더면 그 id, 아니면(루트) 영역 최상위 sentinel.
+  const destId = destCurrent ? destCurrent.id : rootDestOk ? rootDestId : null;
   const canTransfer = folderMode
-    ? destCurrent != null && !folderSel.has(destCurrent.id) && !ops.isBusy
-    : n > 0 && destCurrent != null && !sameFolder && !ops.isBusy;
-  const destName = destCurrent ? folderBasename(destCurrent.name) : "반대쪽 폴더";
+    ? destId != null &&
+      (destCurrent == null || !folderSel.has(destCurrent.id)) &&
+      !ops.isBusy
+    : n > 0 && destId != null && !sameFolder && !ops.isBusy;
+  const destName = destCurrent
+    ? folderBasename(destCurrent.name)
+    : rootDestOk
+      ? "최상위"
+      : "반대쪽 폴더";
 
   const transferFolders = (copy: boolean) => {
     const folders = [...folderSel.values()];
     ops.moveFolders(
       folders[0].space,
       folders.map((f) => f.id),
-      destCurrent!.id,
+      destId!,
       copy,
       onFoldersDone,
       sourceArea, // 소스 페인 영역 스코프(1차구역 등)로 이동
@@ -56,8 +71,7 @@ function DualActions({
 
   // 사진 이동/복사: 충돌은 백엔드가 409로 알려 전역 다이얼로그가 처리한다
   // (ConflictDialogHost) — 여기선 그냥 이동을 호출한다.
-  const transferPhotos = (copy: boolean) =>
-    ops.move([...selected], destCurrent!.id, copy);
+  const transferPhotos = (copy: boolean) => ops.move([...selected], destId!, copy);
 
   const btn =
     "flex flex-col items-center gap-0.5 rounded-lg px-2 py-2 text-[11px] font-medium transition-colors disabled:opacity-30 lg:w-full";
@@ -74,9 +88,9 @@ function DualActions({
         onClick={() => (folderMode ? transferFolders(false) : transferPhotos(false))}
         disabled={!canTransfer}
         title={
-          destCurrent
+          destId
             ? `${destName}(으)로 ${folderMode ? "폴더째 " : ""}이동`
-            : "반대쪽 페인에서 폴더를 여세요"
+            : "반대쪽 페인에서 폴더를 열거나 개인/공용을 선택하세요"
         }
         className={`${btn} text-slate-600 enabled:hover:bg-blue-100 enabled:hover:text-blue-700`}
       >
@@ -87,9 +101,9 @@ function DualActions({
         onClick={() => (folderMode ? transferFolders(true) : transferPhotos(true))}
         disabled={!canTransfer}
         title={
-          destCurrent
+          destId
             ? `${destName}(으)로 ${folderMode ? "폴더째 " : ""}복사`
-            : "반대쪽 페인에서 폴더를 여세요"
+            : "반대쪽 페인에서 폴더를 열거나 개인/공용을 선택하세요"
         }
         className={`${btn} text-slate-600 enabled:hover:bg-blue-100 enabled:hover:text-blue-700`}
       >
@@ -384,6 +398,7 @@ export function FolderView() {
             folderSel={folderSel}
             onFoldersDone={clearFolderSel}
             sourceArea={activePane === 0 ? areaA : areaB}
+            destArea={activePane === 0 ? areaB : areaA}
           />
           <section
             className={`flex min-h-0 min-w-0 flex-1 flex-col ${

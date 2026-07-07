@@ -1211,7 +1211,15 @@ class DsmPhotoSource:
         return meta[0]
 
     async def _dest_dir(self, dest_folder_id: str) -> tuple[str, str]:
-        """dest folder id → (absolute dir path, space) via the metadata cache."""
+        """dest folder id → (absolute dir path, space).
+
+        `"root:<space>"`(예 root:personal)은 그 공간의 **최상위**를 뜻한다 —
+        분할 뷰에서 대상 페인이 루트일 때 1차 폴더를 개인/공용 최상위로 옮기는
+        경로. 그 외에는 메타 캐시에서 경로형 id를 해석한다."""
+        if dest_folder_id.startswith("root:"):
+            space = dest_folder_id.split(":", 1)[1]
+            prefix = self._share_prefix(space)
+            return prefix.replace("//", "/").rstrip("/") or prefix, space
         meta = _FOLDER_META.get(self._sid, {}).get(dest_folder_id)
         if meta is None:
             raise DsmError(100, "대상 폴더를 먼저 탐색해야 합니다 (경로 캐시 없음).")
@@ -1264,7 +1272,11 @@ class DsmPhotoSource:
     ) -> MoveOutcome:
         metas = await self._item_meta(space, item_ids)
         dest_dir, dest_space = await self._dest_dir(dest_folder_id)
-        dest_name = _FOLDER_META.get(self._sid, {}).get(dest_folder_id, (dest_space, ""))[1]
+        dest_name = (
+            "최상위"
+            if dest_folder_id.startswith("root:")
+            else _FOLDER_META.get(self._sid, {}).get(dest_folder_id, (dest_space, ""))[1]
+        )
         outcome = MoveOutcome(dest_space=dest_space, dest_name=dest_name)
         affected: set[tuple[str, str]] = set()
 

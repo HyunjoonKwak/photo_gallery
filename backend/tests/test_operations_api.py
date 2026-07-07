@@ -71,6 +71,37 @@ def test_undo_move_restores_prior_location(client):
     assert client.post(f"/api/ops/{op['operation_id']}/undo").status_code == 409
 
 
+def test_move_photos_to_area_root(client):
+    """분할 뷰 루트 대상: dest_folder_id='root:<space>' → 그 공간 최상위로 이동."""
+    day, items = _first_day_items(client, space="team")
+    item_id = items[0]["id"]
+    resp = client.post(
+        "/api/photos/ops/move",
+        json={"item_ids": [item_id], "dest_folder_id": "root:team", "copy_mode": False},
+    )
+    assert resp.status_code == 200, resp.text
+    assert "최상위" in resp.json()["summary"]
+
+
+def test_move_folder_to_area_root(client):
+    """폴더째 루트 대상 — 최상위로 이동(에러 없이 처리)."""
+    # 중첩 데모 폴더를 최상위로 끌어올린다(자기 자신과 충돌하지 않게 nested 선택).
+    folders = client.get("/api/photos/folders").json()["folders"]
+    nested = next((f for f in folders if "/" in f["name"]), None)
+    if nested is None:  # 데모 시드가 없으면 top-level을 root로(= no-op 성공 경로)
+        nested = next(f for f in folders if f["space"] == "team")
+    resp = client.post(
+        "/api/photos/ops/move-folders",
+        json={
+            "space": nested["space"],
+            "folder_ids": [nested["id"]],
+            "dest_folder_id": f"root:{nested['space']}",
+            "copy_mode": False,
+        },
+    )
+    assert resp.status_code == 200, resp.text
+
+
 def test_cross_space_move_switches_timelines(client):
     day, items = _first_day_items(client, space="personal")
     item_id = items[0]["id"]
