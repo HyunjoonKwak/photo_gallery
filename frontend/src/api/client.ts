@@ -146,10 +146,26 @@ export const api = {
         limit ? `&limit=${limit}` : ""
       }${scopeQSFor(area)}`,
     ),
-  folderCounts: (ids: string[], area?: AreaScope) =>
-    request<FolderCountsResponse>(
-      `/api/photos/folder-counts?ids=${encodeURIComponent(ids.join(","))}${scopeQSFor(area)}`,
-    ),
+  // 1차 구역 폴더 id는 긴 경로라, 하위폴더가 수십~수백 개면 ids를 한 URL에 다
+  // 담으면 URL이 수십 KB가 되어 프록시(NPM)/서버 한계(414)로 거부돼 카운트가
+  // 안 뜬다. 작은 배치로 쪼개 병렬 요청 후 병합한다.
+  folderCounts: async (
+    ids: string[],
+    area?: AreaScope,
+  ): Promise<FolderCountsResponse> => {
+    const CHUNK = 20;
+    const batches: string[][] = [];
+    for (let i = 0; i < ids.length; i += CHUNK)
+      batches.push(ids.slice(i, i + CHUNK));
+    const parts = await Promise.all(
+      batches.map((b) =>
+        request<FolderCountsResponse>(
+          `/api/photos/folder-counts?ids=${encodeURIComponent(b.join(","))}${scopeQSFor(area)}`,
+        ),
+      ),
+    );
+    return { counts: Object.assign({}, ...parts.map((p) => p.counts)) };
+  },
   searchPhotos: (space: Space, q: string) =>
     request<BucketItemsResponse>(
       `/api/photos/search?space=${space}&q=${encodeURIComponent(q)}${scopeQS()}`,
