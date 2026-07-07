@@ -5,12 +5,14 @@
  */
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "../api/client";
+import { api, type AreaScope } from "../api/client";
 import type {
   ConflictStrategy,
+  CreateFolderRequest,
   EmptiedFolder,
   MoveFoldersRequest,
   OperationResponse,
+  RemoveFolderRequest,
   Space,
 } from "../api/types";
 import { useConflictStore, conflictInfoOf } from "../store/conflict";
@@ -179,7 +181,10 @@ export function useFileOps() {
     onError,
   });
   const mkdirMutation = useMutation({
-    mutationFn: api.createFolder,
+    mutationFn: (vars: CreateFolderRequest & { _area?: AreaScope }) => {
+      const { _area, ...body } = vars;
+      return api.createFolder(body, _area);
+    },
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ["folders"] });
       queryClient.invalidateQueries({ queryKey: ["ops"] });
@@ -199,7 +204,10 @@ export function useFileOps() {
   });
 
   const moveFoldersMutation = useMutation({
-    mutationFn: api.moveFolders,
+    mutationFn: (vars: MoveFoldersRequest & { _area?: AreaScope }) => {
+      const { _area, ...body } = vars;
+      return api.moveFolders(body, _area);
+    },
     onSuccess: (res) => {
       // 폴더 구조가 통째로 바뀜 — 폴더/사진 캐시 광범위 무효화.
       queryClient.invalidateQueries({ queryKey: ["folders"] });
@@ -230,7 +238,11 @@ export function useFileOps() {
           // 완전 일치 이동 → 선택한 원본 폴더들을 순차로 휴지통으로(대상에 이미
           // 다 있으므로 이동이 아니라 원본 정리). 여러 폴더 모두 처리한다.
           if (strategy === "purge_source") {
-            void purgeSourceFolders(variables.space, variables.folder_ids);
+            void purgeSourceFolders(
+              variables.space,
+              variables.folder_ids,
+              variables._area,
+            );
             return;
           }
           const p = startProgress(variables.copy_mode ? "폴더 복사" : "폴더 이동");
@@ -249,7 +261,11 @@ export function useFileOps() {
 
   // 완전 일치한 원본 폴더들을 하나씩 순차로 휴지통으로 이동(재귀 삭제 경로 재사용
   // — 되돌리기 가능). 순차 실행이라 실 NAS의 FileStation 태스크가 겹치지 않는다.
-  const purgeSourceFolders = async (space: Space, folderIds: string[]) => {
+  const purgeSourceFolders = async (
+    space: Space,
+    folderIds: string[],
+    area?: AreaScope,
+  ) => {
     for (const folderId of folderIds) {
       try {
         await rmdirMutation.mutateAsync({
@@ -257,6 +273,7 @@ export function useFileOps() {
           folder_id: folderId,
           recursive: true,
           target_user: targetUser(),
+          _area: area,
         });
       } catch {
         // 개별 실패는 rmdirMutation.onError가 토스트로 알림 — 나머지는 계속.
@@ -265,7 +282,10 @@ export function useFileOps() {
   };
 
   const rmdirMutation = useMutation({
-    mutationFn: api.removeFolder,
+    mutationFn: (vars: RemoveFolderRequest & { _area?: AreaScope }) => {
+      const { _area, ...body } = vars;
+      return api.removeFolder(body, _area);
+    },
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ["folders"] });
       queryClient.invalidateQueries({ queryKey: ["ops"] });
@@ -329,12 +349,18 @@ export function useFileOps() {
         { onSuccess: () => onSuccess?.(), onSettled: p.stop },
       );
     },
-    createFolder: (space: Space, name: string, parentId?: string) =>
+    createFolder: (
+      space: Space,
+      name: string,
+      parentId?: string,
+      area?: AreaScope,
+    ) =>
       mkdirMutation.mutate({
         space,
         name,
         parent_id: parentId,
         target_user: targetUser(),
+        _area: area,
       }),
     moveFolders: (
       space: Space,
@@ -342,6 +368,7 @@ export function useFileOps() {
       destFolderId: string,
       copyMode: boolean,
       onSuccess?: () => void,
+      area?: AreaScope,
     ) => {
       const p = startProgress(copyMode ? "폴더 복사" : "폴더 이동");
       moveFoldersMutation.mutate(
@@ -352,6 +379,7 @@ export function useFileOps() {
           copy_mode: copyMode,
           target_user: targetUser(),
           progress_key: p.key,
+          _area: area,
         },
         { onSuccess: () => onSuccess?.(), onSettled: p.stop },
       );
@@ -361,9 +389,16 @@ export function useFileOps() {
       folderId: string,
       recursive: boolean,
       onSuccess?: () => void,
+      area?: AreaScope,
     ) =>
       rmdirMutation.mutate(
-        { space, folder_id: folderId, recursive, target_user: targetUser() },
+        {
+          space,
+          folder_id: folderId,
+          recursive,
+          target_user: targetUser(),
+          _area: area,
+        },
         { onSuccess: () => onSuccess?.() },
       ),
     undo: runUndo,

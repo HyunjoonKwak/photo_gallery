@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { useTimelineStore } from "../store/timeline";
 import { useFileOps } from "../hooks/useFileOps";
 import { useResizableWidth } from "../hooks/useResizableWidth";
+import { type AreaScope } from "../api/client";
 import type { PhotoFolder } from "../api/types";
 import { FolderPane } from "./FolderPane";
+import { PaneAreaSelector } from "./PaneAreaSelector";
 import { TreeSection, folderBasename } from "./FolderTree";
 
 /** Center action bar of the dual-pane mode: move/copy the active pane's
@@ -17,6 +19,7 @@ function DualActions({
   destCurrent,
   folderSel,
   onFoldersDone,
+  sourceArea,
 }: {
   activePane: 0 | 1;
   sourceCurrent: PhotoFolder | null;
@@ -24,6 +27,8 @@ function DualActions({
   /** 활성 페인에서 ✓ 체크된 폴더들 — 있으면 버튼이 폴더 모드로 동작. */
   folderSel: Map<string, PhotoFolder>;
   onFoldersDone: () => void;
+  /** 소스(활성) 페인의 영역 — 이동은 이 스코프로(예 1차구역 소스). */
+  sourceArea: AreaScope;
 }) {
   const selected = useTimelineStore((s) => s.selected);
   const ops = useFileOps();
@@ -45,6 +50,7 @@ function DualActions({
       destCurrent!.id,
       copy,
       onFoldersDone,
+      sourceArea, // 소스 페인 영역 스코프(1차구역 등)로 이동
     );
   };
 
@@ -158,12 +164,38 @@ export function FolderView() {
   const viewedOwner = useTimelineStore((s) => s.viewedOwner);
   const activeZone = useTimelineStore((s) => s.activeZone);
   const activeZoneId = activeZone?.id ?? null;
+  const globalSpace = useTimelineStore((s) => s.space);
+
+  // 전역 라이브러리 선택 → 각 페인의 기본 영역. 분할 뷰에서 페인별로 바꿔
+  // 영역 간(예 1차구역→내사진) 폴더 이동을 할 수 있다.
+  const globalArea: AreaScope = activeZone
+    ? { space: "personal", zone: activeZone.id }
+    : viewedOwner
+      ? { space: "personal", targetUser: viewedOwner }
+      : { space: globalSpace };
+  const [areaA, setAreaA] = useState<AreaScope>(globalArea);
+  const [areaB, setAreaB] = useState<AreaScope>(globalArea);
+  const areaKeyA = `${areaA.space}:${areaA.zone ?? ""}:${areaA.targetUser ?? ""}`;
+  const areaKeyB = `${areaB.space}:${areaB.zone ?? ""}:${areaB.targetUser ?? ""}`;
+
+  // 전역 라이브러리가 바뀌면 두 페인을 그 영역으로 리셋(경로/선택도).
   useEffect(() => {
     setPathA([]);
     setPathB([]);
     setActivePane(0);
     setFolderSel(new Map());
-  }, [viewedOwner, activeZoneId]);
+    setAreaA(globalArea);
+    setAreaB(globalArea);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewedOwner, activeZoneId, globalSpace]);
+
+  // 페인 영역을 바꾸면 그 페인 경로를 루트로.
+  useEffect(() => {
+    setPathA([]);
+  }, [areaKeyA]);
+  useEffect(() => {
+    setPathB([]);
+  }, [areaKeyB]);
 
   // Cross-view jump (e.g. timeline's folder panel): open the requested folder
   // in pane A and make it the active pane.
@@ -316,21 +348,27 @@ export function FolderView() {
       {dual && (
         <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
           <section
-            className={`flex min-h-0 min-w-0 flex-1 ${
+            className={`flex min-h-0 min-w-0 flex-1 flex-col ${
               activePane === 0 ? "" : "opacity-95"
             }`}
           >
-            <FolderPane
-              path={pathA}
-              onPathChange={changePathA}
-              active={activePane === 0}
-              onActivate={() => activate(0)}
-              dndPrefix="a-"
-              dropTarget={activePane !== 0}
-              checkedFolderIds={new Set(folderSel.keys())}
-              onToggleFolderCheck={toggleFolderCheck}
-              onToggleAllFolders={toggleAllFolders}
-            />
+            <div className="flex shrink-0 items-center gap-2 border-b border-slate-100 bg-white px-2 py-1">
+              <PaneAreaSelector area={areaA} onChange={setAreaA} />
+            </div>
+            <div className="flex min-h-0 flex-1">
+              <FolderPane
+                path={pathA}
+                onPathChange={changePathA}
+                active={activePane === 0}
+                onActivate={() => activate(0)}
+                dndPrefix="a-"
+                dropTarget={activePane !== 0}
+                checkedFolderIds={new Set(folderSel.keys())}
+                onToggleFolderCheck={toggleFolderCheck}
+                onToggleAllFolders={toggleAllFolders}
+                area={areaA}
+              />
+            </div>
           </section>
           <DualActions
             activePane={activePane}
@@ -338,23 +376,30 @@ export function FolderView() {
             destCurrent={inactiveCurrent}
             folderSel={folderSel}
             onFoldersDone={clearFolderSel}
+            sourceArea={activePane === 0 ? areaA : areaB}
           />
           <section
-            className={`flex min-h-0 min-w-0 flex-1 ${
+            className={`flex min-h-0 min-w-0 flex-1 flex-col ${
               activePane === 1 ? "" : "opacity-95"
             }`}
           >
-            <FolderPane
-              path={pathB}
-              onPathChange={changePathB}
-              active={activePane === 1}
-              onActivate={() => activate(1)}
-              dndPrefix="b-"
-              dropTarget={activePane !== 1}
-              checkedFolderIds={new Set(folderSel.keys())}
-              onToggleFolderCheck={toggleFolderCheck}
-              onToggleAllFolders={toggleAllFolders}
-            />
+            <div className="flex shrink-0 items-center gap-2 border-b border-slate-100 bg-white px-2 py-1">
+              <PaneAreaSelector area={areaB} onChange={setAreaB} />
+            </div>
+            <div className="flex min-h-0 flex-1">
+              <FolderPane
+                path={pathB}
+                onPathChange={changePathB}
+                active={activePane === 1}
+                onActivate={() => activate(1)}
+                dndPrefix="b-"
+                dropTarget={activePane !== 1}
+                checkedFolderIds={new Set(folderSel.keys())}
+                onToggleFolderCheck={toggleFolderCheck}
+                onToggleAllFolders={toggleAllFolders}
+                area={areaB}
+              />
+            </div>
           </section>
         </div>
       )}

@@ -46,6 +46,21 @@ function scopeQS(prefix: "&" | "?" = "&"): string {
   return "";
 }
 
+/** 명시적 영역(분할 뷰 페인별). space는 최상위 필터·라벨용, zone/targetUser가
+ * 있으면 그 스코프로 보낸다. 넘기지 않으면 전역 scopeQS로 폴백. */
+export interface AreaScope {
+  space: Space;
+  zone?: string | null;
+  targetUser?: string | null;
+}
+function scopeQSFor(area: AreaScope | undefined, prefix: "&" | "?" = "&"): string {
+  if (!area) return scopeQS(prefix);
+  if (area.zone) return `${prefix}zone=${encodeURIComponent(area.zone)}`;
+  if (area.targetUser)
+    return `${prefix}target_user=${encodeURIComponent(area.targetUser)}`;
+  return ""; // 공용/내사진(라이브러리) — 스코프 파라미터 없음
+}
+
 /** Error carrying the backend's friendly message + HTTP status. */
 export class ApiError extends Error {
   status: number;
@@ -117,21 +132,21 @@ export const api = {
     request<BucketItemsResponse>(
       `/api/photos/items?space=${space}&day=${day}${scopeQS()}`,
     ),
-  folders: (parentId?: string) =>
+  folders: (parentId?: string, area?: AreaScope) =>
     request<FoldersResponse>(
       parentId
-        ? `/api/photos/folders?parent_id=${encodeURIComponent(parentId)}${scopeQS()}`
-        : `/api/photos/folders${scopeQS("?")}`,
+        ? `/api/photos/folders?parent_id=${encodeURIComponent(parentId)}${scopeQSFor(area)}`
+        : `/api/photos/folders${scopeQSFor(area, "?")}`,
     ),
-  folderItems: (folderId: string, limit?: number) =>
+  folderItems: (folderId: string, limit?: number, area?: AreaScope) =>
     request<BucketItemsResponse>(
       `/api/photos/folder-items?folder_id=${encodeURIComponent(folderId)}${
         limit ? `&limit=${limit}` : ""
-      }${scopeQS()}`,
+      }${scopeQSFor(area)}`,
     ),
-  folderCounts: (ids: string[]) =>
+  folderCounts: (ids: string[], area?: AreaScope) =>
     request<FolderCountsResponse>(
-      `/api/photos/folder-counts?ids=${encodeURIComponent(ids.join(","))}${scopeQS()}`,
+      `/api/photos/folder-counts?ids=${encodeURIComponent(ids.join(","))}${scopeQSFor(area)}`,
     ),
   searchPhotos: (space: Space, q: string) =>
     request<BucketItemsResponse>(
@@ -184,21 +199,27 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
-  createFolder: (body: CreateFolderRequest) =>
-    request<OperationResponse>(`/api/photos/folders${scopeQS("?")}`, {
+  createFolder: (body: CreateFolderRequest, area?: AreaScope) =>
+    request<OperationResponse>(`/api/photos/folders${scopeQSFor(area, "?")}`, {
       method: "POST",
       body: JSON.stringify(body),
     }),
-  moveFolders: (body: MoveFoldersRequest) =>
-    request<OperationResponse>(`/api/photos/ops/move-folders${scopeQS("?")}`, {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
-  removeFolder: (body: RemoveFolderRequest) =>
-    request<OperationResponse>(`/api/photos/folders/delete${scopeQS("?")}`, {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
+  moveFolders: (body: MoveFoldersRequest, area?: AreaScope) =>
+    request<OperationResponse>(
+      `/api/photos/ops/move-folders${scopeQSFor(area, "?")}`,
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      },
+    ),
+  removeFolder: (body: RemoveFolderRequest, area?: AreaScope) =>
+    request<OperationResponse>(
+      `/api/photos/folders/delete${scopeQSFor(area, "?")}`,
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      },
+    ),
   listOps: () => request<OperationsResponse>("/api/ops"),
   undoOp: (opId: number, progressKey?: string) => {
     // undo도 현재 스코프(zone/owner)를 실어 보낸다 — zone 이동의 되돌리기는

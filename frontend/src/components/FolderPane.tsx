@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useDroppable } from "@dnd-kit/core";
-import { api } from "../api/client";
+import { api, type AreaScope } from "../api/client";
 import type { PhotoFolder } from "../api/types";
 import { layoutBucket } from "../lib/rowModel";
 import { useFileOps } from "../hooks/useFileOps";
@@ -168,6 +168,10 @@ export interface FolderPaneProps {
   onToggleFolderCheck?: (f: PhotoFolder) => void;
   /** 현재 페인의 하위 폴더 전체 선택/해제 (분할 뷰 모두 선택 버튼). */
   onToggleAllFolders?: (folders: PhotoFolder[], on: boolean) => void;
+  /** 페인별 영역(분할 뷰 영역 간 이동). 미전달 시 전역 스코프 사용. 조회·
+   * 생성·삭제가 이 영역 스코프로 나가고, 쿼리 키에도 반영돼 페인 간 캐시가
+   * 섞이지 않는다. */
+  area?: AreaScope;
 }
 
 /** One Finder-style folder pane: breadcrumb + sub-folder cards (drill-in) +
@@ -184,7 +188,12 @@ export function FolderPane({
   checkedFolderIds,
   onToggleFolderCheck,
   onToggleAllFolders,
+  area,
 }: FolderPaneProps) {
+  // 페인별 캐시 분리용 키(영역별 폴더 목록이 섞이지 않게).
+  const areaKey = area
+    ? `${area.space}:${area.zone ?? ""}:${area.targetUser ?? ""}`
+    : "global";
   const current = path.length ? path[path.length - 1] : null;
   const setOrdered = useTimelineStore((s) => s.setOrdered);
   const ops = useFileOps();
@@ -201,8 +210,14 @@ export function FolderPane({
     );
     if (!name?.trim()) return;
     const store = useTimelineStore.getState();
-    const space = current?.space ?? (store.viewedOwner ? "personal" : store.space);
-    ops.createFolder(space, name.trim(), current?.id);
+    const space =
+      current?.space ??
+      (area
+        ? librarySpace
+        : store.viewedOwner
+          ? "personal"
+          : store.space);
+    ops.createFolder(space, name.trim(), current?.id, area);
   };
 
   // 폴더 삭제: 비어 있으면 바로 삭제, 사진·하위 폴더가 있으면 확인 후 통째로
@@ -214,8 +229,12 @@ export function FolderPane({
     const hasContent = items.length > 0 || subFolders.length > 0;
     if (!hasContent) {
       if (!window.confirm(`빈 폴더 '${name}'을(를) 삭제할까요?`)) return;
-      ops.removeFolder(current.space, current.id, false, () =>
-        onPathChange(path.slice(0, -1)),
+      ops.removeFolder(
+        current.space,
+        current.id,
+        false,
+        () => onPathChange(path.slice(0, -1)),
+        area,
       );
       return;
     }
@@ -231,8 +250,12 @@ export function FolderPane({
       )
     )
       return;
-    ops.removeFolder(current.space, current.id, true, () =>
-      onPathChange(path.slice(0, -1)),
+    ops.removeFolder(
+      current.space,
+      current.id,
+      true,
+      () => onPathChange(path.slice(0, -1)),
+      area,
     );
   };
 
@@ -240,12 +263,18 @@ export function FolderPane({
   // library's top folders show (라이브러리 셀렉터 스코프) — mixing both
   // spaces there was confusing; the other library stays reachable via the
   // collapsed tree section on the left.
-  const librarySpace = useTimelineStore((s) =>
+  const globalLibrarySpace = useTimelineStore((s) =>
     s.viewedOwner || s.activeZone ? "personal" : s.space,
   );
+  // 페인별 영역이 있으면 그 영역의 space로 최상위를 필터(zone/타인은 personal).
+  const librarySpace = area
+    ? area.zone || area.targetUser
+      ? "personal"
+      : area.space
+    : globalLibrarySpace;
   const subQuery = useQuery({
-    queryKey: ["folders", current?.id ?? null],
-    queryFn: () => api.folders(current?.id),
+    queryKey: ["folders", areaKey, current?.id ?? null],
+    queryFn: () => api.folders(current?.id, area),
   });
   const subFolders = (subQuery.data?.folders ?? []).filter(
     (f) => current != null || f.space === librarySpace,
@@ -255,8 +284,8 @@ export function FolderPane({
   // request per level; failures just hide the badge.
   const countIds = useMemo(() => subFolders.map((f) => f.id), [subFolders]);
   const countsQuery = useQuery({
-    queryKey: ["folder-counts", countIds.join(",")],
-    queryFn: () => api.folderCounts(countIds),
+    queryKey: ["folder-counts", areaKey, countIds.join(",")],
+    queryFn: () => api.folderCounts(countIds, area),
     enabled: countIds.length > 0,
     staleTime: 30_000,
   });
@@ -269,8 +298,8 @@ export function FolderPane({
   // the pane's space so thumbnails/ops use the right namespace even when the
   // global scope differs (e.g. personal folder while scope is team).
   const itemsQuery = useQuery({
-    queryKey: ["folder-items", current?.id],
-    queryFn: () => api.folderItems(current!.id),
+    queryKey: ["folder-items", areaKey, current?.id],
+    queryFn: () => api.folderItems(current!.id, undefined, area),
     enabled: current != null,
   });
   const items = useMemo(
