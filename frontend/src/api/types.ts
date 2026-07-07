@@ -104,6 +104,25 @@ export interface PlacesResponse {
   places: PlaceInfo[];
 }
 
+/** 사용자 큐레이션 앨범(Synology NormalAlbum, 개인 공간 전용). */
+export interface AlbumInfo {
+  id: string;
+  name: string;
+  item_count: number | null;
+  cover_item_id: string | null;
+  cover_cache_key: string | null;
+  shared: boolean;
+}
+
+export interface AlbumsResponse {
+  albums: AlbumInfo[];
+}
+
+export interface AlbumMutationResponse {
+  album: AlbumInfo | null;
+  added: number;
+}
+
 /** 라이트박스 정보 패널용 온디맨드 상세 (폴더 경로/EXIF/촬영 위치). */
 export interface ItemDetail {
   id: string;

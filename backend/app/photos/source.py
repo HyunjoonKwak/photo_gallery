@@ -15,6 +15,7 @@ from typing import Protocol
 
 from ..progress import ProgressFn
 from ..schemas import (
+    AlbumInfo,
     ItemDetail,
     MemberInfo,
     PersonInfo,
@@ -132,6 +133,35 @@ class PhotoSource(Protocol):
     async def videos(self, space: str) -> list[PhotoItem]:
         """All videos in a space (앨범 · 비디오), newest first — the library-wide
         video collection the timeline/folder filters can't produce cheaply."""
+        ...
+
+    # ---- User albums (SYNO.Foto.Browse.NormalAlbum) — 개인 공간 전용 ----
+    # 앨범은 로그인 사용자 본인의 개인 앨범이며 공유(FotoTeam) 앨범 API는 없다
+    # (2026-07-07 실 NAS 프로브). space 인자는 인터페이스 일관성용이며 구현은
+    # personal만 의미가 있다(team은 빈 목록/미지원).
+
+    async def albums(self, space: str) -> list[AlbumInfo]:
+        """User-curated albums, newest first."""
+        ...
+
+    async def album_items(self, space: str, album_id: str) -> list[PhotoItem]:
+        """All items in an album."""
+        ...
+
+    async def create_album(
+        self, space: str, name: str, item_ids: list[str]
+    ) -> AlbumInfo:
+        """Create a normal album (optionally seeded with items). Returns it."""
+        ...
+
+    async def add_to_album(
+        self, space: str, album_id: str, item_ids: list[str]
+    ) -> int:
+        """Add items to an album. Returns how many were added."""
+        ...
+
+    async def delete_album(self, space: str, album_id: str) -> None:
+        """Delete an album (the photos themselves are untouched)."""
         ...
 
     async def members(self) -> list[MemberInfo]:

@@ -21,6 +21,8 @@ import type {
   NamePersonResponse,
   PersonsResponse,
   PlacesResponse,
+  AlbumsResponse,
+  AlbumMutationResponse,
   ProgressResponse,
   RemoveFolderRequest,
   Space,
@@ -181,6 +183,27 @@ export const api = {
     ),
   videos: (space: Space) =>
     request<BucketItemsResponse>(`/api/photos/videos?space=${space}${scopeQS()}`),
+  // 앨범은 개인 공간 전용(scopeQS/target_user 없음).
+  albums: () => request<AlbumsResponse>(`/api/photos/albums`),
+  albumItems: (id: string) =>
+    request<BucketItemsResponse>(
+      `/api/photos/album-items?id=${encodeURIComponent(id)}`,
+    ),
+  createAlbum: (name: string, itemIds: string[] = []) =>
+    request<AlbumMutationResponse>(`/api/photos/albums`, {
+      method: "POST",
+      body: JSON.stringify({ name, item_ids: itemIds }),
+    }),
+  addToAlbum: (albumId: string, itemIds: string[]) =>
+    request<AlbumMutationResponse>(`/api/photos/albums/add`, {
+      method: "POST",
+      body: JSON.stringify({ album_id: albumId, item_ids: itemIds }),
+    }),
+  deleteAlbum: (id: string) =>
+    request<AlbumMutationResponse>(
+      `/api/photos/albums/${encodeURIComponent(id)}`,
+      { method: "DELETE" },
+    ),
   members: () => request<MembersResponse>("/api/photos/members"),
   // ops carry target_user in the query too: the backend picks the photo
   // source (homes vs own) from the dependency, which reads query params.

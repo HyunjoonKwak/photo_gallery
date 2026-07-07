@@ -181,6 +181,49 @@ def test_videos_returns_only_videos_newest_first(logged_in):
     assert taken == sorted(taken, reverse=True)
 
 
+def test_albums_crud_lifecycle(logged_in):
+    # 목록: mock은 데모 앨범 1개를 시드한다.
+    albums = logged_in.get("/api/photos/albums").json()["albums"]
+    assert albums, "mock에는 데모 앨범이 있어야 한다"
+    demo = albums[0]
+    assert demo["cover_item_id"] and demo["item_count"] > 0
+
+    # 열람: 앨범 아이템 수가 item_count와 일치.
+    items = logged_in.get(f"/api/photos/album-items?id={demo['id']}").json()["items"]
+    assert len(items) == demo["item_count"]
+    some_ids = [i["id"] for i in items[:3]]
+
+    # 생성(사진과 함께).
+    created = logged_in.post(
+        "/api/photos/albums", json={"name": "새 앨범", "item_ids": some_ids}
+    ).json()["album"]
+    assert created["name"] == "새 앨범" and created["item_count"] == len(some_ids)
+    new_id = created["id"]
+
+    # 목록 맨 위에 새 앨범(최근 생성순).
+    assert logged_in.get("/api/photos/albums").json()["albums"][0]["id"] == new_id
+
+    # 추가(중복 무시): 이미 담긴 3장 + 새 2장 → 2장만 추가.
+    more = [i["id"] for i in items[2:5]]  # 1장 겹침
+    added = logged_in.post(
+        "/api/photos/albums/add", json={"album_id": new_id, "item_ids": more}
+    ).json()["added"]
+    assert added == len(set(more) - set(some_ids))
+
+    # 삭제 → 목록에서 사라짐.
+    assert logged_in.delete(f"/api/photos/albums/{new_id}").status_code == 200
+    ids = [a["id"] for a in logged_in.get("/api/photos/albums").json()["albums"]]
+    assert new_id not in ids
+
+    # 없는 앨범 열람 → 404.
+    assert logged_in.get("/api/photos/album-items?id=nope").status_code == 404
+
+
+def test_albums_require_login(client):
+    assert client.get("/api/photos/albums").status_code == 401
+    assert client.post("/api/photos/albums", json={"name": "x"}).status_code == 401
+
+
 # ------------------------------------------- admin impersonation (spec 4.5)
 
 

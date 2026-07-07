@@ -156,6 +156,40 @@ class PlacesResponse(BaseModel):
     places: list[PlaceInfo]
 
 
+class AlbumInfo(BaseModel):
+    """A user-curated album (Synology SYNO.Foto.Browse.NormalAlbum).
+
+    앨범은 개인 공간 전용(FotoTeam에는 앨범 API가 없음, 2026-07-07 실 NAS 프로브).
+    커버 썸네일은 인물과 동일하게 기존 썸네일 프록시로 흐른다."""
+
+    id: str
+    name: str
+    item_count: int | None = None
+    cover_item_id: str | None = None
+    cover_cache_key: str | None = None
+    shared: bool = False  # 향후 공유 앨범 구분용(현재는 항상 개인)
+
+
+class AlbumsResponse(BaseModel):
+    albums: list[AlbumInfo]
+
+
+class CreateAlbumRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=256)
+    # 비우면 빈 앨범 생성, 주면 만들면서 사진을 담는다.
+    item_ids: list[str] = Field(default_factory=list, max_length=5000)
+
+
+class AddToAlbumRequest(BaseModel):
+    album_id: str = Field(min_length=1)
+    item_ids: list[str] = Field(min_length=1, max_length=5000)
+
+
+class AlbumMutationResponse(BaseModel):
+    album: AlbumInfo | None = None  # 생성/추가 후 최신 앨범(삭제는 None)
+    added: int = 0
+
+
 class ItemDetail(BaseModel):
     """On-demand detail for the lightbox info panel — folder path, EXIF and
     shooting location, fetched only when the panel opens (list responses stay

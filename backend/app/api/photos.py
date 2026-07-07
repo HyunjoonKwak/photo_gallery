@@ -29,8 +29,12 @@ from ..operations import (
 from ..photos.source import PhotoSource
 from .. import progress
 from ..schemas import (
+    AddToAlbumRequest,
+    AlbumMutationResponse,
+    AlbumsResponse,
     BucketItemsResponse,
     BucketsResponse,
+    CreateAlbumRequest,
     CreateFolderRequest,
     DeleteRequest,
     FolderCountsResponse,
@@ -268,6 +272,64 @@ async def list_videos(
     """앨범 · 비디오 — 라이브러리 전체의 영상만(최신순)."""
     items = fill_thumbhashes(settings.sqlite_path, await source.videos(space))
     return BucketItemsResponse(space=space, day="", items=items)
+
+
+# ---------------------------------------------- User albums (개인 공간 전용)
+# 앨범은 로그인 사용자 본인의 개인 앨범(FotoTeam엔 앨범 API 없음). 라이브러리
+# 셀렉터의 viewedOwner/zone과 무관하게 항상 personal로 취급한다(사람 렌즈와 동일).
+_ALBUM_SPACE: Space = "personal"
+
+
+@router.get("/albums", response_model=AlbumsResponse)
+async def list_albums(
+    source: PhotoSource = Depends(get_photo_source),
+) -> AlbumsResponse:
+    return AlbumsResponse(albums=await source.albums(_ALBUM_SPACE))
+
+
+@router.get("/album-items", response_model=BucketItemsResponse)
+async def list_album_items(
+    id: str,
+    source: PhotoSource = Depends(get_photo_source),
+    settings: Settings = Depends(get_settings),
+) -> BucketItemsResponse:
+    items = fill_thumbhashes(
+        settings.sqlite_path, await source.album_items(_ALBUM_SPACE, id)
+    )
+    return BucketItemsResponse(space=_ALBUM_SPACE, day="", items=items)
+
+
+@router.post("/albums", response_model=AlbumMutationResponse)
+async def create_album(
+    req: CreateAlbumRequest,
+    _session: Session = Depends(get_current_session),
+    source: PhotoSource = Depends(get_photo_source),
+) -> AlbumMutationResponse:
+    """새 앨범 생성(비우면 빈 앨범, item_ids를 주면 담으며 생성)."""
+    album = await source.create_album(_ALBUM_SPACE, req.name, req.item_ids)
+    return AlbumMutationResponse(album=album, added=len(req.item_ids))
+
+
+@router.post("/albums/add", response_model=AlbumMutationResponse)
+async def add_to_album(
+    req: AddToAlbumRequest,
+    _session: Session = Depends(get_current_session),
+    source: PhotoSource = Depends(get_photo_source),
+) -> AlbumMutationResponse:
+    """기존 앨범에 사진 추가."""
+    added = await source.add_to_album(_ALBUM_SPACE, req.album_id, req.item_ids)
+    return AlbumMutationResponse(album=None, added=added)
+
+
+@router.delete("/albums/{album_id}", response_model=AlbumMutationResponse)
+async def delete_album(
+    album_id: str,
+    _session: Session = Depends(get_current_session),
+    source: PhotoSource = Depends(get_photo_source),
+) -> AlbumMutationResponse:
+    """앨범 삭제(사진 자체는 그대로)."""
+    await source.delete_album(_ALBUM_SPACE, album_id)
+    return AlbumMutationResponse(album=None, added=0)
 
 
 # ------------------------------------------------------------ file operations

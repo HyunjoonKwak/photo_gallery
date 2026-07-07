@@ -25,6 +25,7 @@ from zlib import crc32
 from fastapi import HTTPException, status
 
 from ..schemas import (
+    AlbumInfo,
     ItemDetail,
     MemberInfo,
     PersonInfo,
@@ -284,6 +285,10 @@ class MockPhotoSource:
         # 인물 이름 지정/병합 시뮬레이션.
         self._person_names: dict[str, str] = {}  # pid → 지정한 이름
         self._person_merged: dict[str, str] = {}  # source pid → target pid
+        # 사용자 앨범 시뮬레이션(개인 공간 전용): aid → {name, item_ids}
+        self._albums: dict[str, dict] = {}
+        self._album_seq = 0
+        self._albums_seeded = False
         self._seed_folder_contents()
 
     def _person_specs_for(self, pid: str) -> list[tuple[int, int]]:
@@ -650,6 +655,84 @@ class MockPhotoSource:
         ]
         out.sort(key=lambda i: i.taken_at, reverse=True)
         return out
+
+    # ---- User albums (개인 공간 전용) ----
+
+    def _album_info(self, aid: str) -> AlbumInfo:
+        rec = self._albums[aid]
+        items = self._album_resolved(rec["item_ids"])
+        return AlbumInfo(
+            id=aid,
+            name=rec["name"],
+            item_count=len(items),
+            cover_item_id=items[0].id if items else None,
+            cover_cache_key="mock" if items else None,
+        )
+
+    def _album_resolved(self, item_ids: list[str]) -> list[PhotoItem]:
+        out: list[PhotoItem] = []
+        for iid in item_ids:
+            if iid in self._deleted:
+                continue
+            try:
+                out.append(self._resolve_item(iid))
+            except Exception:
+                continue  # id가 더는 유효하지 않으면 건너뜀
+        return out
+
+    def _seed_albums(self) -> None:
+        # 데모용 앨범 하나 — 목록·열람 뷰를 MOCK에서 확인하기 위함.
+        if self._albums_seeded:
+            return
+        self._albums_seeded = True
+        pool = [it.id for it in self._classify_pool("personal")[:8]]
+        if pool:
+            self._album_seq += 1
+            aid = f"al-{self._album_seq}"
+            self._albums[aid] = {"name": "가족 여행", "item_ids": pool}
+
+    async def albums(self, space: str) -> list[AlbumInfo]:
+        if space == "team":
+            return []
+        self._seed_albums()
+        out = [self._album_info(aid) for aid in self._albums]
+        # 최근 생성순(뒤에 만든 것이 위로).
+        out.reverse()
+        return out
+
+    async def album_items(self, space: str, album_id: str) -> list[PhotoItem]:
+        if album_id not in self._albums:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="앨범을 찾을 수 없습니다.",
+            )
+        return self._album_resolved(self._albums[album_id]["item_ids"])
+
+    async def create_album(
+        self, space: str, name: str, item_ids: list[str]
+    ) -> AlbumInfo:
+        self._seed_albums()
+        self._album_seq += 1
+        aid = f"al-{self._album_seq}"
+        self._albums[aid] = {"name": name.strip(), "item_ids": list(item_ids)}
+        return self._album_info(aid)
+
+    async def add_to_album(
+        self, space: str, album_id: str, item_ids: list[str]
+    ) -> int:
+        if album_id not in self._albums:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="앨범을 찾을 수 없습니다.",
+            )
+        existing = self._albums[album_id]["item_ids"]
+        seen = set(existing)
+        added = [i for i in item_ids if i not in seen]
+        existing.extend(added)
+        return len(added)
+
+    async def delete_album(self, space: str, album_id: str) -> None:
+        self._albums.pop(album_id, None)
 
     def _folder_extra_count(self, src_folder_id: str, dest_folder_name: str) -> int:
         """소스 폴더가 대상 동명 폴더에 없는(파일명 기준) 사진 수. mock은 flat

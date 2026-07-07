@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useTimelineStore } from "../../store/timeline";
 import { useFileOps } from "../../hooks/useFileOps";
 import { FolderPickerDialog, type PickerMode } from "./FolderPickerDialog";
+import { AlbumPickerDialog } from "./AlbumPickerDialog";
 
 /** Bottom floating action bar, visible while anything is selected (spec 9.1).
  * Destructive actions run immediately — safety comes from trash + the undo
@@ -11,8 +12,12 @@ export function SelectionActionBar() {
   const count = useTimelineStore((s) => s.selected.size);
   const clear = useTimelineStore((s) => s.clearSelection);
   const activeZone = useTimelineStore((s) => s.activeZone);
+  const viewedOwner = useTimelineStore((s) => s.viewedOwner);
   const ops = useFileOps();
   const [picker, setPicker] = useState<PickerMode | null>(null);
+  const [albumPicker, setAlbumPicker] = useState(false);
+  // 앨범은 개인 공간 전용 → 1차 구역·타인 라이브러리에선 담기를 숨긴다.
+  const canAddToAlbum = !activeZone && !viewedOwner;
 
   if (count === 0) return null;
 
@@ -65,6 +70,15 @@ export function SelectionActionBar() {
             </button>
           </>
         )}
+        {canAddToAlbum && (
+          <button
+            className={btn}
+            disabled={ops.isBusy}
+            onClick={() => setAlbumPicker(true)}
+          >
+            앨범에 추가
+          </button>
+        )}
         <button
           className="rounded-lg px-3 py-1.5 text-sm text-red-300 hover:bg-red-900/40 disabled:opacity-40"
           disabled={ops.isBusy}
@@ -83,6 +97,14 @@ export function SelectionActionBar() {
             setPicker(null);
             ops.move(selectedIds(), folder.id, copyMode);
           }}
+        />
+      )}
+      {albumPicker && (
+        <AlbumPickerDialog
+          count={count}
+          itemIds={selectedIds()}
+          onClose={() => setAlbumPicker(false)}
+          onDone={clear}
         />
       )}
     </>

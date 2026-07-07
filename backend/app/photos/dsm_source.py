@@ -31,6 +31,7 @@ from ..dsm.client import DsmClient
 from ..dsm.errors import DsmError
 from ..progress import ProgressFn
 from ..schemas import (
+    AlbumInfo,
     ItemDetail,
     MemberInfo,
     PersonInfo,
@@ -817,6 +818,108 @@ class DsmPhotoSource:
         out.sort(key=lambda i: i.taken_at, reverse=True)
         _VIDEO_CACHE[cache_key] = (_time.monotonic(), out)
         return out
+
+    # -------------------------------------------- User albums (개인 공간 전용)
+    # 실 NAS 프로브(2026-07-07): SYNO.Foto.Browse.Album v1-5(목록),
+    # SYNO.Foto.Browse.NormalAlbum v1-4(생성/추가/삭제). FotoTeam엔 앨범 API가
+    # 없어 개인 공간만. 목록/아이템(read)은 Person/Geocoding와 동형이라 신뢰도가
+    # 높고, create/add_item/delete(write)는 커뮤니티 문서 기반 메서드·파라미터라
+    # **실 NAS 검증 대기**(name_person 병합과 동일한 best-effort 취급).
+
+    def _album_from(self, a: dict) -> AlbumInfo:
+        thumb = (a.get("additional") or {}).get("thumbnail") or {}
+        cache_key = thumb.get("cache_key") or ""
+        # 인물 커버와 동일: cache_key 접두어(unit id) 우선, unit_id/cover fallback.
+        unit = cache_key.split("_", 1)[0] if "_" in cache_key else None
+        cover = unit or thumb.get("unit_id") or a.get("cover")
+        return AlbumInfo(
+            id=str(a.get("id")),
+            name=a.get("name") or "",
+            item_count=a.get("item_count"),
+            cover_item_id=str(cover) if cover else None,
+            cover_cache_key=cache_key or None,
+            shared=bool(a.get("shared", False)),
+        )
+
+    async def albums(self, space: str) -> list[AlbumInfo]:
+        if space == "team":
+            return []  # 공유 공간엔 앨범 API가 없음
+        out: list[AlbumInfo] = []
+        offset = 0
+        while True:
+            data = await self._dsm.call(
+                "SYNO.Foto.Browse.Album",
+                "list",
+                version=1,
+                sid=self._sid,
+                extra={
+                    "offset": offset,
+                    "limit": 100,
+                    "sort_by": "create_time",
+                    "sort_direction": "desc",
+                    "additional": json.dumps(["thumbnail"]),
+                },
+            )
+            page = data.get("list", [])
+            out.extend(self._album_from(a) for a in page)
+            if len(page) < 100:
+                break
+            offset += 100
+        return out
+
+    async def album_items(self, space: str, album_id: str) -> list[PhotoItem]:
+        if space == "team":
+            return []
+        return await self._filtered_items("personal", {"album_id": int(album_id)})
+
+    async def create_album(
+        self, space: str, name: str, item_ids: list[str]
+    ) -> AlbumInfo:
+        # write — 실 NAS 검증 대기. item을 주면 만들면서 담는다(빈 앨범도 허용).
+        extra: dict = {"name": name}
+        if item_ids:
+            extra["item"] = json.dumps([int(i) for i in item_ids])
+        data = await self._dsm.call(
+            "SYNO.Foto.Browse.NormalAlbum",
+            "create",
+            version=1,
+            sid=self._sid,
+            extra=extra,
+            http_method="POST",
+        )
+        # 응답 형태 미검증: {album:{...}} / {...} / {id:..} 모두 방어적으로 수용.
+        album = data.get("album") if isinstance(data, dict) else None
+        if not isinstance(album, dict):
+            album = data if isinstance(data, dict) else {}
+        if not album.get("name"):
+            album = {**album, "name": name, "item_count": len(item_ids)}
+        return self._album_from(album)
+
+    async def add_to_album(
+        self, space: str, album_id: str, item_ids: list[str]
+    ) -> int:
+        await self._dsm.call(
+            "SYNO.Foto.Browse.NormalAlbum",
+            "add_item",
+            version=1,
+            sid=self._sid,
+            extra={
+                "id": int(album_id),
+                "item": json.dumps([int(i) for i in item_ids]),
+            },
+            http_method="POST",
+        )
+        return len(item_ids)
+
+    async def delete_album(self, space: str, album_id: str) -> None:
+        await self._dsm.call(
+            "SYNO.Foto.Browse.NormalAlbum",
+            "delete",
+            version=1,
+            sid=self._sid,
+            extra={"id": json.dumps([int(album_id)])},
+            http_method="POST",
+        )
 
     async def folder_count(self, folder_id: str) -> int:
         # Browse.Item "count" takes the same filters as "list" — one cheap call
