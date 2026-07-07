@@ -335,6 +335,13 @@ export default function App() {
               MOCK
             </span>
           )}
+          {/* 빌드 표식 — 기기가 최신 코드를 받았는지 즉시 확인(캐시 진단). */}
+          <span
+            title="빌드 버전"
+            className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-400"
+          >
+            {__BUILD_ID__}
+          </span>
           <div className="ml-auto flex shrink-0 items-center gap-2 text-sm sm:gap-3">
             <button
               onClick={() => setShowOps((v) => !v)}

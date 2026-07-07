@@ -16,6 +16,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.types import Scope
 
 from .api import auth, dedup, ops, photos, system, zones
 from .config import Settings, get_settings
@@ -23,6 +24,31 @@ from .db import init_db
 from .dsm.client import DsmClient
 from .dsm.errors import SESSION_INVALID_CODES, DsmError
 from .session_store import delete_session, purge_expired
+
+
+class SpaStaticFiles(StaticFiles):
+    """Serve the built SPA with cache headers tuned for reliable PWA updates.
+
+    The entry points (index.html, sw.js, the web manifest) must always be
+    revalidated so a new deploy actually reaches installed clients — otherwise
+    a stale service worker/proxy can pin a device to old JS indefinitely. The
+    content-hashed files under /assets/ are immutable and cached for a year.
+    """
+
+    async def get_response(self, path: str, scope: Scope):
+        response = await super().get_response(path, scope)
+        req_path = scope.get("path", "") if isinstance(scope, dict) else ""
+        if (
+            req_path in ("/", "/sw.js")
+            or req_path.endswith(".html")
+            or req_path.endswith(".webmanifest")
+        ):
+            response.headers["Cache-Control"] = "no-cache, must-revalidate"
+        elif "/assets/" in req_path:
+            response.headers.setdefault(
+                "Cache-Control", "public, max-age=31536000, immutable"
+            )
+        return response
 
 
 @contextlib.asynccontextmanager
@@ -96,7 +122,7 @@ def create_app() -> FastAPI:
     if settings.frontend_dist and os.path.isdir(settings.frontend_dist):
         app.mount(
             "/",
-            StaticFiles(directory=settings.frontend_dist, html=True),
+            SpaStaticFiles(directory=settings.frontend_dist, html=True),
             name="frontend",
         )
 

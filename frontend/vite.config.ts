@@ -6,7 +6,14 @@ import { VitePWA } from "vite-plugin-pwa";
 // same-origin (HttpOnly session cookie works without CORS gymnastics).
 const BACKEND = process.env.VITE_BACKEND_URL ?? "http://localhost:9800";
 
+// 빌드 시각(UTC, 분 단위) — 화면에 표식으로 노출해 기기가 어떤 빌드를
+// 실행 중인지 즉시 확인(캐시로 옛 코드가 붙었는지 진단).
+const BUILD_ID = new Date().toISOString().slice(5, 16).replace("T", " ");
+
 export default defineConfig({
+  define: {
+    __BUILD_ID__: JSON.stringify(BUILD_ID),
+  },
   plugins: [
     react(),
     VitePWA({
