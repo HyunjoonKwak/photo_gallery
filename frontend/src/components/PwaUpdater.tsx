@@ -12,10 +12,16 @@ export function PwaUpdater() {
     updateServiceWorker,
   } = useRegisterSW({
     onRegisteredSW(_swUrl, registration) {
+      if (!registration) return;
       // 앱을 오래 켜둬도 새 버전을 알아채도록 1시간마다 갱신 확인.
-      if (registration) {
-        setInterval(() => registration.update(), 60 * 60_000);
-      }
+      setInterval(() => registration.update(), 60 * 60_000);
+      // 앱이 다시 보일 때(재실행/탭 복귀)마다 업데이트 확인 → 배포가 다음 표시에
+      // 곧바로 반영되고, "새로고침해야 새 썸네일/화면이 뜨는" 문제를 없앤다.
+      const checkForUpdate = () => {
+        if (document.visibilityState === "visible") void registration.update();
+      };
+      document.addEventListener("visibilitychange", checkForUpdate);
+      window.addEventListener("focus", checkForUpdate);
     },
   });
 

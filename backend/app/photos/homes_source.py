@@ -118,6 +118,20 @@ async def _resized_original(item_id: str, size: str) -> bytes | None:
     return await asyncio.to_thread(_resize_original_sync, disk, target)
 
 
+def _count_media_on_disk(disk_dir: str) -> int | None:
+    """디렉터리의 사진·동영상 파일 수(마운트 직접 나열). 폴더 배지 카운트용 —
+    수백 폴더를 DSM FileStation.List로 동시에 세면 지연·실패하지만, 소유자 uid로
+    도는 컨테이너는 마운트에서 즉시 셀 수 있다. 접근 불가면 None → API 폴백."""
+    try:
+        return sum(
+            1
+            for f in os.listdir(disk_dir)
+            if f.lower().endswith(_PHOTO_EXT)
+        )
+    except OSError:
+        return None
+
+
 class _FsRootMixin:
     """FileStation path-id handling rooted at an abstract ``_root_path``.
 
@@ -214,6 +228,14 @@ class _FsRootMixin:
     async def folder_count(self, folder_id: str) -> int:
         if not _is_path_id(folder_id):
             return await super().folder_count(folder_id)
+        # 마운트에서 직접 카운트(빠르고 안정적) — 하위폴더가 수백 개인 폴더에서
+        # DSM FileStation.List를 폴더마다 동시 호출하면 지연·실패해 배지가 빈칸이
+        # 되던 문제 해결. 마운트 없으면 API(folder_items)로 폴백.
+        disk = _mount_path(folder_id)
+        if disk:
+            n = await asyncio.to_thread(_count_media_on_disk, disk)
+            if n is not None:
+                return n
         return len(await self.folder_items(folder_id))
 
     async def thumbnail(
