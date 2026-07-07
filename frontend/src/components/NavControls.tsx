@@ -14,7 +14,7 @@ export function NavControls() {
         s._backHandlers.length ||
         s.groupId ||
         (s.section === "viewer" && s.zoom !== "year") ||
-        s.section !== "viewer",
+        s._navHistory.length,
     ),
   );
 

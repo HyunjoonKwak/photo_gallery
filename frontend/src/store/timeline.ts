@@ -45,6 +45,26 @@ function resetView() {
   };
 }
 
+/** 뒤로가기 히스토리에 담는 네비게이션 스냅샷 — 영역/탭/라이브러리 축을
+ * 통째로 저장해, 복원 시 그 화면을 그대로 되살린다(줌·그룹 포함). */
+interface NavSnapshot {
+  section: Section;
+  zoom: ViewerZoom;
+  focusYear: string | null;
+  focusMonth: string | null;
+  focusDay: string | null;
+  albumKind: AlbumKind;
+  groupId: string | null;
+  groupLabel: string | null;
+  manageTab: ManageTab;
+  space: Space;
+  viewedOwner: string | null;
+  activeZone: { id: string; label: string } | null;
+  searchQuery: string;
+}
+
+const NAV_HISTORY_MAX = 50;
+
 const FOLDER_DISPLAY_KEY = "nasphoto.folderDisplay";
 
 function initialFolderDisplay(): FolderDisplay {
@@ -131,6 +151,9 @@ interface TimelineState {
   stepLightbox: (dir: 1 | -1) => void;
 
   // --- 뒤로가기 네비게이션 ---
+  // 영역/탭/라이브러리 전환은 여기에 직전 화면 스냅샷을 쌓아, 뒤로가기가
+  // 방문 순서를 그대로 역추적한다(사진→앨범→폴더분류 뒤로 시 앨범 경유).
+  _navHistory: NavSnapshot[];
   // 화면 안의 드릴다운(폴더 경로·장소 지역 등 컴포넌트 로컬 상태)은 여기에
   // "한 단계 위로" 핸들러를 등록한다. goBack이 우선순위대로 한 단계 되돌린다.
   _backHandlers: (() => void)[];
@@ -141,6 +164,37 @@ interface TimelineState {
   canGoBack: () => boolean;
   /** 기본 화면(사진·연 뷰)으로. 앨범/폴더 드릴은 컴포넌트 언마운트로 리셋. */
   goHome: () => void;
+}
+
+/** 현재 네비게이션 축을 스냅샷으로 뽑는다(뒤로가기 히스토리 push용). */
+function navSnapshot(s: TimelineState): NavSnapshot {
+  return {
+    section: s.section,
+    zoom: s.zoom,
+    focusYear: s.focusYear,
+    focusMonth: s.focusMonth,
+    focusDay: s.focusDay,
+    albumKind: s.albumKind,
+    groupId: s.groupId,
+    groupLabel: s.groupLabel,
+    manageTab: s.manageTab,
+    space: s.space,
+    viewedOwner: s.viewedOwner,
+    activeZone: s.activeZone,
+    searchQuery: s.searchQuery,
+  };
+}
+
+/** 영역/탭/라이브러리 전환 patch를 만들되, 직전 화면을 히스토리에 쌓는다.
+ * goBack이 이 스택을 역순으로 pop 해 "순차적" 뒤로가기를 보장한다. */
+function withNav(
+  s: TimelineState,
+  patch: Partial<TimelineState>,
+): Partial<TimelineState> {
+  return {
+    _navHistory: [...s._navHistory, navSnapshot(s)].slice(-NAV_HISTORY_MAX),
+    ...patch,
+  };
 }
 
 function computePreview(
@@ -155,19 +209,24 @@ function computePreview(
 
 export const useTimelineStore = create<TimelineState>()((set, get) => ({
   space: "team",
-  setSpace: (space) => set({ space, ...resetView() }),
+  setSpace: (space) =>
+    set((s) => (s.space === space ? {} : withNav(s, { space, ...resetView() }))),
 
   section: "viewer",
   // 타인/1차 구역은 폴더 분류에서만 표현 가능 → 다른 영역으로 갈 땐 자기
   // 라이브러리로 스냅백(공용/개인)하고 감상 상태를 초기화한다.
   setSection: (section) =>
-    set((s) => ({
-      section,
-      ...(section !== "manage" && (s.viewedOwner || s.activeZone)
-        ? { viewedOwner: null, activeZone: null }
-        : {}),
-      ...resetView(),
-    })),
+    set((s) =>
+      section === s.section
+        ? {}
+        : withNav(s, {
+            section,
+            ...(section !== "manage" && (s.viewedOwner || s.activeZone)
+              ? { viewedOwner: null, activeZone: null }
+              : {}),
+            ...resetView(),
+          }),
+    ),
 
   zoom: "year",
   focusYear: null,
@@ -187,31 +246,47 @@ export const useTimelineStore = create<TimelineState>()((set, get) => ({
   groupId: null,
   groupLabel: null,
   setAlbumKind: (albumKind) =>
-    set({ albumKind, groupId: null, groupLabel: null, ...resetView() }),
+    set((s) =>
+      s.albumKind === albumKind
+        ? {}
+        : withNav(s, {
+            albumKind,
+            groupId: null,
+            groupLabel: null,
+            ...resetView(),
+          }),
+    ),
   openGroup: (groupId, groupLabel) =>
     set({ groupId, groupLabel, ...resetView() }),
   closeGroup: () => set({ groupId: null, groupLabel: null, ...resetView() }),
 
   manageTab: "folders",
-  setManageTab: (manageTab) => set({ manageTab, ...resetView() }),
+  setManageTab: (manageTab) =>
+    set((s) =>
+      s.manageTab === manageTab ? {} : withNav(s, { manageTab, ...resetView() }),
+    ),
 
   pendingFolderPath: null,
   openFolderView: (path) =>
-    set({
-      section: "manage",
-      manageTab: "folders",
-      pendingFolderPath: path,
-      ...resetView(),
-    }),
+    set((s) =>
+      withNav(s, {
+        section: "manage",
+        manageTab: "folders",
+        pendingFolderPath: path,
+        ...resetView(),
+      }),
+    ),
   consumePendingFolderPath: () => set({ pendingFolderPath: null }),
   searchQuery: "",
   runSearch: (query) =>
-    set({
-      searchQuery: query,
-      section: "manage",
-      manageTab: "search",
-      ...resetView(),
-    }),
+    set((s) =>
+      withNav(s, {
+        searchQuery: query,
+        section: "manage",
+        manageTab: "search",
+        ...resetView(),
+      }),
+    ),
   folderDisplay: initialFolderDisplay(),
   setFolderDisplay: (folderDisplay) => {
     try {
@@ -226,25 +301,29 @@ export const useTimelineStore = create<TimelineState>()((set, get) => ({
   // folder-view only (Photos' timeline/AI index is per-session), so jump to
   // 폴더 분류/folders and reset selection state.
   setViewedOwner: (viewedOwner) =>
-    set({
-      viewedOwner,
-      activeZone: null,
-      section: "manage",
-      manageTab: "folders",
-      ...resetView(),
-    }),
+    set((s) =>
+      withNav(s, {
+        viewedOwner,
+        activeZone: null,
+        section: "manage",
+        manageTab: "folders",
+        ...resetView(),
+      }),
+    ),
   activeZone: null,
   selectLibrary: ({ space, owner, zone }) =>
-    set({
-      space,
-      viewedOwner: owner,
-      activeZone: zone ?? null,
-      // 타인·1차 구역은 폴더 분류 전용 → 그리로 강제; 그 외엔 현재 영역 유지
-      ...(owner || zone
-        ? { section: "manage" as Section, manageTab: "folders" as ManageTab }
-        : {}),
-      ...resetView(),
-    }),
+    set((s) =>
+      withNav(s, {
+        space,
+        viewedOwner: owner,
+        activeZone: zone ?? null,
+        // 타인·1차 구역은 폴더 분류 전용 → 그리로 강제; 그 외엔 현재 영역 유지
+        ...(owner || zone
+          ? { section: "manage" as Section, manageTab: "folders" as ManageTab }
+          : {}),
+        ...resetView(),
+      }),
+    ),
 
   selected: EMPTY_SET,
   anchorId: null,
@@ -310,6 +389,7 @@ export const useTimelineStore = create<TimelineState>()((set, get) => ({
     if (next) set({ lightboxId: next });
   },
 
+  _navHistory: [],
   _backHandlers: [],
   registerBack: (fn) => {
     set((s) => ({ _backHandlers: [...s._backHandlers, fn] }));
@@ -318,8 +398,8 @@ export const useTimelineStore = create<TimelineState>()((set, get) => ({
   },
   goBack: () => {
     const s = get();
-    // 우선순위: 라이트박스 → 화면 내 드릴(폴더/장소) → 앨범 그룹 →
-    // 뷰어 줌(→연) → 다른 영역(→사진).
+    // 우선순위(깊은 것부터): 라이트박스 → 화면 내 드릴(폴더/장소) → 앨범 그룹
+    // → 뷰어 줌(→연) → 영역/탭/라이브러리 히스토리(방문 순서 역추적).
     if (s.lightboxId) {
       set({ lightboxId: null });
       return true;
@@ -336,8 +416,13 @@ export const useTimelineStore = create<TimelineState>()((set, get) => ({
       s.setZoom("year");
       return true;
     }
-    if (s.section !== "viewer") {
-      s.setSection("viewer");
+    if (s._navHistory.length) {
+      const prev = s._navHistory[s._navHistory.length - 1];
+      set({
+        _navHistory: s._navHistory.slice(0, -1),
+        ...prev,
+        ...resetView(),
+      });
       return true;
     }
     return false;
@@ -349,7 +434,7 @@ export const useTimelineStore = create<TimelineState>()((set, get) => ({
         s._backHandlers.length ||
         s.groupId ||
         (s.section === "viewer" && s.zoom !== "year") ||
-        s.section !== "viewer",
+        s._navHistory.length,
     );
   },
   goHome: () =>
@@ -363,6 +448,7 @@ export const useTimelineStore = create<TimelineState>()((set, get) => ({
       groupLabel: null,
       viewedOwner: null,
       activeZone: null,
+      _navHistory: [],
       ...resetView(),
     }),
 }));
