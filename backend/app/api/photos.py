@@ -10,6 +10,7 @@ single geometry computation small (the Immich #28861 freeze mitigation).
 from __future__ import annotations
 
 import asyncio
+import os
 from datetime import date
 from typing import Literal
 
@@ -27,6 +28,7 @@ from ..operations import (
     execute_remove_folder,
 )
 from ..photos.source import PhotoSource
+from ..photos.thumb_cache import THUMB_MEDIA_TYPE, ThumbCache
 from .. import progress
 from ..schemas import (
     AddToAlbumRequest,
@@ -480,7 +482,22 @@ async def get_thumbnail(
     space: Space = Query("team"),
     size: ThumbSize = Query("sm"),
     source: PhotoSource = Depends(get_photo_source),
+    settings: Settings = Depends(get_settings),
+    session: Session = Depends(get_current_session),
 ) -> Response:
+    headers = {"Cache-Control": "private, max-age=86400"}
+    # 서버측 디스크 캐시(mock 제외) — DSM 왕복을 줄인다(특히 느린 1차 구역
+    # FileStation 썸네일·콜드 브라우저 캐시). 키에 계정을 넣어 접근 제어 보존.
+    cache: ThumbCache | None = None
+    key: str | None = None
+    if not settings.mock_mode:
+        cache = ThumbCache(
+            os.path.join(os.path.dirname(settings.sqlite_path), "thumb-cache")
+        )
+        key = ThumbCache.key(session.account, space, id, cache_key, size)
+        hit = cache.get(key)
+        if hit is not None:
+            return Response(content=hit, media_type=THUMB_MEDIA_TYPE, headers=headers)
     try:
         content, media_type = await source.thumbnail(space, id, cache_key, size)
     except DsmError as exc:
@@ -493,9 +510,11 @@ async def get_thumbnail(
         if exc.http_status == 404:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "썸네일이 없습니다.") from exc
         raise
+    if cache is not None and key is not None:
+        cache.put(key, content)
     return Response(
         content=content,
         media_type=media_type,
         # Session-scoped images; safe to let the browser cache aggressively.
-        headers={"Cache-Control": "private, max-age=86400"},
+        headers=headers,
     )
