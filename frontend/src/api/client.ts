@@ -315,6 +315,10 @@ export function videoUrl(space: Space, id: string): string {
   return `/api/photos/video?${q.toString()}`;
 }
 
+// 썸네일 획득 로직(백엔드)이 바뀌면 올린다 — URL이 달라져 브라우저/서비스워커의
+// 옛 캐시(같은 URL로 붙잡고 있던 저화질)를 무효화하고 재요청하게 한다.
+const THUMB_URL_VERSION = "5";
+
 export function thumbnailUrl(
   space: Space,
   id: string,
@@ -323,5 +327,6 @@ export function thumbnailUrl(
 ): string {
   const q = new URLSearchParams({ space, id, cache_key: cacheKey, size });
   applyScope(q);
+  q.set("tv", THUMB_URL_VERSION);
   return `/api/photos/thumbnail?${q.toString()}`;
 }
