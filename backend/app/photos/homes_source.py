@@ -21,12 +21,13 @@ overrides. ``_item_meta``/``_dest_dir`` translate path ids for move/delete.
 
 from __future__ import annotations
 
+import asyncio
 import json
+import os
 import posixpath
 from datetime import datetime
 
 from ..dsm.client import DsmClient
-from ..dsm.errors import DsmError
 from ..schemas import (
     ItemDetail,
     PersonInfo,
@@ -43,9 +44,41 @@ _PHOTO_EXT = (
 )
 _VIDEO_EXT = (".mp4", ".mov", ".m4v", ".avi", ".mkv")
 
+# 읽기전용으로 마운트된 /volume1/homes 의 컨테이너 경로(설정 시). 설정돼 있으면
+# 1차 구역/homes 썸네일을 파일 옆 @eaDir/<name>/SYNOPHOTO_THUMB_* 에서 **디스크
+# 직접 읽기**로 서빙한다 — DSM FileStation API가 @eaDir을 막아(동영상 포스터
+# 미표시·사진 저화질) 못 주던 것을 우회. 미설정/파일부재면 API로 폴백한다.
+_THUMB_MOUNT_HOMES = os.environ.get("THUMB_MOUNT_HOMES", "").rstrip("/")
+
 
 def _is_path_id(some_id: str) -> bool:
     return some_id.startswith("/")
+
+
+def _read_file_bytes(path: str) -> bytes | None:
+    try:
+        with open(path, "rb") as f:
+            return f.read()
+    except OSError:
+        return None
+
+
+async def _eadir_thumb(item_id: str, size: str) -> bytes | None:
+    """마운트된 볼륨에서 @eaDir 미디어 썸네일(SYNOPHOTO_THUMB)을 직접 읽는다.
+    사진·동영상 공통으로 존재. 큰 것(그리드 M / 라이트박스 XL) 우선, 없으면 SM."""
+    if not (_THUMB_MOUNT_HOMES and item_id.startswith("/homes/")):
+        return None
+    rel = item_id[len("/homes/") :]
+    parent, name = posixpath.split(rel)
+    variants = ("XL", "M", "SM") if size == "xl" else ("M", "SM")
+    for v in variants:
+        disk = os.path.join(
+            _THUMB_MOUNT_HOMES, parent, "@eaDir", name, f"SYNOPHOTO_THUMB_{v}.jpg"
+        )
+        data = await asyncio.to_thread(_read_file_bytes, disk)
+        if data:
+            return data
+    return None
 
 
 class _FsRootMixin:
@@ -151,34 +184,24 @@ class _FsRootMixin:
     ) -> tuple[bytes, str]:
         if not _is_path_id(item_id):
             return await super().thumbnail(space, item_id, cache_key, size)
-        # 미디어 인덱스 썸네일(@eaDir/<name>/SYNOPHOTO_THUMB_*)을 우선한다.
-        # 실 NAS 확인(2026-07-07): 파일 옆 @eaDir에는 사진·동영상 **모두**
-        # SYNOPHOTO_THUMB_{SM,M,XL}.jpg 가 있는데, `SYNO.FileStation.Thumb`는
-        # 소형 `SYNOFILE_THUMB`만 서빙한다 → 동영상은 SYNOFILE이 없어 404(썸네일
-        # 미표시), 사진은 저해상. @eaDir 썸네일을 직접 내려받아(FileStation.Download)
-        # 화질↑ + 동영상 포스터까지 해결한다. 없으면 기존 방식으로 폴백.
-        variant = "XL" if size == "xl" else "M"
-        parent, name = posixpath.split(item_id)
-        ea_path = f"{parent}/@eaDir/{name}/SYNOPHOTO_THUMB_{variant}.jpg"
-        try:
-            return await self._dsm.fetch_binary(
-                "SYNO.FileStation.Download",
-                "download",
-                version=2,
-                sid=self._sid,
-                extra={"path": ea_path, "mode": "download"},
-            )
-        except DsmError:
-            # SYNOPHOTO 썸네일이 없는 파일(File Station 전용 썸네일만) → 기존 경로.
-            return await self._dsm.fetch_binary(
-                "SYNO.FileStation.Thumb",
-                "get",
-                sid=self._sid,
-                extra={
-                    "path": item_id,
-                    "size": "small" if size == "sm" else "large",
-                },
-            )
+        # 마운트가 설정돼 있으면 @eaDir의 SYNOPHOTO_THUMB을 디스크에서 직접 읽어
+        # 서빙한다(사진 고화질 + 동영상 포스터까지 해결, DSM 왕복도 없음). DSM API는
+        # @eaDir을 막지만 파일시스템 직접 읽기엔 그 제약이 없다(실 NAS 검증 2026-07-07).
+        disk = await _eadir_thumb(item_id, size)
+        if disk is not None:
+            return disk, "image/jpeg"
+        # 폴백: File Station 썸네일 API. 사진은 소형 SYNOFILE로 뜨고, 동영상은
+        # SYNOFILE이 없어 404 → 프론트가 ▶ 폴백 타일을 그린다. (마운트 미설정 또는
+        # SYNOPHOTO 썸네일이 없는 파일)
+        return await self._dsm.fetch_binary(
+            "SYNO.FileStation.Thumb",
+            "get",
+            sid=self._sid,
+            extra={
+                "path": item_id,
+                "size": "small" if size == "sm" else "large",
+            },
+        )
 
     async def video_stream(
         self, space: str, item_id: str, range_header: str | None

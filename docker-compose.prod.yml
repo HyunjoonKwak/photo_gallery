@@ -10,8 +10,13 @@ services:
       - "9800:9800"
     volumes:
       - ./data:/data # SQLite (세션/작업로그/사진 해시 캐시)
+      # 썸네일 전용 읽기전용 마운트: 1차 구역/homes 사진·동영상 썸네일을 파일 옆
+      # @eaDir/SYNOPHOTO_THUMB 에서 디스크 직접 읽기(DSM API가 @eaDir을 막아 동영상
+      # 포스터·고화질을 못 주는 문제 우회). 읽기 전용이며 쓰기/이동은 계속 DSM API.
+      - ${THUMB_HOMES_HOST:-/volume1/homes}:/photovol/homes:ro
     environment:
       - TZ=Asia/Seoul
+      - THUMB_MOUNT_HOMES=/photovol/homes
       # DSM 연결 (자격증명은 넣지 않음 — 로그인 화면에서 입력)
       - DSM_BASE_URL=${DSM_BASE_URL:-https://192.168.0.10}
       - DSM_PORT=${DSM_PORT:-5001}
@@ -34,8 +39,10 @@ services:
         - python
         - -c
         - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:9800/api/health', timeout=3).status==200 else 1)"
+      # NAS가 바쁠 때 컨테이너 내 python 프로세스 spawn이 5s를 넘어 오탐(unhealthy)이
+      # 나던 것 완화 — 엔드포인트 자체는 1ms.
       interval: 30s
-      timeout: 5s
+      timeout: 15s
       retries: 3
-      start_period: 10s
+      start_period: 40s
     restart: unless-stopped
