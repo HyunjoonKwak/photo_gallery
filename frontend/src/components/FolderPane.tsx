@@ -8,6 +8,7 @@ import { useFileOps } from "../hooks/useFileOps";
 import { useTimelineStore } from "../store/timeline";
 import { PhotoCell } from "./timeline/PhotoCell";
 import { SPRING_MS, folderBasename } from "./FolderTree";
+import { FolderNameAuditDialog } from "./FolderNameAuditDialog";
 
 /** Spring-loaded drill-in: dragging over a folder card/row for a moment opens
  * it, so photos can be dropped into nested folders in one gesture (B-4). */
@@ -197,6 +198,11 @@ export function FolderPane({
   const current = path.length ? path[path.length - 1] : null;
   const setOrdered = useTimelineStore((s) => s.setOrdered);
   const ops = useFileOps();
+
+  // 이름 정리는 경로형 id(1차 구역/타인 homes)에서만 의미 — 그 컨텍스트에서만 노출.
+  const isFsScope = useTimelineStore((s) => Boolean(s.activeZone || s.viewedOwner));
+  const isFsContext = isFsScope || Boolean(area?.zone || area?.targetUser);
+  const [auditOpen, setAuditOpen] = useState(false);
 
   const openFolder = (f: PhotoFolder) => onPathChange([...path, f]);
   const jumpTo = (index: number) => onPathChange(path.slice(0, index + 1));
@@ -397,8 +403,17 @@ export function FolderPane({
             </button>
           </span>
         ))}
-        {/* 폴더 관리: 생성(현재 위치 하위) / 삭제(빈 폴더만) */}
+        {/* 폴더 관리: 생성(현재 위치 하위) / 삭제(빈 폴더만) / 이름 정리(1차 구역) */}
         <span className="ml-auto flex shrink-0 items-center gap-1">
+          {isFsContext && (
+            <button
+              onClick={() => setAuditOpen(true)}
+              title="이 폴더 아래에서 날짜부가 밑줄(2016_06_06)인 폴더를 하이픈으로 정리"
+              className="rounded-lg border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:border-slate-400 hover:text-slate-700"
+            >
+              이름 정리
+            </button>
+          )}
           <button
             onClick={onCreateFolder}
             disabled={ops.isBusy}
@@ -581,6 +596,14 @@ export function FolderPane({
         )}
         </div>
       </div>
+      {auditOpen && (
+        <FolderNameAuditDialog
+          rootId={current?.id ?? null}
+          area={area}
+          onClose={() => setAuditOpen(false)}
+          onDone={() => setAuditOpen(false)}
+        />
+      )}
     </div>
   );
 }

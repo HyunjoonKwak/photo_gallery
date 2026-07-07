@@ -16,6 +16,7 @@ from typing import Protocol
 from ..progress import ProgressFn
 from ..schemas import (
     AlbumInfo,
+    FolderRename,
     ItemDetail,
     MemberInfo,
     PersonInfo,
@@ -162,6 +163,19 @@ class PhotoSource(Protocol):
 
     async def delete_album(self, space: str, album_id: str) -> None:
         """Delete an album (the photos themselves are untouched)."""
+        ...
+
+    # ---- 폴더 이름 정리 (날짜부 밑줄→하이픈) ----
+
+    async def audit_folder_names(self, root_id: str | None) -> list[FolderRename]:
+        """root_id(경로형/None=영역 루트) 하위를 재귀로 훑어 이름 규칙에 어긋난
+        폴더와 교정안을 반환. 1차 구역/homes 전용(마운트 스캔)."""
+        ...
+
+    async def rename_folder(
+        self, space: str, folder_id: str, new_name: str
+    ) -> tuple[str, str]:
+        """폴더 이름 변경(제자리). (새 id, 새 이름) 반환."""
         ...
 
     async def members(self) -> list[MemberInfo]:

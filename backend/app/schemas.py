@@ -190,6 +190,29 @@ class AlbumMutationResponse(BaseModel):
     added: int = 0
 
 
+class FolderRename(BaseModel):
+    """이름 규칙에 어긋난 폴더 1건 — 현재 이름과 교정안(날짜부 밑줄→하이픈)."""
+
+    id: str
+    current_name: str
+    proposed_name: str
+
+
+class FolderAuditResponse(BaseModel):
+    items: list[FolderRename]
+
+
+class RenameFolderRequest(BaseModel):
+    folder_id: str = Field(min_length=1)
+    new_name: str = Field(min_length=1, max_length=255)
+    target_user: str | None = Field(default=None, max_length=128)
+
+
+class RenameFolderResponse(BaseModel):
+    id: str  # 변경 후 폴더 id(경로형은 바뀜)
+    name: str
+
+
 class ItemDetail(BaseModel):
     """On-demand detail for the lightbox info panel — folder path, EXIF and
     shooting location, fetched only when the panel opens (list responses stay

@@ -26,6 +26,7 @@ from fastapi import HTTPException, status
 
 from ..schemas import (
     AlbumInfo,
+    FolderRename,
     ItemDetail,
     MemberInfo,
     PersonInfo,
@@ -35,6 +36,7 @@ from ..schemas import (
     PlaceInfo,
     PlacedItem,
 )
+from .folder_naming import fix_date_prefix
 from .source import Affected, DeleteOutcome, MoveOutcome
 
 def _unique_name(taken: set[str], filename: str) -> str:
@@ -737,6 +739,29 @@ class MockPhotoSource:
 
     async def delete_album(self, space: str, album_id: str) -> None:
         self._albums.pop(album_id, None)
+
+    # ---- 폴더 이름 정리 ----
+
+    async def audit_folder_names(self, root_id: str | None) -> list[FolderRename]:
+        out: list[FolderRename] = []
+        for f in self._all_folders():
+            base = f.name.split("/")[-1]
+            fixed = fix_date_prefix(base)
+            if fixed:
+                out.append(
+                    FolderRename(id=f.id, current_name=base, proposed_name=fixed)
+                )
+        return out
+
+    async def rename_folder(
+        self, space: str, folder_id: str, new_name: str
+    ) -> tuple[str, str]:
+        f = self._folder_by_id(folder_id)
+        parent = f.name.rsplit("/", 1)[0] if "/" in f.name else ""
+        self._folder_renames[folder_id] = (
+            f"{parent}/{new_name}" if parent else new_name
+        )
+        return folder_id, new_name
 
     def _folder_extra_count(self, src_folder_id: str, dest_folder_name: str) -> int:
         """소스 폴더가 대상 동명 폴더에 없는(파일명 기준) 사진 수. mock은 flat

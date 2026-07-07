@@ -123,6 +123,17 @@ export interface AlbumMutationResponse {
   added: number;
 }
 
+/** 이름 규칙에 어긋난 폴더 1건(날짜부 밑줄→하이픈 교정안). */
+export interface FolderRename {
+  id: string;
+  current_name: string;
+  proposed_name: string;
+}
+
+export interface FolderAuditResponse {
+  items: FolderRename[];
+}
+
 /** 라이트박스 정보 패널용 온디맨드 상세 (폴더 경로/EXIF/촬영 위치). */
 export interface ItemDetail {
   id: string;

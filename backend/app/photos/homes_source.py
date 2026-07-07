@@ -28,7 +28,9 @@ import posixpath
 from datetime import datetime
 
 from ..dsm.client import DsmClient
+from .folder_naming import fix_date_prefix
 from ..schemas import (
+    FolderRename,
     ItemDetail,
     PersonInfo,
     PhotoBucket,
@@ -130,6 +132,27 @@ def _count_media_on_disk(disk_dir: str) -> int | None:
         )
     except OSError:
         return None
+
+
+def _scan_name_violations(disk_root: str) -> list[tuple[str, str, str]]:
+    """마운트 경로 하위를 재귀로 훑어 이름 규칙 위반 폴더를 찾는다.
+    반환: (fs_id=/homes/… 경로형 id, 현재이름, 교정안) 목록. @/#로 시작하는
+    시스템 폴더(@eaDir 등)는 제외."""
+    out: list[tuple[str, str, str]] = []
+    prefix = _THUMB_MOUNT_HOMES
+    try:
+        for dirpath, dirnames, _files in os.walk(disk_root):
+            dirnames[:] = [
+                d for d in dirnames if not (d.startswith("@") or d.startswith("#"))
+            ]
+            for d in dirnames:
+                fixed = fix_date_prefix(d)
+                if fixed:
+                    fs_id = "/homes" + os.path.join(dirpath, d)[len(prefix) :]
+                    out.append((fs_id, d, fixed))
+    except OSError:
+        pass
+    return out
 
 
 class _FsRootMixin:
@@ -318,6 +341,32 @@ class _FsRootMixin:
         )
         path = f"{folder_path.rstrip('/')}/{name}"
         return self._fs_folder({"path": path}, parent_id)
+
+    async def audit_folder_names(self, root_id: str | None) -> list[FolderRename]:
+        # 마운트에서 재귀 스캔(소유자 uid로 os.walk). 마운트 없으면 빈 목록.
+        root_fs = root_id if (root_id and _is_path_id(root_id)) else self._root_path
+        disk = _mount_path(root_fs)
+        if not disk:
+            return []
+        rows = await asyncio.to_thread(_scan_name_violations, disk)
+        return [
+            FolderRename(id=i, current_name=c, proposed_name=p) for i, c, p in rows
+        ]
+
+    async def rename_folder(
+        self, space: str, folder_id: str, new_name: str
+    ) -> tuple[str, str]:
+        if not _is_path_id(folder_id):
+            return await super().rename_folder(space, folder_id, new_name)
+        await self._dsm.call(
+            "SYNO.FileStation.Rename",
+            "rename",
+            version=2,
+            sid=self._sid,
+            extra={"path": folder_id, "name": new_name},
+        )
+        parent = posixpath.dirname(folder_id)
+        return f"{parent}/{new_name}", new_name
 
     async def remove_folder(self, folder_id: str) -> bool:
         if not _is_path_id(folder_id):

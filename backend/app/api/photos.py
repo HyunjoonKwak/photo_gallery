@@ -38,6 +38,9 @@ from ..schemas import (
     BucketsResponse,
     CreateAlbumRequest,
     CreateFolderRequest,
+    FolderAuditResponse,
+    RenameFolderRequest,
+    RenameFolderResponse,
     DeleteRequest,
     FolderCountsResponse,
     FoldersResponse,
@@ -459,6 +462,30 @@ async def op_move_folders(
         )
     finally:
         progress.clear(req.progress_key)
+
+
+@router.get("/folder-name-audit", response_model=FolderAuditResponse)
+async def folder_name_audit(
+    root: str | None = None,
+    source: PhotoSource = Depends(get_photo_source),
+) -> FolderAuditResponse:
+    """root(경로형 폴더 id, 없으면 영역 루트) 하위를 재귀로 훑어 이름 규칙에
+    어긋난 폴더(날짜부 밑줄)와 교정안을 반환. 1차 구역 전용."""
+    return FolderAuditResponse(items=await source.audit_folder_names(root))
+
+
+@router.post("/folders/rename", response_model=RenameFolderResponse)
+async def rename_folder(
+    req: RenameFolderRequest,
+    session: Session = Depends(get_current_session),
+    source: PhotoSource = Depends(get_photo_source),
+) -> RenameFolderResponse:
+    """폴더 이름 변경(제자리). 사진·썸네일은 그대로 유지된다."""
+    _check_target_user(session, req.target_user)
+    new_id, new_name = await source.rename_folder(
+        "personal", req.folder_id, req.new_name
+    )
+    return RenameFolderResponse(id=new_id, name=new_name)
 
 
 @router.post("/folders/delete", response_model=OperationResponse)

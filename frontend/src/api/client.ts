@@ -23,6 +23,7 @@ import type {
   PlacesResponse,
   AlbumsResponse,
   AlbumMutationResponse,
+  FolderAuditResponse,
   ProgressResponse,
   RemoveFolderRequest,
   Space,
@@ -219,6 +220,23 @@ export const api = {
     request<AlbumMutationResponse>(
       `/api/photos/albums/${encodeURIComponent(id)}`,
       { method: "DELETE" },
+    ),
+  // 폴더 이름 정리(1차 구역): root(경로형 id) 하위 재귀 스캔 → 교정안 목록.
+  folderNameAudit: (rootId: string | null, area?: AreaScope) => {
+    const parts: string[] = [];
+    if (rootId) parts.push(`root=${encodeURIComponent(rootId)}`);
+    const scope = scopeQSFor(area, "&").replace(/^&/, "");
+    if (scope) parts.push(scope);
+    const qs = parts.length ? `?${parts.join("&")}` : "";
+    return request<FolderAuditResponse>(`/api/photos/folder-name-audit${qs}`);
+  },
+  renameFolder: (folderId: string, newName: string, area?: AreaScope) =>
+    request<{ id: string; name: string }>(
+      `/api/photos/folders/rename${scopeQSFor(area, "?")}`,
+      {
+        method: "POST",
+        body: JSON.stringify({ folder_id: folderId, new_name: newName }),
+      },
     ),
   members: () => request<MembersResponse>("/api/photos/members"),
   // ops carry target_user in the query too: the backend picks the photo

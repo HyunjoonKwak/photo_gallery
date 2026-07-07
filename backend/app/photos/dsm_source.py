@@ -921,6 +921,18 @@ class DsmPhotoSource:
             http_method="POST",
         )
 
+    # 폴더 이름 정리는 마운트 스캔 기반이라 1차 구역/homes(FileStation) 전용.
+    # 개인/공용 Foto 폴더는 지원 안 함(빈 목록 / 명확한 오류).
+    async def audit_folder_names(self, root_id: str | None) -> list:
+        return []
+
+    async def rename_folder(
+        self, space: str, folder_id: str, new_name: str
+    ) -> tuple[str, str]:
+        raise DsmError(
+            100, "폴더 이름 정리는 1차 구역(폴더 뷰)에서만 지원합니다."
+        )
+
     async def folder_count(self, folder_id: str) -> int:
         # Browse.Item "count" takes the same filters as "list" — one cheap call
         # instead of paging every item just to count it.
