@@ -2,6 +2,21 @@ import { useEffect } from "react";
 import { useTimelineStore } from "../store/timeline";
 import { useToastStore } from "../store/toast";
 
+/** 뒤로가기 트랩 진단 로그 — 앱이 닫혀도 남도록 localStorage에 최근 이벤트를
+ * 기록한다. BuildBadge(헤더 표식 탭)가 읽어 실기기에서 popstate 발화 여부·
+ * 순서를 눈으로 확인하게 한다. */
+const DBG_KEY = "nav.dbg";
+export function navDbg(msg: string): void {
+  try {
+    const t = new Date().toISOString().slice(14, 19); // mm:ss
+    const arr = JSON.parse(localStorage.getItem(DBG_KEY) || "[]") as string[];
+    arr.push(`${t} ${msg}`);
+    localStorage.setItem(DBG_KEY, JSON.stringify(arr.slice(-14)));
+  } catch {
+    // storage 접근 불가(사생활 모드 등) — 진단만 생략.
+  }
+}
+
 /** 브라우저/시스템 뒤로가기 트랩 + 최상위 종료 확인.
  *
  * 앱 최상위(더 되돌릴 게 없는 상태)에서 뒤로가기를 누르면 곧바로 나가지 않고
@@ -28,6 +43,7 @@ export function useBackTrap(): void {
     let lastRootBack = 0;
     let exiting = false;
     let activated = false; // 사용자 상호작용이 한 번이라도 있었나
+    navDbg(`load std=${window.matchMedia("(display-mode: standalone)").matches}`);
     const onSentinel = () =>
       Boolean((history.state as { __nav?: boolean } | null)?.__nav);
     const armNow = () => {
@@ -42,7 +58,9 @@ export function useBackTrap(): void {
     };
     const onPop = () => {
       if (exiting) return;
-      if (useTimelineStore.getState().goBack()) {
+      const back = useTimelineStore.getState().goBack();
+      navDbg(`pop goBack=${back} sent=${onSentinel()} hlen=${history.length}`);
+      if (back) {
         arm(); // 화면 내 한 단계 되돌림 → 재장전
         return;
       }
@@ -50,19 +68,23 @@ export function useBackTrap(): void {
       const now = Date.now();
       if (now - lastRootBack < 2500) {
         exiting = true; // 확인됨 → 실제 이탈
+        navDbg("exit");
         window.removeEventListener("popstate", onPop);
         history.back();
         return;
       }
       lastRootBack = now;
+      navDbg("toast");
       useToastStore.getState().push("한 번 더 뒤로가기를 누르면 종료됩니다");
       arm(); // 머무름 — 센티넬 재장전
     };
     // 첫 사용자 제스처에 센티넬 장전(그 전엔 Chrome이 건너뛰어 무용지물).
     // 이후 상호작용마다 확인(멱등) — 센티넬이 소비된 상태면 다시 채운다.
     const onGesture = () => {
+      const first = !activated;
       activated = true;
       armNow();
+      if (first) navDbg(`act sent=${onSentinel()} hlen=${history.length}`);
     };
     const onResume = () => armNow();
     window.addEventListener("popstate", onPop);

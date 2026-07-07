@@ -286,14 +286,20 @@ function BuildBadge() {
     const sentinel = Boolean(
       (history.state as { __nav?: boolean } | null)?.__nav,
     );
+    let log: string[] = [];
+    try {
+      log = JSON.parse(localStorage.getItem("nav.dbg") || "[]") as string[];
+    } catch {
+      // ignore
+    }
     setDiag(
       `build ${__BUILD_ID__}\n` +
         `history.length=${history.length}\n` +
         `sentinel=${sentinel}\n` +
         `navHistory=${s._navHistory.length}\n` +
-        `backHandlers=${s._backHandlers.length}\n` +
-        `section=${s.section} zoom=${s.zoom}\n` +
-        `standalone=${window.matchMedia("(display-mode: standalone)").matches}`,
+        `standalone=${window.matchMedia("(display-mode: standalone)").matches}\n` +
+        `── 이벤트 로그 ──\n` +
+        (log.slice(-12).join("\n") || "(없음)"),
     );
   };
   return (
@@ -306,12 +312,29 @@ function BuildBadge() {
         {__BUILD_ID__}
       </button>
       {diag && (
-        <div
-          onClick={() => setDiag(null)}
-          className="fixed inset-x-3 bottom-24 z-[60] mx-auto max-w-xs whitespace-pre-wrap rounded-xl bg-slate-900/95 px-4 py-3 text-center font-mono text-xs text-slate-100 shadow-xl"
-        >
-          {diag}
-          <div className="mt-1 text-[10px] text-slate-400">탭하면 닫힘</div>
+        <div className="fixed inset-x-3 bottom-24 z-[60] mx-auto max-w-xs rounded-xl bg-slate-900/95 px-4 py-3 font-mono text-xs text-slate-100 shadow-xl">
+          <div className="whitespace-pre-wrap text-left">{diag}</div>
+          <div className="mt-2 flex justify-center gap-2">
+            <button
+              onClick={() => {
+                try {
+                  localStorage.removeItem("nav.dbg");
+                } catch {
+                  // ignore
+                }
+                setDiag(null);
+              }}
+              className="rounded bg-slate-700 px-2 py-1 text-[11px] text-slate-200"
+            >
+              로그 지우기
+            </button>
+            <button
+              onClick={() => setDiag(null)}
+              className="rounded bg-slate-700 px-2 py-1 text-[11px] text-slate-200"
+            >
+              닫기
+            </button>
+          </div>
         </div>
       )}
     </>
