@@ -24,6 +24,10 @@ import time
 # Synology 썸네일(SYNO.Foto.Thumbnail / SYNO.FileStation.Thumb)은 항상 JPEG.
 THUMB_MEDIA_TYPE = "image/jpeg"
 
+# 캐시 키 버전 — 썸네일 획득 로직이 바뀌면 올려 옛 캐시를 무효화한다.
+# v2: 1차 구역/homes 썸네일을 @eaDir SYNOPHOTO_THUMB(고해상·동영상 지원)로 전환.
+_CACHE_VERSION = "v2"
+
 # 기본 신선도 상한(주로 cache_key 없는 1차 구역 파일이 교체됐을 때의 안전장치).
 # Foto 항목은 cache_key가 내용 버전이라 바뀌면 키 자체가 달라져 stale이 불가능.
 _DEFAULT_TTL = 30 * 24 * 3600
@@ -38,7 +42,7 @@ class ThumbCache:
     def key(
         account: str, space: str, item_id: str, cache_key: str, size: str
     ) -> str:
-        raw = "\x00".join([account, space, item_id, cache_key, size])
+        raw = "\x00".join([_CACHE_VERSION, account, space, item_id, cache_key, size])
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
     def _path(self, key: str) -> str:

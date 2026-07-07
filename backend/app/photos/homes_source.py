@@ -26,6 +26,7 @@ import posixpath
 from datetime import datetime
 
 from ..dsm.client import DsmClient
+from ..dsm.errors import DsmError
 from ..schemas import (
     ItemDetail,
     PersonInfo,
@@ -150,15 +151,34 @@ class _FsRootMixin:
     ) -> tuple[bytes, str]:
         if not _is_path_id(item_id):
             return await super().thumbnail(space, item_id, cache_key, size)
-        return await self._dsm.fetch_binary(
-            "SYNO.FileStation.Thumb",
-            "get",
-            sid=self._sid,
-            extra={
-                "path": item_id,
-                "size": "small" if size == "sm" else "large",
-            },
-        )
+        # 미디어 인덱스 썸네일(@eaDir/<name>/SYNOPHOTO_THUMB_*)을 우선한다.
+        # 실 NAS 확인(2026-07-07): 파일 옆 @eaDir에는 사진·동영상 **모두**
+        # SYNOPHOTO_THUMB_{SM,M,XL}.jpg 가 있는데, `SYNO.FileStation.Thumb`는
+        # 소형 `SYNOFILE_THUMB`만 서빙한다 → 동영상은 SYNOFILE이 없어 404(썸네일
+        # 미표시), 사진은 저해상. @eaDir 썸네일을 직접 내려받아(FileStation.Download)
+        # 화질↑ + 동영상 포스터까지 해결한다. 없으면 기존 방식으로 폴백.
+        variant = "XL" if size == "xl" else "M"
+        parent, name = posixpath.split(item_id)
+        ea_path = f"{parent}/@eaDir/{name}/SYNOPHOTO_THUMB_{variant}.jpg"
+        try:
+            return await self._dsm.fetch_binary(
+                "SYNO.FileStation.Download",
+                "download",
+                version=2,
+                sid=self._sid,
+                extra={"path": ea_path, "mode": "download"},
+            )
+        except DsmError:
+            # SYNOPHOTO 썸네일이 없는 파일(File Station 전용 썸네일만) → 기존 경로.
+            return await self._dsm.fetch_binary(
+                "SYNO.FileStation.Thumb",
+                "get",
+                sid=self._sid,
+                extra={
+                    "path": item_id,
+                    "size": "small" if size == "sm" else "large",
+                },
+            )
 
     async def video_stream(
         self, space: str, item_id: str, range_header: str | None
