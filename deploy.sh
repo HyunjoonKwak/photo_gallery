@@ -50,9 +50,11 @@ pull_images() {
 deploy() {
     print_header "🚀 배포"
     mkdir -p data
-    # 컨테이너는 비root(uid 10001 appuser)로 동작 → SQLite 볼륨 쓰기 권한 필요.
-    # 호스트 ./data 소유권을 appuser에게 주고, 안 되면 개방 권한으로 폴백.
-    chown -R 10001:10001 data 2>/dev/null || chmod -R 777 data 2>/dev/null || true
+    # 컨테이너 실행 uid(compose의 user:, 기본 소유자 1026)로 ./data 소유권을 맞춘다
+    # — SQLite 쓰기 권한. 원본(711, 소유자만 read) 썸네일 리사이즈를 위해 컨테이너를
+    # 소유자 uid로 돌리므로 여기도 같은 값이어야 한다. 안 되면 개방 권한 폴백.
+    APP_UID="${APP_UID:-1026}"; APP_GID="${APP_GID:-100}"
+    chown -R "${APP_UID}:${APP_GID}" data 2>/dev/null || chmod -R 777 data 2>/dev/null || true
     # .env 파일이 있으면 자동 로드(docker compose 기본 동작). 없으면 compose 기본값 사용.
     [ -f .env ] || print_warning ".env 없음 — compose 기본값 사용 (DSM_BASE_URL 등 확인)"
     echo -e "${YELLOW}기존 컨테이너 중지...${NC}"; compose down || true
