@@ -4,6 +4,7 @@ import { api } from "./api/client";
 import type { Space } from "./api/types";
 import { useAuthStore } from "./store/auth";
 import { useTimelineStore, type Section } from "./store/timeline";
+import { useBackTrap } from "./hooks/useBackTrap";
 import { LoginForm } from "./components/LoginForm";
 import { ApiInfoPanel } from "./components/ApiInfoPanel";
 import { TimelineScreen } from "./components/TimelineScreen";
@@ -276,11 +277,56 @@ function ZoneBanner() {
   );
 }
 
+/** 빌드 표식 + 뒤로가기 트랩 진단. 탭하면 현재 history 길이·센티넬 유무·
+ * 스토어 뒤로가기 상태를 보여줘, 실기기에서 트랩이 왜 안 걸리는지 파악한다. */
+function BuildBadge() {
+  const [diag, setDiag] = useState<string | null>(null);
+  const read = () => {
+    const s = useTimelineStore.getState();
+    const sentinel = Boolean(
+      (history.state as { __nav?: boolean } | null)?.__nav,
+    );
+    setDiag(
+      `build ${__BUILD_ID__}\n` +
+        `history.length=${history.length}\n` +
+        `sentinel=${sentinel}\n` +
+        `navHistory=${s._navHistory.length}\n` +
+        `backHandlers=${s._backHandlers.length}\n` +
+        `section=${s.section} zoom=${s.zoom}\n` +
+        `standalone=${window.matchMedia("(display-mode: standalone)").matches}`,
+    );
+  };
+  return (
+    <>
+      <button
+        onClick={() => (diag ? setDiag(null) : read())}
+        title="빌드 버전 · 탭하면 뒤로가기 진단"
+        className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-400"
+      >
+        {__BUILD_ID__}
+      </button>
+      {diag && (
+        <div
+          onClick={() => setDiag(null)}
+          className="fixed inset-x-3 bottom-24 z-[60] mx-auto max-w-xs whitespace-pre-wrap rounded-xl bg-slate-900/95 px-4 py-3 text-center font-mono text-xs text-slate-100 shadow-xl"
+        >
+          {diag}
+          <div className="mt-1 text-[10px] text-slate-400">탭하면 닫힘</div>
+        </div>
+      )}
+    </>
+  );
+}
+
 export default function App() {
   const { user, setUser } = useAuthStore();
   const queryClient = useQueryClient();
   const [showApiInfo, setShowApiInfo] = useState(false);
   const [showOps, setShowOps] = useState(false);
+
+  // 뒤로가기 트랩 — 로그인/세션 확인 게이팅보다 먼저(조기 반환 위) 걸어야
+  // 앱을 열자마자 누른 첫 뒤로가기도 종료 확인이 동작한다.
+  useBackTrap();
 
   // Restore session on load (cookie may still be valid after a refresh).
   const meQuery = useQuery({
@@ -335,13 +381,9 @@ export default function App() {
               MOCK
             </span>
           )}
-          {/* 빌드 표식 — 기기가 최신 코드를 받았는지 즉시 확인(캐시 진단). */}
-          <span
-            title="빌드 버전"
-            className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-400"
-          >
-            {__BUILD_ID__}
-          </span>
+          {/* 빌드 표식 — 기기가 최신 코드를 받았는지 즉시 확인(캐시 진단).
+           * 탭하면 뒤로가기 트랩 진단(히스토리/센티넬 상태)을 보여준다. */}
+          <BuildBadge />
           <div className="ml-auto flex shrink-0 items-center gap-2 text-sm sm:gap-3">
             <button
               onClick={() => setShowOps((v) => !v)}
