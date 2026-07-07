@@ -10,9 +10,11 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      // prompt: 새 버전이 나오면 자동 적용하지 않고 대기 → 앱이 토스트로
-      // 알리고 사용자가 "새로고침"을 누르면 적용(useRegisterSW).
-      registerType: "prompt",
+      // autoUpdate: 새 버전이 배포되면 새 SW가 skipWaiting으로 즉시 활성화되고
+      // 앱이 자동 새로고침해 반영한다. prompt(수동 "새로고침") 방식은 사용자가
+      // 토스트를 놓치면 기기가 옛 캐시 JS에 영영 묶여 수정이 도달 못 하던
+      // 문제가 있었다.
+      registerType: "autoUpdate",
       injectRegister: false, // 등록은 앱(PwaUpdater)에서 직접
       includeAssets: ["favicon-64.png", "apple-touch-icon.png"],
       manifest: {
@@ -45,6 +47,9 @@ export default defineConfig({
         navigateFallback: "/index.html",
         navigateFallbackDenylist: [/^\/api/],
         cleanupOutdatedCaches: true,
+        // 새 SW가 대기 없이 즉시 활성화·제어 → 배포가 다음 로드에 반영된다.
+        skipWaiting: true,
+        clientsClaim: true,
       },
       // 개발 중엔 SW 비활성(캐시 혼란 방지). 배포 빌드에서만 동작.
       devOptions: { enabled: false },

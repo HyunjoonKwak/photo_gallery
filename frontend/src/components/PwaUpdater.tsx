@@ -2,9 +2,9 @@ import { useEffect, useRef } from "react";
 import { useRegisterSW } from "virtual:pwa-register/react";
 import { useToastStore } from "../store/toast";
 
-/** PWA 업데이트 감지 → 토스트 알림. 새 버전이 배포되면(서비스워커가 새로
- * 대기 상태가 되면) "새 버전이 있어요 · 새로고침" 토스트를 띄우고, 누르면 새
- * SW를 적용하고 새로고침한다. 헤드리스(렌더 없음). */
+/** PWA 자동 업데이트: 새 버전이 배포되면(서비스워커가 새로 대기 상태가 되면)
+ * 짧게 안내 토스트를 띄우고 곧바로 새 SW를 적용·새로고침한다. 수동 탭에
+ * 의존하지 않으므로 사용자가 놓쳐 옛 캐시에 묶이는 일이 없다. 헤드리스. */
 export function PwaUpdater() {
   const pushToast = useToastStore((s) => s.push);
   const {
@@ -19,14 +19,13 @@ export function PwaUpdater() {
     },
   });
 
-  const shown = useRef(false);
+  const applied = useRef(false);
   useEffect(() => {
-    if (needRefresh && !shown.current) {
-      shown.current = true;
-      pushToast("새 버전이 있어요. 새로고침하면 적용됩니다.", {
-        label: "새로고침",
-        run: () => updateServiceWorker(true),
-      });
+    if (needRefresh && !applied.current) {
+      applied.current = true;
+      pushToast("새 버전을 적용합니다…");
+      // 짧게 안내를 보여준 뒤 새 SW 적용 + 자동 새로고침.
+      window.setTimeout(() => updateServiceWorker(true), 1200);
     }
   }, [needRefresh, pushToast, updateServiceWorker]);
 
