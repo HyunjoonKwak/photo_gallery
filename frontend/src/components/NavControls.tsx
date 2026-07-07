@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTimelineStore } from "../store/timeline";
+import { useToastStore } from "../store/toast";
 
 /** 화면 탐색 편의: 브라우저 뒤로가기를 앱 내 "뒤로"로 연결(트랩)하고,
  * 화면에 뒤로/홈/최상단 버튼을 띄운다. 상태 기반 SPA라 URL 히스토리가 없어
@@ -17,29 +18,42 @@ export function NavControls() {
     ),
   );
 
-  // --- 브라우저 뒤로가기 트랩 ---
-  // 뒤로 갈 곳이 있으면 히스토리에 센티넬 1개를 유지하고, 뒤로가기(popstate)를
-  // 앱 내 goBack으로 소비한다. 최상위에선 센티넬을 두지 않아 정상 이탈된다.
+  // --- 브라우저 뒤로가기 트랩 + 종료 확인 ---
+  // 히스토리에 센티넬 1개를 항상 유지해 뒤로가기(popstate)를 가로챈다.
+  // 화면 내에서 되돌릴 게 있으면 goBack으로 한 단계 되돌리고, 최상위에선
+  // 곧바로 나가지 않고 "한 번 더 누르면 종료" 안내 → 2.5초 내 재차 뒤로가기면
+  // 실제로 이탈(이전 페이지로/설치앱 종료).
   useEffect(() => {
     let armed = false;
+    let lastRootBack = 0;
     const arm = () => {
-      if (!armed && useTimelineStore.getState().canGoBack()) {
+      if (!armed) {
         history.pushState({ __nav: true }, "");
         armed = true;
       }
     };
     const onPop = () => {
-      armed = false; // 센티넬이 소비됨
-      if (useTimelineStore.getState().goBack()) arm(); // 처리했고 더 깊으면 재장전
-      // 최상위면 재장전하지 않음 → 다음 뒤로가기는 사이트 이탈
+      armed = false; // 이번 뒤로가기가 센티넬을 소비
+      if (useTimelineStore.getState().goBack()) {
+        arm(); // 화면 내 한 단계 되돌림 → 재장전
+        return;
+      }
+      // 최상위: 종료 확인
+      const now = Date.now();
+      if (now - lastRootBack < 2500) {
+        window.removeEventListener("popstate", onPop); // 확인됨 → 실제 이탈
+        history.back();
+        return;
+      }
+      lastRootBack = now;
+      useToastStore
+        .getState()
+        .push("한 번 더 뒤로가기를 누르면 종료됩니다");
+      arm(); // 머무름
     };
     window.addEventListener("popstate", onPop);
-    const unsub = useTimelineStore.subscribe(arm); // 드릴인 시 자동 장전
-    arm();
-    return () => {
-      window.removeEventListener("popstate", onPop);
-      unsub();
-    };
+    arm(); // 로드 시 센티넬 1개 장전
+    return () => window.removeEventListener("popstate", onPop);
   }, []);
 
   // --- 최상단 버튼: 내부 스크롤 컨테이너가 내려가 있으면 노출 ---
