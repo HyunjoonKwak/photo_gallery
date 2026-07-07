@@ -73,6 +73,24 @@ function DualActions({
   // (ConflictDialogHost) — 여기선 그냥 이동을 호출한다.
   const transferPhotos = (copy: boolean) => ops.move([...selected], destId!, copy);
 
+  // 선택한 폴더들을 휴지통으로(가역). 브레드크럼 [폴더 삭제]는 "현재 연 폴더"를
+  // 지우지만, 이건 ✓ 체크한 폴더들을 한 번에 지운다.
+  const deleteFolders = () => {
+    const folders = [...folderSel.values()];
+    if (
+      !window.confirm(
+        `선택한 ${folders.length}개 폴더를 휴지통으로 옮길까요?\n` +
+          `안의 사진·하위 폴더도 함께 이동됩니다. (되돌리기 가능)`,
+      )
+    )
+      return;
+    void ops.removeFolders(
+      folders.map((f) => ({ space: f.space, id: f.id })),
+      sourceArea,
+      onFoldersDone,
+    );
+  };
+
   const btn =
     "flex flex-col items-center gap-0.5 rounded-lg px-2 py-2 text-[11px] font-medium transition-colors disabled:opacity-30 lg:w-full";
 
@@ -111,11 +129,11 @@ function DualActions({
         복사
       </button>
       <button
-        onClick={() => ops.remove([...selected])}
-        disabled={folderMode || n === 0 || ops.isBusy}
+        onClick={() => (folderMode ? deleteFolders() : ops.remove([...selected]))}
+        disabled={(folderMode ? nf === 0 : n === 0) || ops.isBusy}
         title={
           folderMode
-            ? "폴더 삭제는 브레드크럼의 [폴더 삭제]로 (빈 폴더만)"
+            ? "선택한 폴더를 휴지통으로 (안의 사진·하위폴더 포함, 되돌리기 가능)"
             : "휴지통으로 이동 (되돌리기 가능)"
         }
         className={`${btn} text-slate-600 enabled:hover:bg-red-100 enabled:hover:text-red-700`}

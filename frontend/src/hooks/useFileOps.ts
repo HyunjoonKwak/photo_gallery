@@ -401,6 +401,28 @@ export function useFileOps() {
         },
         { onSuccess: () => onSuccess?.() },
       ),
+    // 선택한 여러 폴더를 휴지통으로(재귀·가역). 분할 뷰의 폴더 선택 삭제.
+    // 순차 실행 — 실 NAS FileStation 태스크가 겹치지 않게(purgeSourceFolders 패턴).
+    removeFolders: async (
+      folders: { space: Space; id: string }[],
+      area?: AreaScope,
+      onDone?: () => void,
+    ) => {
+      for (const f of folders) {
+        try {
+          await rmdirMutation.mutateAsync({
+            space: f.space,
+            folder_id: f.id,
+            recursive: true,
+            target_user: targetUser(),
+            _area: area,
+          });
+        } catch {
+          break; // 한 폴더 실패 시 중단(onError가 토스트로 안내)
+        }
+      }
+      onDone?.();
+    },
     undo: runUndo,
     isBusy:
       moveMutation.isPending ||
