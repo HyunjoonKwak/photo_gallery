@@ -92,9 +92,10 @@ export function useBackTrap(): void {
       const back = useTimelineStore.getState().goBack();
       navDbg(`pop back=${back} synced=${st.synced} dep=${st.backDepth}`);
       if (back) {
-        // 화면을 한 단계 되돌림 → backDepth도 1 줄어 목표와 균형(재장전 불필요).
-        // 혹시 모를 어긋남만 보정.
-        sync();
+        // 화면을 한 단계 되돌렸다. 여기서 재장전하면 안 된다 — popstate 도중의
+        // pushState는 사용자 활성이 없어 안드로이드가 건너뛰는(skippable) 센티넬을
+        // 만들어 원래 버그가 재발한다. 균형은 자동으로 맞는다: 방금 synced를 1
+        // 줄였고, 재렌더에서 backDepth도 1 줄어 depth 이펙트가 target을 맞춘다.
         return;
       }
       // 최상위: 종료 확인(가드 소비됨).
