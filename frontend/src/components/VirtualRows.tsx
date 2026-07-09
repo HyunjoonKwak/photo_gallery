@@ -1,4 +1,11 @@
-import { useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 
 /** Row-level virtualizer for grids that live INSIDE a larger scroll container
@@ -22,6 +29,13 @@ export function VirtualRows({
 }) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const [margin, setMargin] = useState(0);
+  // 스크롤 요소는 '부모'의 ref — 자식(여기)의 마운트 시점엔 아직 attach 전이라
+  // getScrollElement가 null이 되어 가상화기가 초기화되지 않는다(2026-07-10 실측:
+  // 행 0개 렌더). passive effect(전체 커밋 후)에서 state로 승격해 재초기화시킨다.
+  const [scrollEl, setScrollEl] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    if (scrollRef.current !== scrollEl) setScrollEl(scrollRef.current);
+  });
 
   // 그리드 위 콘텐츠(브레드크럼·하위폴더 목록)의 높이가 바뀌면 오프셋도 변한다
   // — 매 렌더에서 재측정하되 값이 같으면 setState가 bail해 루프는 없다.
@@ -37,7 +51,7 @@ export function VirtualRows({
 
   const virtualizer = useVirtualizer({
     count,
-    getScrollElement: () => scrollRef.current,
+    getScrollElement: () => scrollEl,
     estimateSize: heightOf,
     overscan,
     scrollMargin: margin,
