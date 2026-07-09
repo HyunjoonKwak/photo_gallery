@@ -507,7 +507,7 @@ async def rename_folder(
     """폴더 이름 변경(제자리). 사진·썸네일은 그대로 유지된다."""
     _check_target_user(session, req.target_user)
     new_id, new_name = await source.rename_folder(
-        "personal", req.folder_id, req.new_name
+        req.space, req.folder_id, req.new_name
     )
     return RenameFolderResponse(id=new_id, name=new_name)
 
@@ -647,8 +647,11 @@ async def capture_audit_foto(
 ) -> CaptureAuditResponse:
     """Foto 폴더(직속) 사진의 현재 촬영일(Synology 인덱스)과 추정 촬영일(파일명,
     없으면 disk_root 경유 EXIF)을 반환. 파일 무변경(진단)."""
-    # disk_root(EXIF 폴백용)는 본인 홈 안이어야 함.
-    if disk_root and not disk_root.startswith(f"/homes/{session.account}/"):
+    # disk_root(EXIF 폴백용) 허용 범위: 본인 홈(personal) 또는 공용 공유(team).
+    if disk_root and not (
+        disk_root.startswith(f"/homes/{session.account}/")
+        or (space == "team" and disk_root.startswith("/photo/"))
+    ):
         disk_root = None
     items = await source.capture_items(space, folder)
 

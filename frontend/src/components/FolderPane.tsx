@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDroppable } from "@dnd-kit/core";
 import { api, type AreaScope } from "../api/client";
 import type { PhotoFolder } from "../api/types";
@@ -12,6 +12,7 @@ import { SPRING_MS, folderBasename } from "./FolderTree";
 import { FolderNameAuditDialog } from "./FolderNameAuditDialog";
 import { CaptureDateDialog, type CaptureTarget } from "./CaptureDateDialog";
 import { useAuthStore } from "../store/auth";
+import { useToastStore } from "../store/toast";
 
 /** Order sub-folders by the user's chosen key/direction. Name uses a Korean,
  * numeric-aware compare (so 2·10 sort naturally); date uses mtime with folders
@@ -238,12 +239,14 @@ export function FolderPane({
   const captureTarget = useMemo((): CaptureTarget | null => {
     if (!current) return null;
     if (current.id.startsWith("/homes/")) return { kind: "fs", root: current.id };
-    // 내 사진(personal)은 디스크 경로(/homes/<나>/Photos<폴더>)를 함께 넘겨,
-    // 파일명에 날짜 없는 사진도 EXIF를 읽어 자동 교정 대상으로 잡게 한다.
+    // 디스크 경로를 함께 넘겨 파일명에 날짜 없는 사진도 EXIF로 자동 감지.
+    // personal=/homes/<나>/Photos<폴더>, team(공용)=/photo<폴더>.
     const diskRoot =
       current.space === "personal" && account
         ? `/homes/${account}/Photos${current.name}`
-        : undefined;
+        : current.space === "team"
+          ? `/photo${current.name}`
+          : undefined;
     return { kind: "foto", folder: current.id, space: current.space, diskRoot };
   }, [current, account]);
 
@@ -251,6 +254,38 @@ export function FolderPane({
   const jumpTo = (index: number) => onPathChange(path.slice(0, index + 1));
 
   // 폴더 생성: 현재 위치의 하위로 (루트면 선택 라이브러리의 최상위).
+  const qc = useQueryClient();
+
+  // 현재 폴더 이름 변경(제자리). 1차 구역/homes는 FileStation.Rename(경로 id가
+  // 바뀜), 내 사진/공용은 SYNO.Foto.Browse.Folder rename(id 유지). 사진·썸네일은
+  // 그대로. 응답 id/name으로 현재 경로 항목을 갱신한다.
+  const onRenameFolder = async () => {
+    if (!current) return;
+    const cur = folderBasename(current.name);
+    const name = window.prompt(`'${cur}' 폴더의 새 이름`, cur);
+    if (!name?.trim() || name.trim() === cur) return;
+    try {
+      const res = await api.renameFolder(
+        current.id,
+        name.trim(),
+        current.space,
+        area,
+      );
+      onPathChange([
+        ...path.slice(0, -1),
+        { ...current, id: res.id, name: res.name },
+      ]);
+      qc.invalidateQueries({ queryKey: ["folders"] });
+      qc.invalidateQueries({ queryKey: ["folder-counts"] });
+      qc.invalidateQueries({ queryKey: ["folder-items"] });
+      useToastStore
+        .getState()
+        .push(`이름을 '${folderBasename(res.name)}'(으)로 변경했습니다`);
+    } catch (e) {
+      useToastStore.getState().push((e as Error).message);
+    }
+  };
+
   const onCreateFolder = () => {
     const name = window.prompt(
       current
@@ -487,6 +522,15 @@ export function FolderPane({
           >
             ＋ 새 폴더
           </button>
+          {current && (
+            <button
+              onClick={onRenameFolder}
+              title="이 폴더의 이름 변경(사진·썸네일은 그대로)"
+              className="rounded-lg border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:border-slate-400 hover:text-slate-700"
+            >
+              이름 변경
+            </button>
+          )}
           {current && (
             <button
               onClick={onRemoveFolder}

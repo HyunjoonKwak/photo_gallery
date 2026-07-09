@@ -15,6 +15,7 @@ from datetime import datetime
 from . import capture_date
 
 _MOUNT = os.environ.get("THUMB_MOUNT_HOMES", "").rstrip("/")
+_MOUNT_TEAM = os.environ.get("THUMB_MOUNT_TEAM", "").rstrip("/")
 _MEDIA_EXT = (
     ".jpg", ".jpeg", ".png", ".heic", ".heif", ".gif", ".bmp", ".webp",
     ".mp4", ".mov", ".m4v", ".avi", ".mkv",
@@ -23,10 +24,12 @@ _JPEG_EXT = (".jpg", ".jpeg")
 
 
 def disk_path(fs_id: str) -> str | None:
-    """`/homes/<user>/…` → mount path, or None if outside the mount."""
-    if not (_MOUNT and fs_id.startswith("/homes/")):
-        return None
-    return os.path.join(_MOUNT, fs_id[len("/homes/") :])
+    """`/homes/<user>/…` or `/photo/…`(team) → mount path, else None."""
+    if _MOUNT and fs_id.startswith("/homes/"):
+        return os.path.join(_MOUNT, fs_id[len("/homes/") :])
+    if _MOUNT_TEAM and fs_id.startswith("/photo/"):
+        return os.path.join(_MOUNT_TEAM, fs_id[len("/photo/") :])
+    return None
 
 
 def _fs_id(disk: str) -> str:

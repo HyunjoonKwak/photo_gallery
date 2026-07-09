@@ -263,12 +263,21 @@ export const api = {
     const qs = parts.length ? `?${parts.join("&")}` : "";
     return request<FolderAuditResponse>(`/api/photos/folder-name-audit${qs}`);
   },
-  renameFolder: (folderId: string, newName: string, area?: AreaScope) =>
+  renameFolder: (
+    folderId: string,
+    newName: string,
+    space: string = "personal",
+    area?: AreaScope,
+  ) =>
     request<{ id: string; name: string }>(
       `/api/photos/folders/rename${scopeQSFor(area, "?")}`,
       {
         method: "POST",
-        body: JSON.stringify({ folder_id: folderId, new_name: newName }),
+        body: JSON.stringify({
+          folder_id: folderId,
+          new_name: newName,
+          space,
+        }),
       },
     ),
   members: () => request<MembersResponse>("/api/photos/members"),

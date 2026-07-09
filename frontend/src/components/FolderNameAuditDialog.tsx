@@ -47,7 +47,7 @@ export function FolderNameAuditDialog({
     // 순차 실행 — 실 NAS FileStation 태스크가 겹치지 않게.
     for (const it of selected) {
       try {
-        await api.renameFolder(it.id, it.proposed_name, area);
+        await api.renameFolder(it.id, it.proposed_name, "personal", area);
         ok += 1;
       } catch {
         break;

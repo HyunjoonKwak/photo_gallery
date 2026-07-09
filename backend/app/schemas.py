@@ -209,6 +209,7 @@ class FolderAuditResponse(BaseModel):
 class RenameFolderRequest(BaseModel):
     folder_id: str = Field(min_length=1)
     new_name: str = Field(min_length=1, max_length=255)
+    space: str = "personal"  # personal | team (Foto 폴더 네임스페이스 판정용)
     target_user: str | None = Field(default=None, max_length=128)
 
 

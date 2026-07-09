@@ -956,9 +956,18 @@ class DsmPhotoSource:
     async def rename_folder(
         self, space: str, folder_id: str, new_name: str
     ) -> tuple[str, str]:
-        raise DsmError(
-            100, "폴더 이름 정리는 1차 구역(폴더 뷰)에서만 지원합니다."
+        """Rename a Synology Photos folder (내 사진/공용). SYNO.Foto(Team).
+        Browse.Folder `rename`(id + name) — 실 NAS 확인 2026-07-09. Foto folder
+        id는 그대로, 이름만 바뀐다."""
+        await self._dsm.call(
+            _ns(space, "SYNO.Foto.Browse.Folder"),
+            "rename",
+            version=1,
+            sid=self._sid,
+            extra={"id": int(folder_id), "name": new_name},
         )
+        invalidate_folder_cache(self._sid)
+        return str(folder_id), new_name
 
     async def folder_count(self, folder_id: str) -> int:
         # Browse.Item "count" takes the same filters as "list" — one cheap call

@@ -20,9 +20,13 @@ services:
       # @eaDir을 막아 동영상 포스터·고화질을 못 주는 문제 우회) ② 촬영일 교정 시
       # 소유자 본인 파일에 EXIF/mtime 직접 기록(capture_fix). 이를 위해 :rw.
       - ${THUMB_HOMES_HOST:-/volume1/homes}:/photovol/homes:rw
+      # 공용(team) 공유 — 촬영일 교정 시 EXIF 읽기용(읽기전용). 파일 수정은 안 함
+      # (공용은 Synology set API로 교정, 파일은 못 씀).
+      - ${THUMB_PHOTO_HOST:-/volume1/photo}:/photovol/photo:ro
     environment:
       - TZ=Asia/Seoul
       - THUMB_MOUNT_HOMES=/photovol/homes
+      - THUMB_MOUNT_TEAM=/photovol/photo
       # DSM 연결 (자격증명은 넣지 않음 — 로그인 화면에서 입력)
       - DSM_BASE_URL=${DSM_BASE_URL:-https://192.168.0.10}
       - DSM_PORT=${DSM_PORT:-5001}
