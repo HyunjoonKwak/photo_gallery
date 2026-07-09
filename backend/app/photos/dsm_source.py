@@ -47,10 +47,19 @@ from .source import Affected, DeleteOutcome, MoveOutcome
 
 logger = logging.getLogger(__name__)
 
-# Bucket cache: (sid, space) -> (monotonic_ts, buckets). Building buckets pages
-# the entire library (~2s per 5000 items), so we cache the result briefly and
-# invalidate on writes. Process-local; lost on restart (rebuilds on demand).
-_BUCKET_CACHE: dict[tuple[str, str], tuple[float, list[PhotoBucket]]] = {}
+# Bucket cache: scope -> (monotonic_ts, buckets). scope = "team"(공유 라이브러리는
+# 전 계정 공통 — 사용자마다 따로 풀스캔하지 않는다) 또는 "personal:<account>".
+# L1(메모리) 뒤에 L2(SQLite bucket_cache)가 있어 재시작·타 세션에도 즉시 서빙되고,
+# 쓰기 후에는 stale 데이터를 먼저 내주고 백그라운드로 재스캔한다(SWR).
+_BUCKET_CACHE: dict[str, tuple[float, list[PhotoBucket]]] = {}
+# sid -> account: invalidate 훅(세션만 아는 호출부)에서 scope를 만들 때 사용.
+_SID_ACCOUNT: dict[str, str] = {}
+# 백그라운드 재스캔 중복 방지.
+_BUCKET_SCANNING: set[str] = set()
+
+
+def _bucket_scope(account: str, space: str) -> str:
+    return "team" if space == "team" else f"personal:{account}"
 # Folder metadata cache: sid -> {folder_id: (space, name)}. The folder tree is
 # huge (1500+) and hierarchical, so we load it lazily (one level per request)
 # and remember id→(space,path) as levels are browsed. File-op helpers resolve a
@@ -59,9 +68,28 @@ _FOLDER_META: dict[str, dict[str, tuple[str, str]]] = {}
 # Top-level folders are the one slow level (DSM scans all top folders); cache
 # them per sid. Deeper levels are fast and fetched live.
 _TOP_FOLDER_CACHE: dict[str, tuple[float, list[PhotoFolder]]] = {}
-# App-trash item ids: sid -> (monotonic_ts, ids). Photos indexes /photo/#trash
-# like any folder, so listings must subtract these (see _trash_item_ids).
-_TRASH_ID_CACHE: dict[str, tuple[float, frozenset[str]]] = {}
+# App-trash item ids: 공유 휴지통은 전 계정 공통이므로 프로세스 전역 1개.
+# 대량 폴더 삭제 후 #trash 서브트리가 커지면(폴더 150+) 전체 재스캔이 분 단위라,
+# 쓰기마다 비우지 않고 삭제/복원 훅이 증분 갱신한다(TTL은 외부 변경 수렴용).
+_TRASH_IDS: tuple[float, frozenset[str]] | None = None
+_TRASH_TTL = 600.0
+
+
+def _trash_cache_add(item_ids: list[str]) -> None:
+    global _TRASH_IDS
+    if _TRASH_IDS is not None:
+        _TRASH_IDS = (_TRASH_IDS[0], _TRASH_IDS[1] | frozenset(item_ids))
+
+
+def _trash_cache_remove(item_ids: list[str]) -> None:
+    global _TRASH_IDS
+    if _TRASH_IDS is not None:
+        _TRASH_IDS = (_TRASH_IDS[0], _TRASH_IDS[1] - frozenset(item_ids))
+
+
+def trash_cache_clear() -> None:
+    global _TRASH_IDS
+    _TRASH_IDS = None
 # Folder tombstones: sid -> {folder_id: removed_at}. FileStation deletes a
 # folder instantly but Browse.Folder (Photos index) keeps returning it until
 # reindexing (2026-07-04 실 NAS 보고: 삭제한 폴더가 트리에 계속 보임) — hide
@@ -81,8 +109,9 @@ _PAGE = 5000
 # Video list cache: sid -> {space: (ts, items)}. videos()는 라이브러리 전체를
 # 스캔해 type==video만 거르므로(무거움) 결과를 buckets와 같은 창으로 캐시.
 _VIDEO_CACHE: dict[tuple[str, str], tuple[float, list["PhotoItem"]]] = {}
-# 전량 스캔 페이지를 동시에 몇 개까지 조회할지(첫 조회 지연 단축; NAS 과부하 방지).
-_SCAN_CONCURRENCY = 6
+# 전량 스캔 페이지를 동시에 몇 개까지 조회할지(첫 조회 지연 단축; DsmClient
+# 세마포어 24 안에서 여유 있게 — 69k 라이브러리 기준 2웨이브면 끝).
+_SCAN_CONCURRENCY = 10
 
 
 def _tombstoned_folders(sid: str) -> set[str]:
@@ -123,18 +152,24 @@ def _untombstone_items(sid: str, item_ids: list[str]) -> None:
 
 
 def invalidate_bucket_cache(sid: str, space: str | None = None) -> None:
-    # Trash contents change on the same writes that stale the buckets
-    # (delete/restore/purge) — one invalidation hook covers both. The video
-    # list changes on the same writes, so drop it here too.
-    _TRASH_ID_CACHE.pop(sid, None)
-    if space is None:
-        for key in [k for k in _BUCKET_CACHE if k[0] == sid]:
-            _BUCKET_CACHE.pop(key, None)
-        for key in [k for k in _VIDEO_CACHE if k[0] == sid]:
-            _VIDEO_CACHE.pop(key, None)
-    else:
-        _BUCKET_CACHE.pop((sid, space), None)
-        _VIDEO_CACHE.pop((sid, space), None)
+    """Mark bucket data stale after a write. L1을 비우면 다음 조회가 L2(SQLite)의
+    지난 결과를 즉시 서빙하고 백그라운드 재스캔이 따라잡는다(SWR) — 쓰기마다
+    전량 재스캔을 기다리게 하지 않는다. 휴지통 캐시는 삭제/복원 훅이 증분
+    갱신하므로 여기서 건드리지 않는다."""
+    account = _SID_ACCOUNT.get(sid, "")
+    spaces = [space] if space else ["team", "personal"]
+    for sp in spaces:
+        scope = _bucket_scope(account, sp)
+        _BUCKET_CACHE.pop(scope, None)
+        try:
+            from ..config import get_settings
+            from ..db import mark_buckets_stale
+
+            mark_buckets_stale(get_settings().sqlite_path, scope)
+        except Exception:  # noqa: BLE001 - invalidation is best-effort
+            pass
+    for key in [k for k in _VIDEO_CACHE if k[0] == sid]:
+        _VIDEO_CACHE.pop(key, None)
 
 
 def invalidate_folder_cache(sid: str) -> None:
@@ -162,9 +197,12 @@ def _ns(space: str, api: str) -> str:
 class DsmPhotoSource:
     """PhotoSource implementation talking to Synology Photos via the Web API."""
 
-    def __init__(self, dsm: DsmClient, sid: str):
+    def __init__(self, dsm: DsmClient, sid: str, account: str = ""):
         self._dsm = dsm
         self._sid = sid
+        self._account = account
+        if account:
+            _SID_ACCOUNT[sid] = account
 
     async def buckets(self, space: str) -> list[PhotoBucket]:
         """Day buckets grouped in local (KST) time by paging the whole library.
@@ -176,31 +214,71 @@ class DsmPhotoSource:
         로컬 타임존으로 그룹핑한다 — buckets 와 items 가 동일 소스·동일 TZ 라
         개수가 정확히 일치한다. (배포 컨테이너 TZ=Asia/Seoul 전제 — docker 설정)
 
-        비용: 라이브러리당 ~2s/5000장. 결과는 (sid,space)로 짧게 캐시하고
-        쓰기 작업 시 무효화한다.
+        비용: 69k 라이브러리 기준 수십 초 → 그래서 3계층:
+        L1 메모리(scope) → L2 SQLite(재시작·타 세션에도 즉시) → 실스캔.
+        쓰기 후에는 stale L2를 먼저 내주고 백그라운드로 재스캔한다(SWR).
         """
-        cache_key = (self._sid, space)
-        cached = _BUCKET_CACHE.get(cache_key)
+        scope = _bucket_scope(self._account, space)
+        cached = _BUCKET_CACHE.get(scope)
         if cached and (_time.monotonic() - cached[0]) < _BUCKET_TTL:
             return cached[1]
 
-        trash_ids = await self._trash_item_ids(space)
-        tomb = _tombstoned_items(self._sid)
-        counter: Counter[str] = Counter()
-        # additional 생략 → time 만 받아 페이로드 최소화.
-        for page in await self._scan_item_pages(space):
-            for it in page:
-                ts = it.get("time")
-                iid = str(it.get("id"))
-                if ts and iid not in trash_ids and iid not in tomb:
-                    counter[date.fromtimestamp(ts).isoformat()] += 1
+        from ..config import get_settings
+        from ..db import load_buckets
 
-        out = [
-            PhotoBucket(day=day, count=count)
-            for day, count in sorted(counter.items(), reverse=True)
-        ]
-        _BUCKET_CACHE[cache_key] = (_time.monotonic(), out)
-        return out
+        sqlite_path = get_settings().sqlite_path
+        try:
+            rows, fresh = await asyncio.to_thread(
+                load_buckets, sqlite_path, scope, _BUCKET_TTL
+            )
+        except Exception:  # noqa: BLE001 - L2 장애는 스캔 폴백으로 흡수
+            rows, fresh = [], False
+        if rows:
+            out = [PhotoBucket(day=d, count=c) for d, c in rows]
+            _BUCKET_CACHE[scope] = (_time.monotonic(), out)
+            if not fresh and scope not in _BUCKET_SCANNING:
+                # Stale-while-revalidate: 지난 결과를 즉시 내주고 뒤에서 재스캔.
+                _BUCKET_SCANNING.add(scope)
+                asyncio.create_task(self._rescan_buckets(scope, space, sqlite_path))
+            return out
+        # 첫 스캔(스코프에 데이터 자체가 없음) — 동기로 한 번 채운다.
+        return await self._rescan_buckets(scope, space, sqlite_path, register=False)
+
+    async def _rescan_buckets(
+        self, scope: str, space: str, sqlite_path: str, register: bool = True
+    ) -> list[PhotoBucket]:
+        """Full-library scan → counter → L1/L2 갱신. 백그라운드 태스크로도 돎."""
+        try:
+            trash_ids = await self._trash_item_ids(space)
+            tomb = _tombstoned_items(self._sid)
+            counter: Counter[str] = Counter()
+            # additional 생략 → time 만 받아 페이로드 최소화.
+            for page in await self._scan_item_pages(space):
+                for it in page:
+                    ts = it.get("time")
+                    iid = str(it.get("id"))
+                    if ts and iid not in trash_ids and iid not in tomb:
+                        counter[date.fromtimestamp(ts).isoformat()] += 1
+            out = [
+                PhotoBucket(day=day, count=count)
+                for day, count in sorted(counter.items(), reverse=True)
+            ]
+            _BUCKET_CACHE[scope] = (_time.monotonic(), out)
+            try:
+                from ..db import save_buckets
+
+                await asyncio.to_thread(
+                    save_buckets, sqlite_path, scope, [(b.day, b.count) for b in out]
+                )
+            except Exception:  # noqa: BLE001 - L2 저장 실패해도 결과는 서빙
+                logger.exception("bucket save failed (scope=%s)", scope)
+            return out
+        except Exception:
+            logger.exception("bucket rescan failed (scope=%s)", scope)
+            return []
+        finally:
+            if register:
+                _BUCKET_SCANNING.discard(scope)
 
     async def _scan_item_pages(
         self, space: str, additional: list[str] | None = None
@@ -284,8 +362,9 @@ class DsmPhotoSource:
         """
         if space != "team":  # trash lives in the team share only
             return frozenset()
-        cached = _TRASH_ID_CACHE.get(self._sid)
-        if cached and (_time.monotonic() - cached[0]) < _BUCKET_TTL:
+        global _TRASH_IDS
+        cached = _TRASH_IDS
+        if cached and (_time.monotonic() - cached[0]) < _TRASH_TTL:
             return cached[1]
         try:
             trash = next(
@@ -300,12 +379,15 @@ class DsmPhotoSource:
             if trash is not None:
                 # 단순 삭제는 #trash/t<ns>/files(2단계)지만, 폴더 재귀 삭제는
                 # #trash/t<ns>/<folder>/…로 서브트리를 통째로 옮겨 임의 깊이가
-                # 된다. 따라서 #trash 아래 모든 하위 폴더를 재귀 수집해야
-                # 중첩된 사진까지 타임라인에서 빠진다(2026-07-06 사용자 보고).
+                # 된다. 대량 폴더 삭제 후 트래시가 150+ 폴더로 커질 수 있어
+                # (2026-07-09 실측: 순차 수집이 분 단위 → 타임라인 5분+)
+                # 폴더별 아이템 수집을 병렬로 돌린다(DSM 세마포어가 상한).
                 folder_ids = await self._descendant_folder_ids(
                     "team", int(trash["id"])
                 )
-                for fid in folder_ids:
+
+                async def collect(fid: int) -> set[str]:
+                    got: set[str] = set()
                     offset = 0
                     while True:
                         data = await self._dsm.call(
@@ -316,16 +398,19 @@ class DsmPhotoSource:
                             extra={"folder_id": fid, "offset": offset, "limit": 1000},
                         )
                         page = data.get("list", [])
-                        ids.update(str(it.get("id")) for it in page)
+                        got.update(str(it.get("id")) for it in page)
                         if len(page) < 1000:
-                            break
+                            return got
                         offset += 1000
+
+                for part in await asyncio.gather(*(collect(f) for f in folder_ids)):
+                    ids.update(part)
         except DsmError:
             # Filtering is best-effort — a probe failure must not break the
             # timeline. Uncached so the next call retries.
             return frozenset()
         result = frozenset(ids)
-        _TRASH_ID_CACHE[self._sid] = (_time.monotonic(), result)
+        _TRASH_IDS = (_time.monotonic(), result)
         return result
 
     @staticmethod
@@ -439,13 +524,19 @@ class DsmPhotoSource:
         휴지통이 여러 단계 깊어질 수 있어, 트래시 아이템 수집 전 서브트리
         전체를 훑는다. 트래시는 대기 삭제만 담겨 대개 작다."""
         out = [root_id]
-        stack = [root_id]
-        while stack:
-            fid = stack.pop()
-            for f in await self._list_children(space, fid):
-                cid = int(f["id"])
-                out.append(cid)
-                stack.append(cid)
+        frontier = [root_id]
+        # 레벨 단위 병렬 조회 — 트래시가 폴더 150+로 커지면 순차 왕복이 분 단위가
+        # 된다(2026-07-09 실측). 동시성 상한은 DsmClient 세마포어가 잡는다.
+        while frontier:
+            results = await asyncio.gather(
+                *(self._list_children(space, fid) for fid in frontier)
+            )
+            frontier = []
+            for children in results:
+                for f in children:
+                    cid = int(f["id"])
+                    out.append(cid)
+                    frontier.append(cid)
         return out
 
     async def _filtered_items(
@@ -997,6 +1088,13 @@ class DsmPhotoSource:
                     extra={"id": int(folder_id), "name": json.dumps(new_name)},
                 )
                 invalidate_folder_cache(self._sid)
+                # 경로 캐시 즉시 갱신 — 안 하면 rename 직후 이 폴더로의 이동이
+                # 옛 경로로 CopyMove 되는 실버그(경로 해석이 meta에 의존).
+                metas = _FOLDER_META.get(self._sid, {})
+                old = metas.get(str(folder_id))
+                if old:
+                    parent = old[1].rsplit("/", 1)[0]
+                    metas[str(folder_id)] = (old[0], f"{parent}/{new_name}")
                 return str(folder_id), new_name
             except DsmError as exc:
                 last = exc
@@ -1548,6 +1646,7 @@ class DsmPhotoSource:
         # Hide the deleted ids immediately — Photos keeps returning them from the
         # folder/timeline filters until it reindexes the #trash move.
         _tombstone_items(self._sid, [p.id for p in outcome.deleted])
+        _trash_cache_add([p.id for p in outcome.deleted])  # 증분 갱신(재스캔 회피)
         outcome.affected = sorted(affected)
         self._invalidate(affected)
         return outcome
@@ -1587,6 +1686,7 @@ class DsmPhotoSource:
         self, placements: list[PlacedItem], on_progress: ProgressFn | None = None
     ) -> Affected:
         _untombstone_items(self._sid, [p.id for p in placements])  # undo delete
+        _trash_cache_remove([p.id for p in placements])  # 트래시에서 되돌아옴
         return await self._reverse(placements, on_progress)
 
     async def remove_items(self, item_ids: list[str]) -> Affected:
@@ -1604,6 +1704,7 @@ class DsmPhotoSource:
         except DsmError as exc:
             if exc.code not in (408, 900):  # no such file/dir
                 raise
+        trash_cache_clear()
 
     async def _ensure_dir(self, path: str) -> None:
         # Create each level below the share root (/photo). Nested one-shot
@@ -1694,6 +1795,9 @@ class DsmPhotoSource:
         await self._copymove([dest_dir], trash_dir, remove_src=True)
         invalidate_folder_cache(self._sid)
         invalidate_bucket_cache(self._sid)
+        # 폴더째 삭제는 어떤 아이템이 트래시로 갔는지 모름 → 캐시를 비워 다음
+        # 조회가 (병렬) 재스캔으로 정확히 반영하게 한다.
+        trash_cache_clear()
         # 트리에서 즉시 감춤(폴더 인덱스 지연 대비, remove_folder와 동일 패턴).
         _REMOVED_FOLDERS.setdefault(self._sid, {})[str(folder_id)] = _time.monotonic()
         return {
@@ -1710,6 +1814,7 @@ class DsmPhotoSource:
         _REMOVED_FOLDERS.pop(self._sid, None)  # 복원된 폴더가 다시 보이게
         invalidate_folder_cache(self._sid)
         invalidate_bucket_cache(self._sid)
+        trash_cache_clear()  # 서브트리가 트래시에서 빠져나감 → 재스캔
 
     async def folder_conflicts(
         self, space: str, folder_ids: list[str], dest_folder_id: str
@@ -1795,6 +1900,12 @@ class DsmPhotoSource:
 
         invalidate_folder_cache(self._sid)
         invalidate_bucket_cache(self._sid)
+        if not copy:
+            # 이동된 폴더의 경로 캐시는 낡음 — 남겨두면 후속 파일 작업이 옛
+            # 경로로 CopyMove 될 수 있어 제거(재탐색 시 재적재).
+            metas = _FOLDER_META.get(self._sid, {})
+            for fid in folder_ids:
+                metas.pop(str(fid), None)
         # NOTE: 이동한 폴더는 tombstone하지 않는다 (2026-07-04 실 NAS 보고 — 재색인이
         # 폴더 id를 유지하면 대상 위치까지 숨는다). 원본 잔상은 프론트 resettle로 정리.
         names = plain_names + [nn for _, nn in renamed] + merge_names

@@ -57,6 +57,24 @@ export default defineConfig({
         // 새 SW가 대기 없이 즉시 활성화·제어 → 배포가 다음 로드에 반영된다.
         skipWaiting: true,
         clientsClaim: true,
+        // 썸네일 런타임 캐시: URL에 cache_key(내용 버전)가 있어 내용이 바뀌면
+        // URL이 바뀜 → CacheFirst 안전. 재방문 그리드가 NAS 왕복 없이 뜨고
+        // 오프라인에서도 최근 본 썸네일이 보인다. 상한·쿼터 보호로 폭주 방지.
+        runtimeCaching: [
+          {
+            urlPattern: /\/api\/photos\/thumbnail\?/,
+            handler: "CacheFirst" as const,
+            options: {
+              cacheName: "thumbs",
+              expiration: {
+                maxEntries: 3000,
+                maxAgeSeconds: 60 * 60 * 24 * 30,
+                purgeOnQuotaError: true,
+              },
+              cacheableResponse: { statuses: [200] },
+            },
+          },
+        ],
       },
       // 개발 중엔 SW 비활성(캐시 혼란 방지). 배포 빌드에서만 동작.
       devOptions: { enabled: false },

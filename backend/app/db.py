@@ -86,6 +86,20 @@ CREATE TABLE IF NOT EXISTS zone_config (
   created_at TEXT NOT NULL,
   PRIMARY KEY (account, id)
 );
+
+-- 타임라인 일자 버킷 L2 캐시 (scope = "team" | "personal:<account>").
+-- 전량 스캔(69k 기준 수십 초)을 재시작·세션마다 반복하지 않기 위한 영속층.
+-- updated_at=0 은 "stale" 표식(쓰기 후) — 조회는 즉시 서빙 + 백그라운드 재스캔.
+CREATE TABLE IF NOT EXISTS bucket_cache (
+  scope  TEXT NOT NULL,
+  day    TEXT NOT NULL,
+  count  INTEGER NOT NULL,
+  PRIMARY KEY (scope, day)
+);
+CREATE TABLE IF NOT EXISTS bucket_meta (
+  scope      TEXT PRIMARY KEY,
+  updated_at REAL NOT NULL
+);
 """
 
 
@@ -126,6 +140,57 @@ def _migrate(conn: sqlite3.Connection) -> None:
         "error = '서버 재시작으로 중단됨 — 재스캔하면 이어서 진행됩니다.' "
         "WHERE status = 'running'"
     )
+
+
+def load_buckets(
+    sqlite_path: str, scope: str, ttl: float
+) -> tuple[list[tuple[str, int]], bool]:
+    """(rows, fresh) — rows는 day 내림차순 (day, count), fresh는 TTL 이내 여부."""
+    import time as _t
+
+    with connect(sqlite_path) as conn:
+        meta = conn.execute(
+            "SELECT updated_at FROM bucket_meta WHERE scope = ?", (scope,)
+        ).fetchone()
+        if meta is None:
+            return [], False
+        rows = [
+            (r["day"], r["count"])
+            for r in conn.execute(
+                "SELECT day, count FROM bucket_cache WHERE scope = ? "
+                "ORDER BY day DESC",
+                (scope,),
+            )
+        ]
+    fresh = (_t.time() - meta["updated_at"]) < ttl
+    return rows, fresh
+
+
+def save_buckets(
+    sqlite_path: str, scope: str, rows: list[tuple[str, int]]
+) -> None:
+    import time as _t
+
+    with connect(sqlite_path) as conn:
+        conn.execute("DELETE FROM bucket_cache WHERE scope = ?", (scope,))
+        conn.executemany(
+            "INSERT INTO bucket_cache (scope, day, count) VALUES (?, ?, ?)",
+            [(scope, d, c) for d, c in rows],
+        )
+        conn.execute(
+            "INSERT INTO bucket_meta (scope, updated_at) VALUES (?, ?) "
+            "ON CONFLICT(scope) DO UPDATE SET updated_at = excluded.updated_at",
+            (scope, _t.time()),
+        )
+        conn.commit()
+
+
+def mark_buckets_stale(sqlite_path: str, scope: str) -> None:
+    with connect(sqlite_path) as conn:
+        conn.execute(
+            "UPDATE bucket_meta SET updated_at = 0 WHERE scope = ?", (scope,)
+        )
+        conn.commit()
 
 
 def connect(sqlite_path: str) -> sqlite3.Connection:

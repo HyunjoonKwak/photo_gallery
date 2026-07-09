@@ -376,7 +376,9 @@ export function FolderPane({
     queryKey: ["folder-counts", areaKey, countIds.join(",")],
     queryFn: () => api.folderCounts(countIds, area),
     enabled: countIds.length > 0,
-    staleTime: 30_000,
+    // 폴더 내용은 앱 내 작업(무효화 동반)으로만 바뀜 → 길게 신선 취급해
+    // 드나들 때마다의 재요청(DSM 왕복 폭주)을 줄인다.
+    staleTime: 300_000,
   });
   const counts = countsQuery.data?.counts ?? {};
 
@@ -390,6 +392,7 @@ export function FolderPane({
     queryKey: ["folder-items", areaKey, current?.id],
     queryFn: () => api.folderItems(current!.id, undefined, area),
     enabled: current != null,
+    staleTime: 300_000, // 작업 시 무효화가 신선도 보장 — 재방문 재요청 억제
   });
   const items = useMemo(
     () =>

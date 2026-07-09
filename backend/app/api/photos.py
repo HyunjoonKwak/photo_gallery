@@ -731,6 +731,7 @@ async def op_remove_folder(
 @router.get("/thumbnail")
 async def get_thumbnail(
     id: str,
+    request: Request,
     cache_key: str = "",
     space: Space = Query("team"),
     size: ThumbSize = Query("sm"),
@@ -738,7 +739,15 @@ async def get_thumbnail(
     settings: Settings = Depends(get_settings),
     session: Session = Depends(get_current_session),
 ) -> Response:
-    headers = {"Cache-Control": "private, max-age=86400"}
+    # URL에 cache_key(내용 버전)가 들어 있어 내용이 바뀌면 URL이 바뀐다 → 사실상
+    # 불변. 1년 immutable + ETag로 재방문 시 재다운로드/재검증을 없앤다.
+    etag = f'"{id}-{cache_key}-{size}"'
+    headers = {
+        "Cache-Control": "private, max-age=31536000, immutable",
+        "ETag": etag,
+    }
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers=headers)
     # 서버측 디스크 캐시(mock 제외) — DSM 왕복을 줄인다(특히 느린 1차 구역
     # FileStation 썸네일·콜드 브라우저 캐시). 키에 계정을 넣어 접근 제어 보존.
     cache: ThumbCache | None = None

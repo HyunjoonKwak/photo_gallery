@@ -85,4 +85,4 @@ def get_photo_source(
     if impersonating:
         assert target_user is not None
         return HomesPhotoSource(dsm, session.sid, target_user)
-    return DsmPhotoSource(dsm, session.sid)
+    return DsmPhotoSource(dsm, session.sid, account=session.account)

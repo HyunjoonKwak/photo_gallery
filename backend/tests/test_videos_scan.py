@@ -62,10 +62,12 @@ async def test_videos_filters_and_caches():
 
 
 async def test_videos_scan_is_parallel_waves():
-    """12000 아이템 / 5000 페이지 = 3 페이지. 동시성 6이면 한 물결에 다 담겨
-    6개 offset을 조회한다(짧은 페이지가 나와 한 물결에서 종료)."""
+    """12000 아이템 / 5000 페이지 = 3 페이지. 동시성(_SCAN_CONCURRENCY)이면 한
+    물결에 다 담겨 그 개수만큼 offset을 조회한다(짧은 페이지로 한 물결 종료)."""
+    from app.photos.dsm_source import _SCAN_CONCURRENCY
+
     dsm = _CountingDsm()
     src = DsmPhotoSource(dsm, _sid())
     await src.videos("team")
-    # 한 물결(6페이지)만에 끝 — offset 0/5000/10000은 내용, 나머지는 빈 페이지.
-    assert dsm.list_calls == 6
+    # 한 물결만에 끝 — offset 0/5000/10000은 내용, 나머지는 빈 페이지.
+    assert dsm.list_calls == _SCAN_CONCURRENCY

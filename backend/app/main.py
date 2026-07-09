@@ -14,6 +14,7 @@ from collections.abc import AsyncIterator
 import httpx
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.types import Scope
@@ -24,6 +25,28 @@ from .db import init_db
 from .dsm.client import DsmClient
 from .dsm.errors import SESSION_INVALID_CODES, DsmError
 from .session_store import delete_session, purge_expired
+
+
+class SelectiveGZipMiddleware:
+    """GZip everything except already-compressed binary streams.
+
+    JS 번들이 578KB 무압축으로 나가고 있었다(NPM 프록시는 프록시 응답을 압축하지
+    않음) — JSON/JS/CSS는 3~5배 줄지만, 썸네일 JPEG·비디오는 재압축 이득이 없고
+    CPU만 쓰므로 경로로 제외한다.
+    """
+
+    _SKIP_PREFIXES = ("/api/photos/thumbnail", "/api/photos/video")
+
+    def __init__(self, app):
+        self._plain = app
+        self._gzip = GZipMiddleware(app, minimum_size=1024)
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") == "http" and scope.get("path", "").startswith(
+            self._SKIP_PREFIXES
+        ):
+            return await self._plain(scope, receive, send)
+        return await self._gzip(scope, receive, send)
 
 
 class SpaStaticFiles(StaticFiles):
@@ -92,6 +115,7 @@ def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(title="NAS Photo Organizer", version="0.1.0", lifespan=lifespan)
 
+    app.add_middleware(SelectiveGZipMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origin_list,

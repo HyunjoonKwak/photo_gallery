@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -13,9 +13,15 @@ import {
 } from "@dnd-kit/core";
 import { useTimelineStore } from "../store/timeline";
 import { useFileOps } from "../hooks/useFileOps";
-import { AlbumsScreen } from "./AlbumsScreen";
-import { ManageScreen } from "./ManageScreen";
 import { ViewerScreen } from "./ViewerScreen";
+
+// 코드 스플리팅: 앨범/폴더분류(중복정리 포함)는 열 때만 로드해 첫 번들을 줄인다.
+const AlbumsScreen = lazy(() =>
+  import("./AlbumsScreen").then((m) => ({ default: m.AlbumsScreen })),
+);
+const ManageScreen = lazy(() =>
+  import("./ManageScreen").then((m) => ({ default: m.ManageScreen })),
+);
 import { Lightbox } from "./Lightbox";
 import { DragOverlayContent } from "./timeline/DragOverlayContent";
 import { SelectionActionBar } from "./timeline/SelectionActionBar";
@@ -121,8 +127,14 @@ export function TimelineScreen() {
       >
         {/* 사진·앨범 = 순수 뷰어, 폴더 분류 = 정리(DnD/액션바). */}
         {section === "viewer" && <ViewerScreen key={space} />}
-        {section === "albums" && <AlbumsScreen key={space} />}
-        {section === "manage" && <ManageScreen />}
+        <Suspense
+          fallback={
+            <p className="py-16 text-center text-sm text-slate-400">불러오는 중…</p>
+          }
+        >
+          {section === "albums" && <AlbumsScreen key={space} />}
+          {section === "manage" && <ManageScreen />}
+        </Suspense>
         <DragOverlay dropAnimation={null}>
           {dragIds && (
             <DragOverlayContent
