@@ -26,6 +26,7 @@ import logging
 import time as _time
 from collections import Counter
 from datetime import date, datetime, timedelta
+from typing import Callable
 
 from ..dsm.client import DsmClient
 from ..dsm.errors import DsmError
@@ -1108,6 +1109,7 @@ class DsmPhotoSource:
         *,
         remove_src: bool,
         overwrite: bool = False,
+        progress_cb: "Callable[[float], None] | None" = None,
     ) -> None:
         data = await self._dsm.call(
             "SYNO.FileStation.CopyMove",
@@ -1121,7 +1123,9 @@ class DsmPhotoSource:
                 "overwrite": "true" if overwrite else "false",
             },
         )
-        await self._poll_task("SYNO.FileStation.CopyMove", 3, data.get("taskid"))
+        await self._poll_task(
+            "SYNO.FileStation.CopyMove", 3, data.get("taskid"), progress_cb=progress_cb
+        )
 
     async def _rename(self, path: str, new_name: str) -> None:
         # path/name 은 JSON 인코딩 필수(평문이면 error 400 — 실 NAS 확인).
@@ -1236,18 +1240,45 @@ class DsmPhotoSource:
         )
         await self._poll_task("SYNO.FileStation.Delete", 2, data.get("taskid"))
 
-    async def _poll_task(self, api: str, version: int, taskid: str | None) -> None:
+    async def _poll_task(
+        self,
+        api: str,
+        version: int,
+        taskid: str | None,
+        *,
+        progress_cb: "Callable[[float], None] | None" = None,
+    ) -> None:
+        """Poll a FileStation task to completion. No hard time cap (대량 폴더
+        복사는 60초를 넘김) — 대신 바이트 진행이 5분간 멈추면 실패로 본다.
+        progress_cb(0..1)로 진행률을 흘려보낸다(processed_size/total 우선)."""
         if not taskid:
             raise DsmError(100, "파일 작업 태스크를 시작하지 못했습니다.")
-        for _ in range(120):  # ≤ 60s
+        STALL_LIMIT = 600  # 0.5s * 600 = 5분 무진행 → 중단
+        stalls = 0
+        last_done = -1
+        while True:
             status = await self._dsm.call(
                 api, "status", version=version, sid=self._sid,
                 extra={"taskid": taskid},
             )
+            done = status.get("processed_size") or 0
+            total = status.get("total") or 0
+            if progress_cb:
+                if total:
+                    progress_cb(max(0.0, min(1.0, done / total)))
+                else:
+                    pr = status.get("progress")
+                    if isinstance(pr, (int, float)) and pr >= 0:
+                        progress_cb(max(0.0, min(1.0, float(pr))))
             if status.get("finished"):
+                if progress_cb:
+                    progress_cb(1.0)
                 return
+            stalls = 0 if done != last_done else stalls + 1
+            last_done = done
+            if stalls > STALL_LIMIT:
+                raise DsmError(100, "파일 작업이 진행되지 않아 중단했습니다(시간 초과).")
             await asyncio.sleep(0.5)
-        raise DsmError(100, "파일 작업이 제한 시간 안에 끝나지 않았습니다.")
 
     async def _item_meta(
         self, space: str, item_ids: list[str]
@@ -1321,17 +1352,31 @@ class DsmPhotoSource:
         remove_src: bool,
         on_progress: ProgressFn | None,
         overwrite: bool = False,
+        on_task_progress: "Callable[[float], None] | None" = None,
     ) -> None:
         total = len(src_paths)
         if on_progress:
             on_progress(0, total)
-        for start in range(0, total, self.COPYMOVE_CHUNK):
+        # on_task_progress(0..1): 폴더 복사처럼 항목당 CopyMove 태스크가 오래 걸릴
+        # 때 바이트 진행률을 전체 0..1로 환산(청크 인덱스 + 청크 내 진행)한다.
+        n_chunks = max(1, (total + self.COPYMOVE_CHUNK - 1) // self.COPYMOVE_CHUNK)
+        for ci, start in enumerate(range(0, total, self.COPYMOVE_CHUNK)):
             chunk = src_paths[start : start + self.COPYMOVE_CHUNK]
+            cb: Callable[[float], None] | None = None
+            if on_task_progress:
+                def cb(frac: float, ci=ci) -> None:
+                    on_task_progress(min(1.0, (ci + frac) / n_chunks))
             await self._copymove(
-                chunk, dest_dir, remove_src=remove_src, overwrite=overwrite
+                chunk,
+                dest_dir,
+                remove_src=remove_src,
+                overwrite=overwrite,
+                progress_cb=cb,
             )
             if on_progress:
                 on_progress(min(start + len(chunk), total), total)
+        if on_task_progress:
+            on_task_progress(1.0)
 
     async def conflicts(
         self, space: str, item_ids: list[str], dest_folder_id: str
@@ -1723,9 +1768,19 @@ class DsmPhotoSource:
 
         if plain:
             # CopyMove는 디렉터리도 재귀 이동/복사한다 (실 NAS 검증 —
-            # 2026-07-03 MobileBackup 평탄화 작업에서 대량 실사용).
+            # 2026-07-03 MobileBackup 평탄화 작업에서 대량 실사용). 폴더당 사진이
+            # 수천 장이면 태스크가 오래 걸리므로, 폴더 수(0/1)가 아니라 바이트
+            # 진행률을 퍼센트(0~100)로 보고해 진행바가 움직이게 한다.
+            def _task_prog(frac: float) -> None:
+                if on_progress:
+                    on_progress(min(int(frac * 100), 100), 100)
+
             await self._copymove_chunked(
-                plain, dest_dir, remove_src=not copy, on_progress=on_progress
+                plain,
+                dest_dir,
+                remove_src=not copy,
+                on_progress=None,
+                on_task_progress=_task_prog,
             )
         for src, new_name in renamed:
             await self._place_renamed(

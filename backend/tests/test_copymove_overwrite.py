@@ -13,7 +13,7 @@ def test_copymove_chunked_forwards_overwrite():
     src = DsmPhotoSource.__new__(DsmPhotoSource)  # skip __init__ (no DSM needed)
     calls: list[dict] = []
 
-    async def fake_copymove(paths, dest_dir, *, remove_src, overwrite=False):
+    async def fake_copymove(paths, dest_dir, *, remove_src, overwrite=False, progress_cb=None):
         calls.append({"paths": list(paths), "remove_src": remove_src, "overwrite": overwrite})
 
     src._copymove = fake_copymove  # type: ignore[attr-defined]
@@ -35,7 +35,7 @@ def test_copymove_chunked_overwrite_defaults_false():
     src = DsmPhotoSource.__new__(DsmPhotoSource)
     calls: list[dict] = []
 
-    async def fake_copymove(paths, dest_dir, *, remove_src, overwrite=False):
+    async def fake_copymove(paths, dest_dir, *, remove_src, overwrite=False, progress_cb=None):
         calls.append({"overwrite": overwrite})
 
     src._copymove = fake_copymove  # type: ignore[attr-defined]

@@ -32,10 +32,10 @@ function genProgressKey(): string {
 /** Start count-based progress tracking for one bulk mutation (B-6): create a
  * key the backend reports against, poll it while the request runs, and hand
  * back `stop` for the mutation's onSettled. */
-function startProgress(label: string) {
+function startProgress(label: string, unit = "장") {
   const key = genProgressKey();
   const store = useProgressStore.getState();
-  store.start(key, label);
+  store.start(key, label, unit);
   const timer = window.setInterval(() => {
     api
       .opProgress(key)
@@ -258,7 +258,10 @@ export function useFileOps() {
             );
             return;
           }
-          const p = startProgress(variables.copy_mode ? "폴더 복사" : "폴더 이동");
+          const p = startProgress(
+            variables.copy_mode ? "폴더 복사" : "폴더 이동",
+            "%",
+          );
           moveFoldersMutation.mutate(
             {
               ...variables,
@@ -476,7 +479,7 @@ export function useFileOps() {
       onSuccess?: () => void,
       area?: AreaScope,
     ) => {
-      const p = startProgress(copyMode ? "폴더 복사" : "폴더 이동");
+      const p = startProgress(copyMode ? "폴더 복사" : "폴더 이동", "%");
       moveFoldersMutation.mutate(
         {
           space,

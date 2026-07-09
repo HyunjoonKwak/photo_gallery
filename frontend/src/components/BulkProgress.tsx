@@ -34,9 +34,13 @@ export function BulkProgress() {
     >
       <p className="mb-2 text-sm font-medium">
         {complete
-          ? `✓ ${total}${unit} ${label} 완료`
+          ? unit === "%"
+            ? `✓ ${label} 완료`
+            : `✓ ${total}${unit} ${label} 완료`
           : total > 0
-            ? `${done}/${total}${unit} ${label} 중…`
+            ? unit === "%"
+              ? `${done}% ${label} 중…`
+              : `${done}/${total}${unit} ${label} 중…`
             : `${label} 중…`}
       </p>
       <div className="h-1.5 overflow-hidden rounded-full bg-slate-600">
