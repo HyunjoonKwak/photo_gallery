@@ -1,15 +1,11 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
 import type { PhotoItem, PlaceInfo, Space } from "../api/types";
 import { useTimelineStore } from "../store/timeline";
 import { Thumb } from "./timeline/Thumb";
 import { UniformPhotoGrid } from "./timeline/UniformPhotoGrid";
-
-// leaflet(수십 KB)은 지도 탭을 열 때만 로드 — 메인 번들에서 분리.
-const PlacesMapView = lazy(() =>
-  import("./PlacesMapView").then((m) => ({ default: m.PlacesMapView })),
-);
+import { PlacesMapView } from "./PlacesMapView";
 
 /** 장소(지역별) 뷰어 — Synology Photos의 GPS 지오코딩 그룹(`places`)을 국가별
  * 섹션으로 한 화면에 펼치고, 각 국가 아래에 지역(first_level=도시) 카드를
@@ -184,13 +180,7 @@ export function PlacesRegionView({ space }: { space: Space }) {
         {region ? (
           <RegionPhotos space={space} region={region} />
         ) : mode === "map" ? (
-          <Suspense
-            fallback={
-              <p className="py-16 text-center text-sm text-slate-400">지도 불러오는 중…</p>
-            }
-          >
-            <PlacesMapView space={space} regions={allRegions} onOpen={setRegion} />
-          </Suspense>
+          <PlacesMapView space={space} regions={allRegions} onOpen={setRegion} />
         ) : (
           <div className="h-full space-y-6 overflow-y-auto p-4">
             {countries.map((c) => (
