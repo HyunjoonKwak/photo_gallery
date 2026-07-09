@@ -16,6 +16,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import StreamingResponse
+from starlette.background import BackgroundTask
 
 from ..config import Settings, get_settings
 from ..dedup import fill_thumbhashes
@@ -423,23 +424,36 @@ async def stream_video(
 ) -> StreamingResponse:
     """Video playback proxy — Range passthrough so <video> seeking works."""
     upstream = await source.video_stream(space, id, request.headers.get("range"))
-    passthrough = {
-        k: v
-        for k, v in upstream.headers.items()
-        if k.lower() in ("content-type", "content-length", "content-range")
-    }
-    passthrough.setdefault("Accept-Ranges", "bytes")
+    # From here the upstream connection is checked out of the httpx pool; it is
+    # only returned on aclose(). body()'s finally covers the normal path, but if
+    # anything between here and the client consuming the stream raises/cancels
+    # (header build, request cancellation), body() may never run — so guard the
+    # setup and attach a BackgroundTask so the connection is always released.
+    # (aclose() is idempotent, so a double close on the normal path is a no-op.)
+    try:
+        passthrough = {
+            k: v
+            for k, v in upstream.headers.items()
+            if k.lower() in ("content-type", "content-length", "content-range")
+        }
+        passthrough.setdefault("Accept-Ranges", "bytes")
 
-    async def body():
-        try:
-            async for chunk in upstream.aiter_bytes(64 * 1024):
-                yield chunk
-        finally:
-            await upstream.aclose()
+        async def body():
+            try:
+                async for chunk in upstream.aiter_bytes(64 * 1024):
+                    yield chunk
+            finally:
+                await upstream.aclose()
 
-    return StreamingResponse(
-        body(), status_code=upstream.status_code, headers=passthrough
-    )
+        return StreamingResponse(
+            body(),
+            status_code=upstream.status_code,
+            headers=passthrough,
+            background=BackgroundTask(upstream.aclose),
+        )
+    except BaseException:
+        await upstream.aclose()
+        raise
 
 
 @router.post("/ops/move-folders", response_model=OperationResponse)

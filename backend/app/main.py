@@ -57,8 +57,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     init_db(settings.sqlite_path)
     purge_expired(settings.sqlite_path)
 
+    # Bound the connection pool so a leaked/stuck connection can't silently
+    # starve every request: `pool` timeout fails fast (surfaces as a quick error
+    # instead of a 30s hang), and `keepalive_expiry` recycles idle connections
+    # so stale keep-alives left over after a DSM/Photos restart aren't reused.
     http = httpx.AsyncClient(
-        timeout=settings.dsm_timeout_seconds,
+        timeout=httpx.Timeout(settings.dsm_timeout_seconds, pool=5.0),
+        limits=httpx.Limits(
+            max_connections=100,
+            max_keepalive_connections=20,
+            keepalive_expiry=30.0,
+        ),
         verify=settings.dsm_verify_tls,
         follow_redirects=True,
     )
