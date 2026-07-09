@@ -11,7 +11,6 @@ import { PhotoCell } from "./timeline/PhotoCell";
 import { SPRING_MS, folderBasename } from "./FolderTree";
 import { FolderNameAuditDialog } from "./FolderNameAuditDialog";
 import { CaptureDateDialog } from "./CaptureDateDialog";
-import { useAuthStore } from "../store/auth";
 
 /** Order sub-folders by the user's chosen key/direction. Name uses a Korean,
  * numeric-aware compare (so 2·10 sort naturally); date uses mtime with folders
@@ -229,18 +228,16 @@ export function FolderPane({
   const isFsContext = isFsScope || Boolean(area?.zone || area?.targetUser);
   const [auditOpen, setAuditOpen] = useState(false);
 
-  // 촬영일 교정: 파일을 실제로 쓰므로 본인 홈(/homes/<나>/…)에 매핑되는 폴더에
-  // 진입했을 때만 노출. 1차 구역/타 homes 폴더는 id가 경로 그대로, 내 사진(Foto)
-  // 개인 폴더는 이름(경로)으로 Photos 디스크 경로를 구성한다. 공용(team)은 제외.
-  const account = useAuthStore((s) => s.user?.account);
+  // 촬영일 교정: 경로형 폴더(1차 구역/타 homes = FileStation)에서만 노출한다.
+  // 이런 폴더는 앱이 파일 mtime을 실시간으로 읽으므로 파일 교정이 즉시 반영된다.
+  // 내 사진/공용(Synology Photos)은 Synology가 날짜를 색인하고 파일 변경으로
+  // 재색인하지 않아 파일 교정이 반영되지 않으므로 여기서는 제외(Synology
+  // 'update_time' API 별도 구현 필요 — Phase 2).
   const [captureOpen, setCaptureOpen] = useState(false);
-  const captureRoot = useMemo(() => {
-    if (!current) return null;
-    if (current.id.startsWith("/homes/")) return current.id;
-    if (current.space === "personal" && account)
-      return `/homes/${account}/Photos${current.name}`;
-    return null;
-  }, [current, account]);
+  const captureRoot = useMemo(
+    () => (current && current.id.startsWith("/homes/") ? current.id : null),
+    [current],
+  );
 
   const openFolder = (f: PhotoFolder) => onPathChange([...path, f]);
   const jumpTo = (index: number) => onPathChange(path.slice(0, index + 1));
