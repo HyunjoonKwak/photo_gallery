@@ -8,10 +8,11 @@ services:
     container_name: nas-photo
     # 소유자 본인 uid로 실행 — 1차 구역 원본(711, 소유자만 read)을 읽어 썸네일을
     # 직접 리사이즈하기 위함(@eaDir 썸네일 없는 폴더). /data는 이 uid 소유여야 함.
-    # 파일 이동/삭제는 계속 DSM API로만 수행(권한 enforce). 예외: 촬영일 교정은
-    # DSM API로 불가(EXIF/mtime 설정 없음)라 아래 homes 마운트를 :rw로 열어 소유자
-    # 본인 파일에만 직접 기록한다(capture_fix). 그 외 코드는 마운트에 쓰지 않는다.
-    user: "${APP_UID:-1026}:${APP_GID:-100}"
+    # root 실행: ① homes 원본(0711, 소유자만 read) 썸네일·EXIF 읽기 ② 공용(team)
+    # 공유가 ACL(mode 000)로 잠겨 있어 소유자 uid로도 못 읽음 → 촬영일 교정의
+    # EXIF 감지를 위해 root 필요(사용자 승인 2026-07-09). 파일 이동/삭제는 계속
+    # DSM API로만. 마운트 쓰기는 촬영일 교정(capture_fix)에서만.
+    user: "0:0"
     ports:
       - "9800:9800"
     volumes:
