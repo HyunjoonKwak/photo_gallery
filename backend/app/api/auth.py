@@ -111,11 +111,16 @@ async def login(
             mock_mode=True,
         )
 
+    # 시도를 DSM 호출 '전에' 기록한다. 로그인 요청이 클라이언트 타임아웃/사용자
+    # 포기로 취소되면 서버가 아래 성공/실패 처리에 도달하지 못해, 예전엔 실패가
+    # 전혀 기록되지 않았다 → rate limit이 안 걸려 매 재시도가 DSM 인증을 두들기고
+    # PAM 지연이 눈덩이(7.5s→30s+)로 커졌다. 미리 기록하면 취소돼도 카운트되어
+    # 5회/10분 초과 시 429로 빠르게 막아 DSM을 보호한다. 성공하면 아래서 초기화.
+    record_failure(settings.sqlite_path, body.account)
     try:
         result = await dsm.login(body.account, body.passwd, body.otp_code)
     except DsmError as exc:
         # 400/401/402 -> bad credentials/disabled; 403/404 -> OTP needed/wrong.
-        record_failure(settings.sqlite_path, body.account)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)
         ) from exc

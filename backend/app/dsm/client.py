@@ -271,7 +271,11 @@ class DsmClient:
         url = f"{self._base}/{endpoint.path}"
         # POST so credentials travel in the form body, never in the URL/query
         # string (which DSM and any reverse proxy in front of it would log).
-        data = await self._send(url, params, api="SYNO.API.Auth", method="POST")
+        # 짧은 타임아웃: 정답 비번은 ~1-2s. 실패는 PAM이 지연시키므로 오래
+        # 매달리지 않고 빠르게 실패시켜 사용자에게 명확한 에러를 준다.
+        data = await self._send(
+            url, params, api="SYNO.API.Auth", method="POST", timeout=12.0
+        )
         sid = data.get("sid")
         if not sid:
             raise DsmError(100, "로그인 응답에 세션 정보가 없습니다.", api="SYNO.API.Auth")
@@ -297,20 +301,29 @@ class DsmClient:
 
     # --------------------------------------------------------------- transport
     async def _send(
-        self, url: str, params: dict[str, Any], *, api: str, method: str = "GET"
+        self,
+        url: str,
+        params: dict[str, Any],
+        *,
+        api: str,
+        method: str = "GET",
+        timeout: float | None = None,
     ) -> Any:
         """Perform the HTTP request and unwrap DSM's success/error envelope.
 
         ``GET`` puts parameters in the query string (fine for reads); ``POST``
         sends them as a form body so sensitive values (e.g. login credentials)
-        never appear in URLs, access logs, or proxy logs.
+        never appear in URLs, access logs, or proxy logs. ``timeout`` overrides
+        the client default per call (auth uses a short one so a failed login —
+        which DSM/PAM delays and escalates — fails fast instead of hanging).
         """
         try:
             async with self._sem:
+                kwargs: dict[str, Any] = {} if timeout is None else {"timeout": timeout}
                 if method == "POST":
-                    resp = await self._http.post(url, data=params)
+                    resp = await self._http.post(url, data=params, **kwargs)
                 else:
-                    resp = await self._http.get(url, params=params)
+                    resp = await self._http.get(url, params=params, **kwargs)
             resp.raise_for_status()
         except httpx.HTTPError as exc:
             raise DsmError(
