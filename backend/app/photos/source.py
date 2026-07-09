@@ -88,6 +88,12 @@ class PhotoSource(Protocol):
         """Direct items of a Foto folder (촬영일 교정 audit), space explicit."""
         ...
 
+    async def capture_subtree(
+        self, space: str, root_id: str
+    ) -> list[tuple[str, str]]:
+        """(folder_id, full_name) for a Foto folder + all descendants (재귀 교정)."""
+        ...
+
     async def set_item_time(self, space: str, item_id: str, epoch: int) -> None:
         """Set a Photos item's taken time (촬영일 교정, 내 사진/공용)."""
         ...

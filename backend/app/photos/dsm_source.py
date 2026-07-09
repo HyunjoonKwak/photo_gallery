@@ -505,6 +505,28 @@ class DsmPhotoSource:
         run right after a restart before the tree was browsed)."""
         return await self._filtered_items(space, {"folder_id": int(folder_id)}, None)
 
+    async def capture_subtree(
+        self, space: str, root_id: str
+    ) -> list[tuple[str, str]]:
+        """(folder_id, full_name) for the folder + ALL descendants (촬영일 교정
+        재귀). Foto folder name is the full path within the space, so the caller
+        derives each folder's disk path as base + name."""
+        ns = _ns(space, "SYNO.Foto.Browse.Folder")
+        out: list[tuple[str, str]] = []
+        root = await self._dsm.call(
+            ns, "get", version=1, sid=self._sid, extra={"id": int(root_id)}
+        )
+        rf = (root or {}).get("folder")
+        if rf:
+            out.append((str(rf["id"]), rf.get("name", "")))
+        stack = [int(root_id)]
+        while stack:
+            pid = stack.pop()
+            for f in await self._list_children(space, pid):
+                out.append((str(f["id"]), f.get("name", "")))
+                stack.append(int(f["id"]))
+        return out
+
     async def set_item_time(self, space: str, item_id: str, epoch: int) -> None:
         """Set a Synology Photos item's taken time (촬영일 교정, 내 사진/공용).
 

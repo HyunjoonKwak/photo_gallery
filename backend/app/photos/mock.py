@@ -920,6 +920,12 @@ class MockPhotoSource:
     async def capture_items(self, space: str, folder_id: str) -> list[PhotoItem]:
         return await self.folder_items(folder_id)
 
+    async def capture_subtree(
+        self, space: str, root_id: str
+    ) -> list[tuple[str, str]]:
+        f = self._folder_by_id(root_id)
+        return [(root_id, f.name)]
+
     async def set_item_time(self, space: str, item_id: str, epoch: int) -> None:
         # Dev mock: no persistent taken-time store — accept and no-op.
         return None

@@ -11,7 +11,6 @@ import { PhotoCell } from "./timeline/PhotoCell";
 import { SPRING_MS, folderBasename } from "./FolderTree";
 import { FolderNameAuditDialog } from "./FolderNameAuditDialog";
 import { CaptureDateDialog, type CaptureTarget } from "./CaptureDateDialog";
-import { useAuthStore } from "../store/auth";
 import { useToastStore } from "../store/toast";
 
 /** Order sub-folders by the user's chosen key/direction. Name uses a Korean,
@@ -234,21 +233,14 @@ export function FolderPane({
   //  - 경로형 폴더(1차 구역/homes = FileStation): 파일에 EXIF/mtime 직접 기록.
   //  - Foto 폴더(내 사진/공용): Synology 인덱스의 촬영시간을 API로 변경(파일
   //    변경은 Synology가 재색인 안 해 반영 안 되므로).
-  const account = useAuthStore((s) => s.user?.account);
   const [captureOpen, setCaptureOpen] = useState(false);
   const captureTarget = useMemo((): CaptureTarget | null => {
     if (!current) return null;
+    // 경로형(1차 구역/homes)=파일 기록, Foto(내 사진/공용)=Synology 시간 변경.
+    // 하위 폴더 EXIF 경로는 서버가 폴더 전체경로로 계산하므로 여기선 폴더 id만.
     if (current.id.startsWith("/homes/")) return { kind: "fs", root: current.id };
-    // 디스크 경로를 함께 넘겨 파일명에 날짜 없는 사진도 EXIF로 자동 감지.
-    // personal=/homes/<나>/Photos<폴더>, team(공용)=/photo<폴더>.
-    const diskRoot =
-      current.space === "personal" && account
-        ? `/homes/${account}/Photos${current.name}`
-        : current.space === "team"
-          ? `/photo${current.name}`
-          : undefined;
-    return { kind: "foto", folder: current.id, space: current.space, diskRoot };
-  }, [current, account]);
+    return { kind: "foto", folder: current.id, space: current.space };
+  }, [current]);
 
   const openFolder = (f: PhotoFolder) => onPathChange([...path, f]);
   const jumpTo = (index: number) => onPathChange(path.slice(0, index + 1));

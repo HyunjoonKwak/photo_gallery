@@ -641,27 +641,28 @@ def _exif_lookup(disk_root: str, filename: str):
 async def capture_audit_foto(
     folder: str,
     space: Space = Query("personal"),
-    disk_root: str | None = Query(default=None, max_length=1024),
     session: Session = Depends(get_current_session),
     source: PhotoSource = Depends(get_photo_source),
 ) -> CaptureAuditResponse:
-    """Foto 폴더(직속) 사진의 현재 촬영일(Synology 인덱스)과 추정 촬영일(파일명,
-    없으면 disk_root 경유 EXIF)을 반환. 파일 무변경(진단)."""
-    # disk_root(EXIF 폴백용) 허용 범위: 본인 홈(personal) 또는 공용 공유(team).
-    if disk_root and not (
-        disk_root.startswith(f"/homes/{session.account}/")
-        or (space == "team" and disk_root.startswith("/photo/"))
-    ):
-        disk_root = None
-    items = await source.capture_items(space, folder)
+    """Foto 폴더 + 하위 전체(재귀) 사진의 현재 촬영일(Synology 인덱스)과 추정
+    촬영일(파일명, 없으면 EXIF)을 반환. 파일 무변경(진단). 디스크 경로(EXIF용)는
+    폴더 전체 경로명으로 서버가 계산(personal=/homes/<나>/Photos, team=/photo)."""
+    base = "/photo" if space == "team" else f"/homes/{session.account}/Photos"
+    folders = await source.capture_subtree(space, folder)
+    # (item, folder_disk) 쌍으로 수집 — 하위 폴더 EXIF는 그 폴더 경로에서 읽는다.
+    pairs: list[tuple[object, str]] = []
+    for fid, fname in folders:
+        fdisk = base + fname
+        for it in await source.capture_items(space, fid):
+            pairs.append((it, fdisk))
 
     def build() -> list[CaptureAuditItem]:
         out: list[CaptureAuditItem] = []
-        for it in items:
+        for it, fdisk in pairs:
             det = parse_from_filename(it.filename)
             src = "filename" if det else "none"
-            if det is None and disk_root:
-                ex = _exif_lookup(disk_root, it.filename)
+            if det is None:
+                ex = _exif_lookup(fdisk, it.filename)
                 if ex:
                     det, src = ex, "exif"
             out.append(
