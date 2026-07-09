@@ -89,6 +89,10 @@ class PhotoFolder(BaseModel):
     space: str  # personal | team
     parent_id: str | None = None  # None for top-level folders
     depth: int = 0  # nesting depth (0 = top level), for tree indentation
+    # Folder timestamp (epoch seconds) for date sorting — populated for
+    # FileStation-backed folders (1차 구역/homes); None for Foto folders whose
+    # browse API exposes no time. Frontend sorts by it, nulls kept stable.
+    mtime: int | None = None
 
 
 class FoldersResponse(BaseModel):

@@ -55,6 +55,9 @@ export interface PhotoFolder {
   space: Space;
   parent_id: string | null;
   depth: number;
+  /** Folder timestamp (epoch seconds) for date sorting — present for
+   * FileStation folders (1차 구역/homes), null for Foto folders. */
+  mtime: number | null;
 }
 
 export interface FoldersResponse {

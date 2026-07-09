@@ -193,12 +193,16 @@ class _FsRootMixin:
 
     def _fs_folder(self, f: dict, parent_id: str | None) -> PhotoFolder:
         rel = self._rel(f["path"])
+        t = (f.get("additional") or {}).get("time") or {}
+        # 생성일 우선(crtime, btrfs 지원), 없으면 수정일(mtime)로 대체.
+        stamp = t.get("crtime") or t.get("mtime")
         return PhotoFolder(
             id=f["path"],  # path-style id — marks the FileStation world
             name=rel,
             space="personal",
             parent_id=parent_id,
             depth=max(0, rel.strip("/").count("/")),
+            mtime=int(stamp) if stamp else None,
         )
 
     def _fs_item(self, f: dict) -> PhotoItem:

@@ -6,9 +6,32 @@ import type { PhotoFolder } from "../api/types";
 import { layoutBucket } from "../lib/rowModel";
 import { useFileOps } from "../hooks/useFileOps";
 import { useTimelineStore } from "../store/timeline";
+import type { FolderSort, FolderSortKey } from "../store/timeline";
 import { PhotoCell } from "./timeline/PhotoCell";
 import { SPRING_MS, folderBasename } from "./FolderTree";
 import { FolderNameAuditDialog } from "./FolderNameAuditDialog";
+
+/** Order sub-folders by the user's chosen key/direction. Name uses a Korean,
+ * numeric-aware compare (so 2·10 sort naturally); date uses mtime with folders
+ * lacking a timestamp (Foto) kept at the end, name as the tiebreaker. */
+function sortFolders(list: PhotoFolder[], sort: FolderSort): PhotoFolder[] {
+  const dir = sort.dir === "asc" ? 1 : -1;
+  const byName = (a: PhotoFolder, b: PhotoFolder) =>
+    folderBasename(a.name).localeCompare(folderBasename(b.name), "ko", {
+      numeric: true,
+      sensitivity: "base",
+    });
+  return [...list].sort((a, b) => {
+    if (sort.key === "date") {
+      if (a.mtime == null && b.mtime == null) return byName(a, b) * dir;
+      if (a.mtime == null) return 1; // 날짜 없는 폴더는 방향과 무관하게 끝으로
+      if (b.mtime == null) return -1;
+      if (a.mtime !== b.mtime) return (a.mtime - b.mtime) * dir;
+      return byName(a, b) * dir;
+    }
+    return byName(a, b) * dir;
+  });
+}
 
 /** Spring-loaded drill-in: dragging over a folder card/row for a moment opens
  * it, so photos can be dropped into nested folders in one gesture (B-4). */
@@ -282,13 +305,26 @@ export function FolderPane({
     queryKey: ["folders", areaKey, current?.id ?? null],
     queryFn: () => api.folders(current?.id, area),
   });
-  const subFolders = (subQuery.data?.folders ?? []).filter(
-    (f) => current != null || f.space === librarySpace,
+  const folderSort = useTimelineStore((s) => s.folderSort);
+  const setFolderSort = useTimelineStore((s) => s.setFolderSort);
+
+  // Filtered but UNSORTED list — drives the counts query key so that changing
+  // the display sort never invalidates/refetches folder-counts.
+  const baseFolders = useMemo(
+    () =>
+      (subQuery.data?.folders ?? []).filter(
+        (f) => current != null || f.space === librarySpace,
+      ),
+    [subQuery.data, current, librarySpace],
+  );
+  const subFolders = useMemo(
+    () => sortFolders(baseFolders, folderSort),
+    [baseFolders, folderSort],
   );
 
   // Direct photo counts for the visible sub-folders (badge). One batched
   // request per level; failures just hide the badge.
-  const countIds = useMemo(() => subFolders.map((f) => f.id), [subFolders]);
+  const countIds = useMemo(() => baseFolders.map((f) => f.id), [baseFolders]);
   const countsQuery = useQuery({
     queryKey: ["folder-counts", areaKey, countIds.join(",")],
     queryFn: () => api.folderCounts(countIds, area),
@@ -449,52 +485,81 @@ export function FolderPane({
               <h3 className="shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-400">
                 {current ? "하위 폴더" : "폴더"} ({subFolders.length})
               </h3>
-              {/* 분할 뷰: 이 페인의 하위 폴더 모두 선택/해제 */}
-              {onToggleFolderCheck && onToggleAllFolders && (
+              <div className="flex shrink-0 items-center gap-1.5">
+                {/* 분할 뷰: 이 페인의 하위 폴더 모두 선택/해제 */}
+                {onToggleFolderCheck && onToggleAllFolders && (
+                  <button
+                    onClick={() =>
+                      onToggleAllFolders(subFolders, folderSelState !== "all")
+                    }
+                    className="flex items-center gap-1.5 rounded-lg px-2 py-0.5 text-xs text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                  >
+                    <span
+                      className={`flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold ${
+                        folderSelState === "all"
+                          ? "bg-blue-600 text-white"
+                          : folderSelState === "some"
+                            ? "bg-blue-200 text-blue-700"
+                            : "bg-slate-200 text-slate-500"
+                      }`}
+                    >
+                      {folderSelState === "some" ? "–" : "✓"}
+                    </span>
+                    {folderSelState === "all" ? "모두 해제" : "모두 선택"}
+                  </button>
+                )}
+                {/* 정렬: 이름/생성일 × 오름/내림 (persisted) */}
+                <select
+                  value={folderSort.key}
+                  onChange={(e) =>
+                    setFolderSort({
+                      ...folderSort,
+                      key: e.target.value as FolderSortKey,
+                    })
+                  }
+                  title="정렬 기준"
+                  className="rounded-md border border-slate-200 bg-white px-1 py-0.5 text-xs text-slate-600"
+                >
+                  <option value="name">이름순</option>
+                  <option value="date">생성일순</option>
+                </select>
                 <button
                   onClick={() =>
-                    onToggleAllFolders(subFolders, folderSelState !== "all")
+                    setFolderSort({
+                      ...folderSort,
+                      dir: folderSort.dir === "asc" ? "desc" : "asc",
+                    })
                   }
-                  className="ml-auto flex items-center gap-1.5 rounded-lg px-2 py-0.5 text-xs text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                  title={folderSort.dir === "asc" ? "오름차순" : "내림차순"}
+                  className="rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-xs text-slate-600 hover:bg-slate-50"
                 >
-                  <span
-                    className={`flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold ${
-                      folderSelState === "all"
-                        ? "bg-blue-600 text-white"
-                        : folderSelState === "some"
-                          ? "bg-blue-200 text-blue-700"
-                          : "bg-slate-200 text-slate-500"
+                  {folderSort.dir === "asc" ? "↑" : "↓"}
+                </button>
+                <nav className="flex gap-0.5 rounded-lg bg-slate-100 p-0.5">
+                  <button
+                    onClick={() => setFolderDisplay("grid")}
+                    title="아이콘 보기"
+                    className={`rounded-md px-2 py-0.5 text-xs transition-colors ${
+                      folderDisplay === "grid"
+                        ? "bg-white text-slate-700 shadow-sm"
+                        : "text-slate-400 hover:text-slate-600"
                     }`}
                   >
-                    {folderSelState === "some" ? "–" : "✓"}
-                  </span>
-                  {folderSelState === "all" ? "모두 해제" : "모두 선택"}
-                </button>
-              )}
-              <nav className="flex shrink-0 gap-0.5 rounded-lg bg-slate-100 p-0.5">
-                <button
-                  onClick={() => setFolderDisplay("grid")}
-                  title="아이콘 보기"
-                  className={`rounded-md px-2 py-0.5 text-xs transition-colors ${
-                    folderDisplay === "grid"
-                      ? "bg-white text-slate-700 shadow-sm"
-                      : "text-slate-400 hover:text-slate-600"
-                  }`}
-                >
-                  ▦
-                </button>
-                <button
-                  onClick={() => setFolderDisplay("list")}
-                  title="리스트 보기"
-                  className={`rounded-md px-2 py-0.5 text-xs transition-colors ${
-                    folderDisplay === "list"
-                      ? "bg-white text-slate-700 shadow-sm"
-                      : "text-slate-400 hover:text-slate-600"
-                  }`}
-                >
-                  ☰
-                </button>
-              </nav>
+                    ▦
+                  </button>
+                  <button
+                    onClick={() => setFolderDisplay("list")}
+                    title="리스트 보기"
+                    className={`rounded-md px-2 py-0.5 text-xs transition-colors ${
+                      folderDisplay === "list"
+                        ? "bg-white text-slate-700 shadow-sm"
+                        : "text-slate-400 hover:text-slate-600"
+                    }`}
+                  >
+                    ☰
+                  </button>
+                </nav>
+              </div>
             </div>
             {folderDisplay === "grid" ? (
               <div className="flex flex-wrap gap-1">

@@ -34,6 +34,14 @@ export type ViewerZoom = "year" | "month" | "day";
 export type ManageTab = "folders" | "dedup" | "search";
 export type FolderDisplay = "grid" | "list";
 
+/** Folder view ordering (persisted). key: 이름 | 날짜(생성일); dir: 오름/내림차순. */
+export type FolderSortKey = "name" | "date";
+export type FolderSortDir = "asc" | "desc";
+export interface FolderSort {
+  key: FolderSortKey;
+  dir: FolderSortDir;
+}
+
 /** 화면/라이브러리 전환 시 감상·선택 상태 초기화 묶음(매번 새 컬렉션). */
 function resetView() {
   return {
@@ -68,6 +76,7 @@ interface NavSnapshot {
 const NAV_HISTORY_MAX = 50;
 
 const FOLDER_DISPLAY_KEY = "nasphoto.folderDisplay";
+const FOLDER_SORT_KEY = "nasphoto.folderSort";
 
 function initialFolderDisplay(): FolderDisplay {
   try {
@@ -75,6 +84,21 @@ function initialFolderDisplay(): FolderDisplay {
   } catch {
     return "grid";
   }
+}
+
+function initialFolderSort(): FolderSort {
+  try {
+    const raw = localStorage.getItem(FOLDER_SORT_KEY);
+    if (raw) {
+      const p = JSON.parse(raw) as Partial<FolderSort>;
+      const key: FolderSortKey = p.key === "date" ? "date" : "name";
+      const dir: FolderSortDir = p.dir === "desc" ? "desc" : "asc";
+      return { key, dir };
+    }
+  } catch {
+    // fall through to default
+  }
+  return { key: "name", dir: "asc" };
 }
 
 interface TimelineState {
@@ -114,6 +138,9 @@ interface TimelineState {
   /** Folder view: show sub-folders as icon cards or a list (persisted). */
   folderDisplay: FolderDisplay;
   setFolderDisplay: (d: FolderDisplay) => void;
+  /** Folder view: sub-folder ordering — 이름/날짜 × 오름/내림 (persisted). */
+  folderSort: FolderSort;
+  setFolderSort: (s: FolderSort) => void;
   /** Photo search: submitting a query switches to the search view. */
   searchQuery: string;
   runSearch: (query: string) => void;
@@ -338,6 +365,15 @@ export const useTimelineStore = create<TimelineState>()((set, get) => ({
       // private mode etc. — preference just won't persist
     }
     set({ folderDisplay });
+  },
+  folderSort: initialFolderSort(),
+  setFolderSort: (folderSort) => {
+    try {
+      localStorage.setItem(FOLDER_SORT_KEY, JSON.stringify(folderSort));
+    } catch {
+      // private mode etc. — preference just won't persist
+    }
+    set({ folderSort });
   },
   viewedOwner: null,
   // Switching whose photos we organize: another member's personal space is
