@@ -40,6 +40,18 @@ def test_parses_millisecond_epoch(name, epoch_s):
 
 
 @pytest.mark.parametrize(
+    "name,epoch_s",
+    [
+        # 16-digit = 13-digit ms epoch + 3-digit sequence (KakaoTalk).
+        ("1502088228879113.jpg", 1502088228),  # 2017-08-07
+        ("1469950414226001.jpg", 1469950414),  # 13ms + seq
+    ],
+)
+def test_parses_ms_epoch_with_sequence(name, epoch_s):
+    assert parse_from_filename(name) == datetime.fromtimestamp(epoch_s)
+
+
+@pytest.mark.parametrize(
     "name",
     [
         "IMG_5726.jpg",       # 짧은 카운터 — 날짜 아님
@@ -58,6 +70,8 @@ def test_rejects_out_of_range_year():
     assert parse_from_filename("18000101.jpg") is None
 
 
-def test_does_not_match_inside_longer_digit_run():
-    # 17-digit run should not be read as a 13-digit epoch fragment
-    assert parse_from_filename("12345678901234567.jpg") is None
+def test_rejects_too_long_or_short_digit_runs():
+    # 20+ digit run: not a 13(+≤6 seq) epoch → reject
+    assert parse_from_filename("12345678901234567890.jpg") is None
+    # 12-digit run: shorter than a ms epoch and not a date → reject
+    assert parse_from_filename("123456789012.jpg") is None

@@ -55,8 +55,10 @@ def parse_from_filename(name: str) -> datetime | None:
         if dt:
             return dt
 
-    # 2) 13-digit millisecond epoch (e.g. 1487654687945.jpg).
-    m = re.search(r"(?<!\d)(\d{13})(?!\d)", s)
+    # 2) 13-digit millisecond epoch, optionally followed by a short sequence
+    #    suffix (e.g. 1487654687945.jpg, or KakaoTalk's 1502088228879113.jpg =
+    #    13-digit ms + 3-digit seq). Take the first 13 digits as the epoch.
+    m = re.search(r"(?<!\d)(\d{13})\d{0,6}(?!\d)", s)
     if m:
         dt = _valid(_from_epoch(int(m.group(1)), millis=True))
         if dt:

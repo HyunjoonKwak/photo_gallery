@@ -64,6 +64,7 @@ export function CaptureDateDialog({
 
   const [busy, setBusy] = useState(false);
   const [manualDates, setManualDates] = useState<Record<string, string>>({});
+  const [bulkDate, setBulkDate] = useState("");
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["folder-items"] });
@@ -248,7 +249,33 @@ export function CaptureDateDialog({
                     모두 날짜를 인식했습니다 👍
                   </p>
                 ) : (
-                  <ul className="max-h-52 overflow-y-auto rounded-lg border border-slate-100">
+                  <>
+                    {/* 한 번에 같은 날짜로 — 같은 행사 사진들에 일괄 지정 */}
+                    <div className="mb-1 flex items-center gap-2 rounded-lg bg-slate-50 px-2 py-1.5 text-xs">
+                      <span className="shrink-0 text-slate-500">
+                        전체 같은 날짜:
+                      </span>
+                      <input
+                        type="date"
+                        value={bulkDate}
+                        onChange={(e) => setBulkDate(e.target.value)}
+                        className="rounded border border-slate-200 px-1 py-0.5 text-slate-700"
+                      />
+                      <button
+                        onClick={() =>
+                          setManualDates((prev) => {
+                            const next = { ...prev };
+                            for (const i of manualItems) next[i.path] = bulkDate;
+                            return next;
+                          })
+                        }
+                        disabled={!bulkDate}
+                        className="rounded-md bg-slate-700 px-2 py-0.5 font-medium text-white hover:bg-slate-600 disabled:opacity-40"
+                      >
+                        모두 채우기
+                      </button>
+                    </div>
+                    <ul className="max-h-52 overflow-y-auto rounded-lg border border-slate-100">
                     {manualItems.slice(0, 300).map((it) => (
                       <li
                         key={it.path}
@@ -270,7 +297,8 @@ export function CaptureDateDialog({
                         />
                       </li>
                     ))}
-                  </ul>
+                    </ul>
+                  </>
                 )}
               </section>
             </div>
