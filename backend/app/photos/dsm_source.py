@@ -1056,12 +1056,13 @@ class DsmPhotoSource:
         await self._poll_task("SYNO.FileStation.CopyMove", 3, data.get("taskid"))
 
     async def _rename(self, path: str, new_name: str) -> None:
+        # path/name 은 JSON 인코딩 필수(평문이면 error 400 — 실 NAS 확인).
         data = await self._dsm.call(
             "SYNO.FileStation.Rename",
             "rename",
             version=2,
             sid=self._sid,
-            extra={"path": path, "name": new_name},
+            extra={"path": json.dumps(path), "name": json.dumps(new_name)},
         )
         # Rename may run as a task (taskid) or return synchronously — poll if async.
         if data.get("taskid"):

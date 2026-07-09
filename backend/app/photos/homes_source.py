@@ -362,12 +362,14 @@ class _FsRootMixin:
     ) -> tuple[str, str]:
         if not _is_path_id(folder_id):
             return await super().rename_folder(space, folder_id, new_name)
+        # SYNO.FileStation.Rename 은 path/name 을 JSON 인코딩으로 받는다(평문
+        # 문자열이면 error 400). 실 NAS 확인 2026-07-09.
         await self._dsm.call(
             "SYNO.FileStation.Rename",
             "rename",
             version=2,
             sid=self._sid,
-            extra={"path": folder_id, "name": new_name},
+            extra={"path": json.dumps(folder_id), "name": json.dumps(new_name)},
         )
         parent = posixpath.dirname(folder_id)
         return f"{parent}/{new_name}", new_name
