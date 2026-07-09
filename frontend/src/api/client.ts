@@ -24,6 +24,8 @@ import type {
   AlbumsResponse,
   AlbumMutationResponse,
   FolderAuditResponse,
+  CaptureAuditResponse,
+  CaptureFixResponse,
   ProgressResponse,
   RemoveFolderRequest,
   Space,
@@ -128,6 +130,22 @@ export const api = {
     }),
   logout: () => request<void>("/api/auth/logout", { method: "POST" }),
   me: () => request<UserInfo>("/api/auth/me"),
+
+  // 촬영일 교정 (파일에 EXIF/mtime 실제 기록) — 본인 홈(/homes/<user>/…) 전용
+  captureAudit: (root: string) =>
+    request<CaptureAuditResponse>(
+      `/api/photos/capture-audit?root=${encodeURIComponent(root)}`,
+    ),
+  captureFix: (paths: string[], progressKey?: string) =>
+    request<CaptureFixResponse>(
+      `/api/photos/capture-fix${progressKey ? `?progress_key=${progressKey}` : ""}`,
+      { method: "POST", body: JSON.stringify({ paths }) },
+    ),
+  captureFixManual: (items: { path: string; date: string }[]) =>
+    request<CaptureFixResponse>("/api/photos/capture-fix-manual", {
+      method: "POST",
+      body: JSON.stringify({ items }),
+    }),
   systemInfo: () => request<ApiInfoResponse>("/api/system/info"),
   photoBuckets: (space: Space) =>
     request<BucketsResponse>(`/api/photos/buckets?space=${space}${scopeQS()}`),

@@ -137,6 +137,29 @@ export interface FolderAuditResponse {
   items: FolderRename[];
 }
 
+/** 촬영일 교정: 파일 1건의 현재 날짜(mtime)와 파일명에서 추정한 촬영일. */
+export interface CaptureAuditItem {
+  path: string;
+  filename: string;
+  current: string; // ISO — 현재 촬영일로 쓰이는 값(mtime)
+  detected: string | null; // ISO — 파일명 추정 촬영일, 없으면 null
+  source: "filename" | "none";
+}
+
+export interface CaptureAuditResponse {
+  items: CaptureAuditItem[];
+  total: number;
+  auto: number; // 자동 교정 가능 수
+  manual: number; // 정보 없음(수동 지정) 수
+}
+
+export interface CaptureFixResponse {
+  ok: number;
+  skipped: number;
+  failed: number;
+  details: Record<string, number>;
+}
+
 /** 라이트박스 정보 패널용 온디맨드 상세 (폴더 경로/EXIF/촬영 위치). */
 export interface ItemDetail {
   id: string;

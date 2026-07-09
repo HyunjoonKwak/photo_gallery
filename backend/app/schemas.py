@@ -217,6 +217,43 @@ class RenameFolderResponse(BaseModel):
     name: str
 
 
+# --- 촬영일 교정 (파일에 실제 기록) ---
+class CaptureAuditItem(BaseModel):
+    path: str  # /homes/... 파일 경로 id
+    filename: str
+    current: str  # 현재 촬영일로 쓰이는 값(파일 mtime) — ISO
+    detected: str | None  # 파일명에서 추정한 촬영일 — ISO, 없으면 None
+    source: str  # filename | none
+
+
+class CaptureAuditResponse(BaseModel):
+    items: list[CaptureAuditItem]
+    total: int
+    auto: int  # 자동 교정 가능(파일명 감지) 수
+    manual: int  # 정보 없음(수동 지정 필요) 수
+
+
+class CaptureFixRequest(BaseModel):
+    # 자동 감지분 적용: 각 파일을 EXIF(있으면 유지)→파일명 순으로 해석해 기록.
+    paths: list[str] = Field(default_factory=list, max_length=5000)
+
+
+class CaptureFixManualItem(BaseModel):
+    path: str = Field(min_length=1)
+    date: str = Field(min_length=8, max_length=32)  # ISO 날짜/일시(사용자 지정)
+
+
+class CaptureFixManualRequest(BaseModel):
+    items: list[CaptureFixManualItem] = Field(default_factory=list, max_length=5000)
+
+
+class CaptureFixResponse(BaseModel):
+    ok: int
+    skipped: int
+    failed: int
+    details: dict[str, int]  # 상태별 카운트(ok/has-exif/no-date/failed/not-found)
+
+
 class ItemDetail(BaseModel):
     """On-demand detail for the lightbox info panel — folder path, EXIF and
     shooting location, fetched only when the panel opens (list responses stay

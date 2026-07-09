@@ -8,16 +8,18 @@ services:
     container_name: nas-photo
     # 소유자 본인 uid로 실행 — 1차 구역 원본(711, 소유자만 read)을 읽어 썸네일을
     # 직접 리사이즈하기 위함(@eaDir 썸네일 없는 폴더). /data는 이 uid 소유여야 함.
-    # 쓰기/이동/삭제는 마운트가 :ro라 불가하고 계속 DSM API로만 수행(권한 enforce).
+    # 파일 이동/삭제는 계속 DSM API로만 수행(권한 enforce). 예외: 촬영일 교정은
+    # DSM API로 불가(EXIF/mtime 설정 없음)라 아래 homes 마운트를 :rw로 열어 소유자
+    # 본인 파일에만 직접 기록한다(capture_fix). 그 외 코드는 마운트에 쓰지 않는다.
     user: "${APP_UID:-1026}:${APP_GID:-100}"
     ports:
       - "9800:9800"
     volumes:
       - ./data:/data # SQLite (세션/작업로그/사진 해시 캐시)
-      # 썸네일 전용 읽기전용 마운트: 1차 구역/homes 사진·동영상 썸네일을 파일 옆
-      # @eaDir/SYNOPHOTO_THUMB 에서 디스크 직접 읽기(DSM API가 @eaDir을 막아 동영상
-      # 포스터·고화질을 못 주는 문제 우회). 읽기 전용이며 쓰기/이동은 계속 DSM API.
-      - ${THUMB_HOMES_HOST:-/volume1/homes}:/photovol/homes:ro
+      # homes 마운트: ① 썸네일 디스크 직접 읽기(@eaDir/SYNOPHOTO_THUMB — DSM API가
+      # @eaDir을 막아 동영상 포스터·고화질을 못 주는 문제 우회) ② 촬영일 교정 시
+      # 소유자 본인 파일에 EXIF/mtime 직접 기록(capture_fix). 이를 위해 :rw.
+      - ${THUMB_HOMES_HOST:-/volume1/homes}:/photovol/homes:rw
     environment:
       - TZ=Asia/Seoul
       - THUMB_MOUNT_HOMES=/photovol/homes

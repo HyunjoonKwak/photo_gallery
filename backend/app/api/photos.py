@@ -11,7 +11,8 @@ from __future__ import annotations
 
 import asyncio
 import os
-from datetime import date
+from collections import Counter
+from datetime import date, datetime
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
@@ -31,12 +32,18 @@ from ..operations import (
 from ..photos.source import PhotoSource
 from ..photos.thumb_cache import THUMB_MEDIA_TYPE, ThumbCache
 from .. import progress
+from ..photos import capture_fix
 from ..schemas import (
     AddToAlbumRequest,
     AlbumMutationResponse,
     AlbumsResponse,
     BucketItemsResponse,
     BucketsResponse,
+    CaptureAuditItem,
+    CaptureAuditResponse,
+    CaptureFixManualRequest,
+    CaptureFixRequest,
+    CaptureFixResponse,
     CreateAlbumRequest,
     CreateFolderRequest,
     FolderAuditResponse,
@@ -500,6 +507,105 @@ async def rename_folder(
         "personal", req.folder_id, req.new_name
     )
     return RenameFolderResponse(id=new_id, name=new_name)
+
+
+# --- 촬영일 교정 (파일에 실제 기록: EXIF + mtime) ---
+def _gate_home_path(session: Session, path: str) -> None:
+    """Only the session user's own home (writable by the container's uid) may be
+    edited — never another user's home or the root-owned team share."""
+    if not path.startswith(f"/homes/{session.account}/"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="본인 홈(1차 구역·내 사진)의 사진만 촬영일 교정이 가능합니다.",
+        )
+
+
+def _parse_user_date(s: str) -> datetime | None:
+    s = s.strip()
+    for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(s, fmt)
+        except ValueError:
+            continue
+    try:
+        return datetime.fromisoformat(s)
+    except ValueError:
+        return None
+
+
+def _summarize(counter: Counter) -> CaptureFixResponse:
+    ok = counter.get("ok", 0)
+    failed = sum(v for k, v in counter.items() if k.startswith("failed") or k in ("not-found", "bad-date"))
+    skipped = sum(v for k, v in counter.items() if k in ("has-exif", "no-date"))
+    return CaptureFixResponse(ok=ok, skipped=skipped, failed=failed, details=dict(counter))
+
+
+@router.get("/capture-audit", response_model=CaptureAuditResponse)
+async def capture_audit(
+    root: str,
+    session: Session = Depends(get_current_session),
+) -> CaptureAuditResponse:
+    """root(홈 폴더 경로 id) 하위 미디어를 재귀 스캔해 현재 날짜(mtime)와
+    파일명에서 추정한 촬영일을 반환(파일 무변경). 자동/수동 대상 분류."""
+    _gate_home_path(session, root)
+    rows = await asyncio.to_thread(capture_fix.scan_audit, root, 5000)
+    auto = sum(1 for r in rows if r["source"] == "filename")
+    return CaptureAuditResponse(
+        items=[CaptureAuditItem(**r) for r in rows],
+        total=len(rows),
+        auto=auto,
+        manual=len(rows) - auto,
+    )
+
+
+def _run_auto(paths: list[str], cb) -> Counter:
+    counter: Counter = Counter()
+    total = len(paths)
+    for i, p in enumerate(paths):
+        counter[capture_fix.apply_auto(p)] += 1
+        if cb:
+            cb(i + 1, total)
+    return counter
+
+
+@router.post("/capture-fix", response_model=CaptureFixResponse)
+async def capture_fix_auto(
+    req: CaptureFixRequest,
+    progress_key: str | None = Query(default=None, max_length=64),
+    session: Session = Depends(get_current_session),
+) -> CaptureFixResponse:
+    """자동 감지분 적용: 각 파일을 EXIF(있으면 유지)→파일명 순으로 해석해
+    JPEG은 EXIF 촬영일 + 전 포맷 mtime으로 기록."""
+    for p in req.paths:
+        _gate_home_path(session, p)
+    cb = progress.callback(progress_key, "촬영일 교정")
+    counter = await asyncio.to_thread(_run_auto, req.paths, cb)
+    progress.clear(progress_key)
+    return _summarize(counter)
+
+
+def _run_manual(items) -> Counter:
+    counter: Counter = Counter()
+    for it in items:
+        dt = _parse_user_date(it.date)
+        if dt is None:
+            counter["bad-date"] += 1
+            continue
+        ok, msg = capture_fix.apply_one(it.path, dt)
+        counter["ok" if ok else f"failed:{msg}"] += 1
+    return counter
+
+
+@router.post("/capture-fix-manual", response_model=CaptureFixResponse)
+async def capture_fix_manual(
+    req: CaptureFixManualRequest,
+    session: Session = Depends(get_current_session),
+) -> CaptureFixResponse:
+    """사용자가 지정한 날짜를 파일에 기록(정보 없는 사진용)."""
+    for it in req.items:
+        _gate_home_path(session, it.path)
+    counter = await asyncio.to_thread(_run_manual, req.items)
+    return _summarize(counter)
 
 
 @router.post("/folders/delete", response_model=OperationResponse)

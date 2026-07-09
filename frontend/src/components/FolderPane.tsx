@@ -10,6 +10,8 @@ import type { FolderSort, FolderSortKey } from "../store/timeline";
 import { PhotoCell } from "./timeline/PhotoCell";
 import { SPRING_MS, folderBasename } from "./FolderTree";
 import { FolderNameAuditDialog } from "./FolderNameAuditDialog";
+import { CaptureDateDialog } from "./CaptureDateDialog";
+import { useAuthStore } from "../store/auth";
 
 /** Order sub-folders by the user's chosen key/direction. Name uses a Korean,
  * numeric-aware compare (so 2·10 sort naturally); date uses mtime with folders
@@ -226,6 +228,19 @@ export function FolderPane({
   const isFsScope = useTimelineStore((s) => Boolean(s.activeZone || s.viewedOwner));
   const isFsContext = isFsScope || Boolean(area?.zone || area?.targetUser);
   const [auditOpen, setAuditOpen] = useState(false);
+
+  // 촬영일 교정: 파일을 실제로 쓰므로 본인 홈(/homes/<나>/…)에 매핑되는 폴더에
+  // 진입했을 때만 노출. 1차 구역/타 homes 폴더는 id가 경로 그대로, 내 사진(Foto)
+  // 개인 폴더는 이름(경로)으로 Photos 디스크 경로를 구성한다. 공용(team)은 제외.
+  const account = useAuthStore((s) => s.user?.account);
+  const [captureOpen, setCaptureOpen] = useState(false);
+  const captureRoot = useMemo(() => {
+    if (!current) return null;
+    if (current.id.startsWith("/homes/")) return current.id;
+    if (current.space === "personal" && account)
+      return `/homes/${account}/Photos${current.name}`;
+    return null;
+  }, [current, account]);
 
   const openFolder = (f: PhotoFolder) => onPathChange([...path, f]);
   const jumpTo = (index: number) => onPathChange(path.slice(0, index + 1));
@@ -450,6 +465,15 @@ export function FolderPane({
               이름 정리
             </button>
           )}
+          {captureRoot && (
+            <button
+              onClick={() => setCaptureOpen(true)}
+              title="이 폴더 아래 사진의 촬영일을 파일명에서 읽어 파일에 기록(복사시각으로 잘못 잡힌 날짜 교정)"
+              className="rounded-lg border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:border-slate-400 hover:text-slate-700"
+            >
+              촬영일 교정
+            </button>
+          )}
           <button
             onClick={onCreateFolder}
             disabled={ops.isBusy}
@@ -661,6 +685,13 @@ export function FolderPane({
         )}
         </div>
       </div>
+      {captureOpen && captureRoot && (
+        <CaptureDateDialog
+          root={captureRoot}
+          onClose={() => setCaptureOpen(false)}
+          onDone={() => setCaptureOpen(false)}
+        />
+      )}
       {auditOpen && (
         <FolderNameAuditDialog
           rootId={current?.id ?? null}
