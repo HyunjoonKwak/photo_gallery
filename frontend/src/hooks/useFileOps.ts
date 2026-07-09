@@ -69,7 +69,11 @@ export function useFileOps() {
     for (const ms of RESETTLE_MS) {
       window.setTimeout(() => {
         queryClient.invalidateQueries({ queryKey: ["folders"] });
-        queryClient.invalidateQueries({ queryKey: ["folder-counts"] });
+        // folder-counts는 여기서 직접 무효화하지 않는다: 폴더 목록이 실제로
+        // 바뀌면 FolderPane의 countIds(=폴더 id 목록) 키가 달라져 자연히
+        // refetch된다. 매 작업마다 3회씩 강제 무효화하면(분할뷰·트리 각 pane ×
+        // 청크) 폴더 수 세기 요청이 삭제 1건당 수십~백 회로 폭주해 DSM 동시성을
+        // 포화시킨다(실측). 목록 변화가 없으면 카운트도 그대로라 재요청이 불필요.
         // 폴더 뷰 사진 목록도 재색인이 따라잡는 대로 갱신 — 이동/삭제한 사진이
         // 옛 위치에 남거나 새 위치에 늦게 뜨는 인덱스 지연을 수렴시킨다.
         queryClient.invalidateQueries({ queryKey: ["folder-items"] });

@@ -15,41 +15,6 @@ from .deps import get_current_session, get_dsm_client
 router = APIRouter(prefix="/api/system", tags=["system"])
 
 
-@router.get("/pool-debug")
-async def pool_debug(dsm: DsmClient = Depends(get_dsm_client)) -> dict:
-    """TEMP diagnostic: dump the httpx connection-pool internals so we can see
-    whether pool slots are leaking (many connections stuck/closed but counted).
-    No auth on purpose so it can be sampled during a fault. Remove after."""
-    out: dict = {}
-    try:
-        pool = dsm._http._transport._pool  # httpcore.AsyncConnectionPool
-        conns = list(pool.connections)
-        out["num_connections"] = len(conns)
-        out["max_connections"] = getattr(pool, "_max_connections", None)
-
-        def describe(c) -> dict:
-            d: dict = {}
-            for attr in ("is_closed", "is_available", "is_idle", "has_expired"):
-                fn = getattr(c, attr, None)
-                try:
-                    d[attr] = fn() if callable(fn) else None
-                except Exception as e:  # noqa: BLE001
-                    d[attr] = f"err:{type(e).__name__}"
-            inner = getattr(c, "_connection", None)
-            state = getattr(inner, "_state", None)
-            d["state"] = state.__class__.__name__ if state is not None else None
-            d["req_on_conn"] = getattr(inner, "_request_count", None)
-            return d
-
-        out["connections"] = [describe(c) for c in conns[:150]]
-        # pending pool requests waiting for a slot
-        reqs = getattr(pool, "_requests", None)
-        out["pending_requests"] = len(reqs) if reqs is not None else None
-    except Exception as e:  # noqa: BLE001
-        out["error"] = f"{type(e).__name__}: {e}"
-    return out
-
-
 @router.get("/info", response_model=ApiInfoResponse)
 async def api_info(
     settings: Settings = Depends(get_settings),
