@@ -512,13 +512,19 @@ class DsmPhotoSource:
         Synology's own index directly (실 NAS 확인 2026-07-09) — no file edit and
         no reindex needed, so it's the reliable fix for photos already in Photos.
         """
-        await self._dsm.call(
+        data = await self._dsm.call(
             _ns(space, "SYNO.Foto.Browse.Item"),
             "set",
             version=1,
             sid=self._sid,
             extra={"id": json.dumps([int(item_id)]), "time": int(epoch)},
         )
+        # 응답 top-level은 success여도, 개별 항목 실패는 data.error_list에 담긴다
+        # (실 NAS 확인: 일부 항목은 Synology가 시간 변경을 거부). 실패로 처리.
+        if (data or {}).get("error_list"):
+            raise DsmError(
+                100, f"Synology가 이 사진의 촬영시간을 변경하지 못했습니다 (id {item_id})."
+            )
 
     # EXIF keys worth showing, normalized to fixed names the frontend labels.
     _EXIF_KEYS = (
