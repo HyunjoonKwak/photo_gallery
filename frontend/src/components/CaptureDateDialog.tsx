@@ -24,7 +24,7 @@ function fmtDate(iso: string | null): string {
  *  (Synology는 파일 변경을 재색인하지 않으므로 이미 색인된 사진은 이 경로로). */
 export type CaptureTarget =
   | { kind: "fs"; root: string }
-  | { kind: "foto"; folder: string; space: string };
+  | { kind: "foto"; folder: string; space: string; diskRoot?: string };
 
 export function CaptureDateDialog({
   target,
@@ -45,7 +45,7 @@ export function CaptureDateDialog({
     queryFn: () =>
       target.kind === "fs"
         ? api.captureAudit(target.root)
-        : api.captureAuditFoto(target.folder, target.space),
+        : api.captureAuditFoto(target.folder, target.space, target.diskRoot),
   });
   const items = q.data?.items ?? [];
   // 자동 = 촬영일을 알아냈고 현재 표시값(mtime)과 달라 교정이 필요한 것.
