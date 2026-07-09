@@ -1,11 +1,34 @@
 import { useEffect, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from "@tanstack/react-query";
 import { api } from "./api/client";
 import type { Space } from "./api/types";
 import { useAuthStore } from "./store/auth";
 import { selectBackDepth, useTimelineStore, type Section } from "./store/timeline";
 import { useBackTrap } from "./hooks/useBackTrap";
 import { LoginForm } from "./components/LoginForm";
+
+// 라이브러리(공용/내사진/1차구역/타인) 전환 시: 스코프가 붙는 데이터 캐시만 버리고
+// 세션·메타(me/system-info/zones/members/ops/trash)는 유지 — clear() 전체 초기화는
+// 전환 복귀 때마다 모든 화면을 콜드로 만들었다.
+const SCOPE_FREE_KEYS = new Set([
+  "me",
+  "system-info",
+  "zones",
+  "members",
+  "ops",
+  "trash",
+]);
+
+function dropScopedQueries(qc: QueryClient) {
+  qc.removeQueries({
+    predicate: (q) => !SCOPE_FREE_KEYS.has(String(q.queryKey[0])),
+  });
+}
 import { ApiInfoPanel } from "./components/ApiInfoPanel";
 import { TimelineScreen } from "./components/TimelineScreen";
 import { OperationsPanel } from "./components/OperationsPanel";
@@ -119,8 +142,8 @@ function LibrarySelector({ account, isAdmin }: { account: string; isAdmin: boole
   }) => {
     setOpen(false);
     selectLibrary(lib);
-    // 라이브러리가 통째로 바뀜 — 캐시 전체 무효화
-    queryClient.clear();
+    // 라이브러리가 통째로 바뀜 — 스코프 데이터만 제거(세션·메타는 유지)
+    dropScopedQueries(queryClient);
   };
 
   const itemCls = (active: boolean) =>
@@ -241,7 +264,7 @@ function ImpersonationBanner() {
         onClick={() => {
           selectLibrary({ space: "personal", owner: null });
           // 타인 데이터가 캐시에 남아 내 폴더가 사라져 보이는 문제 방지.
-          queryClient.clear();
+          dropScopedQueries(queryClient);
         }}
         className="rounded-lg bg-amber-600 px-2 py-0.5 text-xs hover:bg-amber-700"
       >
@@ -267,7 +290,7 @@ function ZoneBanner() {
       <button
         onClick={() => {
           selectLibrary({ space: "personal", owner: null });
-          queryClient.clear();
+          dropScopedQueries(queryClient);
         }}
         className="rounded-lg bg-indigo-700 px-2 py-0.5 text-xs hover:bg-indigo-800"
       >

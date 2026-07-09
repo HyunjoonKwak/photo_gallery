@@ -1351,9 +1351,10 @@ class DsmPhotoSource:
         progress_cb(0..1)로 진행률을 흘려보낸다(processed_size/total 우선)."""
         if not taskid:
             raise DsmError(100, "파일 작업 태스크를 시작하지 못했습니다.")
-        STALL_LIMIT = 600  # 0.5s * 600 = 5분 무진행 → 중단
-        stalls = 0
+        STALL_SECONDS = 300.0  # 5분 무진행 → 중단
+        last_change = _time.monotonic()
         last_done = -1
+        delay = 0.1  # 적응형: 작은 작업은 ~0.1s에 끝을 감지, 긴 작업은 0.5s로 수렴
         while True:
             status = await self._dsm.call(
                 api, "status", version=version, sid=self._sid,
@@ -1372,11 +1373,14 @@ class DsmPhotoSource:
                 if progress_cb:
                     progress_cb(1.0)
                 return
-            stalls = 0 if done != last_done else stalls + 1
+            now = _time.monotonic()
+            if done != last_done:
+                last_change = now
             last_done = done
-            if stalls > STALL_LIMIT:
+            if now - last_change > STALL_SECONDS:
                 raise DsmError(100, "파일 작업이 진행되지 않아 중단했습니다(시간 초과).")
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(delay)
+            delay = min(delay * 1.6, 0.5)
 
     async def _item_meta(
         self, space: str, item_ids: list[str]
@@ -1440,7 +1444,33 @@ class DsmPhotoSource:
     # Bulk CopyMove is chunked so count-based progress can be reported between
     # chunks (B-6 진행 바). Partial-failure semantics are unchanged: DSM's own
     # task also processes files one by one server-side.
-    COPYMOVE_CHUNK = 25
+    # 청크 상한: 개수 200 + URL 인코딩 6KB 예산. CopyMove start는 GET 쿼리라
+    # 경로가 길면 DSM nginx 헤더 버퍼(8k)에 걸려 414가 난다(2026-07-03 실측:
+    # 146개 장경로 → 22KB → 414). 한글은 인코딩 시 3배가 되므로 바이트로 센다.
+    # 기존 25개 고정은 500장 이동 = 20개 순차 태스크(태스크당 폴링 대기 낭비).
+    COPYMOVE_CHUNK = 200
+    COPYMOVE_URL_BUDGET = 6000
+
+    @classmethod
+    def _pack_copymove_chunks(cls, src_paths: list[str]) -> list[list[str]]:
+        from urllib.parse import quote
+
+        chunks: list[list[str]] = []
+        cur: list[str] = []
+        size = 0
+        for p in src_paths:
+            enc = len(quote(p)) + 6  # 콤마·따옴표 등 JSON/URL 오버헤드
+            if cur and (
+                len(cur) >= cls.COPYMOVE_CHUNK
+                or size + enc > cls.COPYMOVE_URL_BUDGET
+            ):
+                chunks.append(cur)
+                cur, size = [], 0
+            cur.append(p)
+            size += enc
+        if cur:
+            chunks.append(cur)
+        return chunks
 
     async def _copymove_chunked(
         self,
@@ -1457,9 +1487,10 @@ class DsmPhotoSource:
             on_progress(0, total)
         # on_task_progress(0..1): 폴더 복사처럼 항목당 CopyMove 태스크가 오래 걸릴
         # 때 바이트 진행률을 전체 0..1로 환산(청크 인덱스 + 청크 내 진행)한다.
-        n_chunks = max(1, (total + self.COPYMOVE_CHUNK - 1) // self.COPYMOVE_CHUNK)
-        for ci, start in enumerate(range(0, total, self.COPYMOVE_CHUNK)):
-            chunk = src_paths[start : start + self.COPYMOVE_CHUNK]
+        packed = self._pack_copymove_chunks(src_paths)
+        n_chunks = max(1, len(packed))
+        start = 0
+        for ci, chunk in enumerate(packed):
             cb: Callable[[float], None] | None = None
             if on_task_progress:
                 def cb(frac: float, ci=ci) -> None:
@@ -1471,8 +1502,9 @@ class DsmPhotoSource:
                 overwrite=overwrite,
                 progress_cb=cb,
             )
+            start += len(chunk)
             if on_progress:
-                on_progress(min(start + len(chunk), total), total)
+                on_progress(min(start, total), total)
         if on_task_progress:
             on_task_progress(1.0)
 
@@ -1654,23 +1686,29 @@ class DsmPhotoSource:
     async def _reverse(
         self, placements: list[PlacedItem], on_progress: ProgressFn | None = None
     ) -> Affected:
-        """Move each item from its current (trash_path) location back to src.
+        """Move items from their current (trash_path) locations back to src.
 
-        Per-item CopyMove (items return to different folders), so undoing a
-        large operation is the slowest bulk path — progress is per item.
+        같은 원위치(폴더)로 돌아가는 항목들을 묶어 CopyMove 한 태스크로 처리 —
+        대부분의 undo는 소수 폴더로 복귀하므로 500장 undo가 500태스크(수 분)에서
+        폴더 수만큼으로 준다.
         """
         affected: set[tuple[str, str]] = set()
         total = len(placements)
         if on_progress:
             on_progress(0, total)
-        for i, p in enumerate(placements):
+        groups: dict[str, list[PlacedItem]] = {}
+        for p in placements:
             if not p.src_path or not p.trash_path:
                 continue
-            dest_dir = p.src_path.rsplit("/", 1)[0]
-            await self._copymove([p.trash_path], dest_dir, remove_src=True)
-            affected.add((p.space, p.day))
-            if on_progress:
-                on_progress(i + 1, total)
+            groups.setdefault(p.src_path.rsplit("/", 1)[0], []).append(p)
+        done = 0
+        for dest_dir, group in groups.items():
+            for chunk in self._pack_copymove_chunks([p.trash_path for p in group]):
+                await self._copymove(chunk, dest_dir, remove_src=True)
+                done += len(chunk)
+                if on_progress:
+                    on_progress(min(done, total), total)
+            affected.update((p.space, p.day) for p in group)
         self._invalidate(affected)
         return sorted(affected)
 
