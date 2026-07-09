@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     # When DSM uses a self-signed certificate, set to False to skip TLS verification.
     dsm_verify_tls: bool = Field(default=True)
     dsm_timeout_seconds: float = Field(default=30.0)
+    # Cap concurrent in-flight DSM calls app-wide. A burst of client requests
+    # (e.g. folder-counts refetch storm during a bulk delete) would otherwise
+    # open 100+ DSM connections at once and exhaust the pool; excess calls wait
+    # briefly in-process instead. Keep at/under DSM's comfortable concurrency.
+    dsm_max_concurrency: int = Field(default=24)
 
     # --- App session ---
     # Cookies carry an opaque random token (secrets.token_urlsafe), so no signing

@@ -10,6 +10,7 @@ Design notes (per spec ch.7):
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from typing import Any
 
@@ -65,10 +66,17 @@ class DsmClient:
         "SYNO.FotoTeam.Thumbnail",
     )
 
-    def __init__(self, webapi_base: str, http: httpx.AsyncClient):
+    def __init__(
+        self, webapi_base: str, http: httpx.AsyncClient, max_concurrency: int = 24
+    ):
         self._base = webapi_base.rstrip("/")
         self._http = http
         self._info_cache: dict[str, ApiEndpoint] = {}
+        # App-wide cap on concurrent DSM calls: a client-side request burst can't
+        # translate into 100+ simultaneous DSM connections (which stalls/exhausts
+        # the pool). Excess calls await a permit here — cheap, in-process. Not
+        # applied to streaming (video) so a long stream can't hold a permit.
+        self._sem = asyncio.Semaphore(max(1, max_concurrency))
 
     # ------------------------------------------------------------------ info
     async def query_api_info(
@@ -167,7 +175,8 @@ class DsmClient:
         url = f"{self._base}/{endpoint.path}"
 
         try:
-            resp = await self._http.get(url, params=params)
+            async with self._sem:
+                resp = await self._http.get(url, params=params)
             resp.raise_for_status()
         except httpx.HTTPStatusError as exc:
             # DSM answered with an HTTP error status (commonly 404 for a
@@ -297,10 +306,11 @@ class DsmClient:
         never appear in URLs, access logs, or proxy logs.
         """
         try:
-            if method == "POST":
-                resp = await self._http.post(url, data=params)
-            else:
-                resp = await self._http.get(url, params=params)
+            async with self._sem:
+                if method == "POST":
+                    resp = await self._http.post(url, data=params)
+                else:
+                    resp = await self._http.get(url, params=params)
             resp.raise_for_status()
         except httpx.HTTPError as exc:
             raise DsmError(

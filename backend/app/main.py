@@ -79,7 +79,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         follow_redirects=True,
     )
     app.state.http_client = http
-    app.state.dsm_client = DsmClient(settings.dsm_webapi_base, http)
+    app.state.dsm_client = DsmClient(
+        settings.dsm_webapi_base, http, max_concurrency=settings.dsm_max_concurrency
+    )
     try:
         yield
     finally:
