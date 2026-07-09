@@ -147,9 +147,9 @@ export const api = {
       body: JSON.stringify({ items }),
     }),
   // 내 사진/공용(Synology Photos): 파일이 아니라 Synology 인덱스의 촬영시간 변경
-  captureAuditFoto: (folder: string) =>
+  captureAuditFoto: (folder: string, space: string) =>
     request<CaptureAuditResponse>(
-      `/api/photos/capture-audit-foto?folder=${encodeURIComponent(folder)}`,
+      `/api/photos/capture-audit-foto?folder=${encodeURIComponent(folder)}&space=${space}`,
     ),
   captureFixFoto: (
     space: string,

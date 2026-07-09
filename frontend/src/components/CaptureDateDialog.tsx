@@ -45,7 +45,7 @@ export function CaptureDateDialog({
     queryFn: () =>
       target.kind === "fs"
         ? api.captureAudit(target.root)
-        : api.captureAuditFoto(target.folder),
+        : api.captureAuditFoto(target.folder, target.space),
   });
   const items = q.data?.items ?? [];
   // 자동 = 촬영일을 알아냈고 현재 표시값(mtime)과 달라 교정이 필요한 것.

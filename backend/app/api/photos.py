@@ -628,12 +628,13 @@ async def capture_fix_manual(
 @router.get("/capture-audit-foto", response_model=CaptureAuditResponse)
 async def capture_audit_foto(
     folder: str,
+    space: Space = Query("personal"),
     _session: Session = Depends(get_current_session),
     source: PhotoSource = Depends(get_photo_source),
 ) -> CaptureAuditResponse:
     """Foto 폴더(직속) 사진의 현재 촬영일(Synology 인덱스)과 파일명 추정 촬영일을
     반환. 파일 무변경(진단)."""
-    items = await source.folder_items(folder)
+    items = await source.capture_items(space, folder)
     rows: list[CaptureAuditItem] = []
     for it in items:
         det = parse_from_filename(it.filename)

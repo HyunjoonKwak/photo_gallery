@@ -917,6 +917,9 @@ class MockPhotoSource:
             if fid == folder_id and item_id not in self._deleted
         )
 
+    async def capture_items(self, space: str, folder_id: str) -> list[PhotoItem]:
+        return await self.folder_items(folder_id)
+
     async def set_item_time(self, space: str, item_id: str, epoch: int) -> None:
         # Dev mock: no persistent taken-time store — accept and no-op.
         return None

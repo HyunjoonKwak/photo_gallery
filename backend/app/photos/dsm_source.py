@@ -499,6 +499,12 @@ class DsmPhotoSource:
             space, {"folder_id": int(folder_id)}, limit
         )
 
+    async def capture_items(self, space: str, folder_id: str) -> list[PhotoItem]:
+        """Direct items of a folder for 촬영일 교정, with space given explicitly
+        (avoids the meta-cache dependency of folder_items — the capture dialog may
+        run right after a restart before the tree was browsed)."""
+        return await self._filtered_items(space, {"folder_id": int(folder_id)}, None)
+
     async def set_item_time(self, space: str, item_id: str, epoch: int) -> None:
         """Set a Synology Photos item's taken time (촬영일 교정, 내 사진/공용).
 
