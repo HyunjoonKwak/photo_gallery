@@ -980,16 +980,24 @@ class DsmPhotoSource:
     ) -> tuple[str, str]:
         """Rename a Synology Photos folder (내 사진/공용). SYNO.Foto(Team).
         Browse.Folder `rename`(id + name) — 실 NAS 확인 2026-07-09. Foto folder
-        id는 그대로, 이름만 바뀐다."""
-        await self._dsm.call(
-            _ns(space, "SYNO.Foto.Browse.Folder"),
-            "rename",
-            version=1,
-            sid=self._sid,
-            extra={"id": int(folder_id), "name": new_name},
-        )
-        invalidate_folder_cache(self._sid)
-        return str(folder_id), new_name
+        id는 그대로, 이름만 바뀐다. 개인/공용 네임스페이스가 분리돼 있어, 넘어온
+        space가 틀리면(옛 클라이언트가 space 미전송 등) 반대 공간으로도 시도한다."""
+        spaces = [space, "team" if space == "personal" else "personal"]
+        last: DsmError | None = None
+        for sp in spaces:
+            try:
+                await self._dsm.call(
+                    _ns(sp, "SYNO.Foto.Browse.Folder"),
+                    "rename",
+                    version=1,
+                    sid=self._sid,
+                    extra={"id": int(folder_id), "name": new_name},
+                )
+                invalidate_folder_cache(self._sid)
+                return str(folder_id), new_name
+            except DsmError as exc:
+                last = exc
+        raise last if last else DsmError(100, "폴더 이름 변경 실패")
 
     async def folder_count(self, folder_id: str) -> int:
         # Browse.Item "count" takes the same filters as "list" — one cheap call
