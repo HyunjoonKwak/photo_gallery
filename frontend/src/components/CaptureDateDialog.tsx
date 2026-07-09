@@ -35,12 +35,17 @@ export function CaptureDateDialog({
     queryFn: () => api.captureAudit(root),
   });
   const items = q.data?.items ?? [];
+  // 자동 = 촬영일을 알아냈고 현재 표시값(mtime)과 달라 교정이 필요한 것.
+  // 수동 = 촬영일 단서 없음. (이미 맞는 건 어느 쪽도 아님 → 표시 안 함.)
   const autoItems = useMemo(
-    () => items.filter((i) => i.source === "filename"),
+    () =>
+      items.filter(
+        (i) => i.detected && i.detected.slice(0, 10) !== i.current.slice(0, 10),
+      ),
     [items],
   );
   const manualItems = useMemo(
-    () => items.filter((i) => i.source === "none"),
+    () => items.filter((i) => !i.detected),
     [items],
   );
 

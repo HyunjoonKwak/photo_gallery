@@ -142,8 +142,8 @@ export interface CaptureAuditItem {
   path: string;
   filename: string;
   current: string; // ISO — 현재 촬영일로 쓰이는 값(mtime)
-  detected: string | null; // ISO — 파일명 추정 촬영일, 없으면 null
-  source: "filename" | "none";
+  detected: string | null; // ISO — 추정 촬영일(파일명/EXIF), 없으면 null
+  source: "filename" | "exif" | "none";
 }
 
 export interface CaptureAuditResponse {

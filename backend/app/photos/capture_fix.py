@@ -33,11 +33,15 @@ def _fs_id(disk: str) -> str:
     return "/homes/" + os.path.relpath(disk, _MOUNT)
 
 
-def scan_audit(root_fs_id: str, limit: int | None = None) -> list[dict]:
-    """Recursively list media under a home folder with the date we'd apply.
+_IMAGE_EXT = (".jpg", ".jpeg", ".png", ".heic", ".heif", ".gif", ".bmp", ".webp")
 
-    Filename-only detection (no per-file EXIF open) so a big folder scans fast —
-    EXIF is consulted at write time to avoid clobbering already-correct files.
+
+def scan_audit(root_fs_id: str, limit: int | None = None) -> list[dict]:
+    """Recursively list media under a home folder with the true capture date.
+
+    Detection: filename first (cheap), then EXIF for images whose filename has no
+    date (so EXIF-only photos are still surfaced). `current` is the file mtime —
+    what both the app (1차 구역) and Synology (fallback) currently show.
     """
     root = disk_path(root_fs_id)
     if not root or not os.path.isdir(root):
@@ -46,7 +50,8 @@ def scan_audit(root_fs_id: str, limit: int | None = None) -> list[dict]:
     for dirpath, dirs, files in os.walk(root):
         dirs[:] = [d for d in dirs if not d.startswith(("@", "#"))]
         for fn in files:
-            if not fn.lower().endswith(_MEDIA_EXT):
+            low = fn.lower()
+            if not low.endswith(_MEDIA_EXT):
                 continue
             p = os.path.join(dirpath, fn)
             try:
@@ -54,13 +59,18 @@ def scan_audit(root_fs_id: str, limit: int | None = None) -> list[dict]:
             except OSError:
                 continue
             detected = capture_date.parse_from_filename(fn)
+            source = "filename" if detected else "none"
+            if detected is None and low.endswith(_IMAGE_EXT):
+                ex = capture_date.read_exif_datetime(p)
+                if ex:
+                    detected, source = ex, "exif"
             out.append(
                 {
                     "path": _fs_id(p),
                     "filename": fn,
                     "current": datetime.fromtimestamp(mtime).isoformat(),
                     "detected": detected.isoformat() if detected else None,
-                    "source": "filename" if detected else "none",
+                    "source": source,
                 }
             )
             if limit and len(out) >= limit:
@@ -87,33 +97,53 @@ def _set_mtime(disk: str, dt: datetime) -> None:
     os.utime(disk, (ts, ts))
 
 
+def _apply(disk: str, dt: datetime, *, write_exif: bool) -> None:
+    if write_exif and disk.lower().endswith(_JPEG_EXT):
+        try:
+            _write_exif_jpeg(disk, dt)
+        except Exception:  # noqa: BLE001 - EXIF write failed; mtime still set
+            pass
+    _set_mtime(disk, dt)  # after EXIF write so mtime lands on the date
+
+
 def apply_one(fs_id: str, dt: datetime) -> tuple[bool, str]:
-    """Write `dt` into the file (EXIF for JPEG, mtime for all). Returns (ok, msg)."""
+    """Manual/explicit: write `dt` into the file (EXIF for JPEG + mtime)."""
     disk = disk_path(fs_id)
     if not disk or not os.path.isfile(disk):
         return False, "not-found"
     try:
-        if disk.lower().endswith(_JPEG_EXT):
-            try:
-                _write_exif_jpeg(disk, dt)
-            except Exception:  # noqa: BLE001 - EXIF write failed; mtime still set
-                pass
-        _set_mtime(disk, dt)  # after EXIF write so mtime lands on the date
+        _apply(disk, dt, write_exif=True)
         return True, "ok"
     except Exception as exc:  # noqa: BLE001
         return False, type(exc).__name__
 
 
 def apply_auto(fs_id: str) -> str:
-    """Resolve the date and apply. Skips files that already have a real EXIF date
-    (authoritative) or have no detectable date. Returns a status string."""
+    """Bring the file's dates in line with its true capture date.
+
+    True date = EXIF (authoritative, if present) else filename. We always set the
+    mtime to it — the app (1차 구역) shows mtime and Synology re-reads on change —
+    and write EXIF only when it was missing (never overwrite a real EXIF date).
+    Files already correct (or with no derivable date) are left untouched.
+    """
     disk = disk_path(fs_id)
     if not disk or not os.path.isfile(disk):
         return "not-found"
-    dt, source = capture_date.resolve(disk, os.path.basename(disk))
-    if source == "exif":
-        return "has-exif"  # already correct — don't overwrite
-    if source == "none" or dt is None:
+    exif_dt = capture_date.read_exif_datetime(disk)
+    name_dt = capture_date.parse_from_filename(os.path.basename(disk))
+    true_dt = exif_dt or name_dt
+    if true_dt is None:
         return "no-date"
-    ok, msg = apply_one(fs_id, dt)
-    return "ok" if ok else f"failed:{msg}"
+    try:
+        cur = datetime.fromtimestamp(os.stat(disk).st_mtime)
+    except OSError:
+        return "not-found"
+    need_exif = exif_dt is None and name_dt is not None and disk.lower().endswith(_JPEG_EXT)
+    need_mtime = abs((cur - true_dt).total_seconds()) >= 86400  # 하루 이상 어긋남
+    if not need_exif and not need_mtime:
+        return "already-ok"
+    try:
+        _apply(disk, true_dt, write_exif=need_exif)
+        return "ok"
+    except Exception as exc:  # noqa: BLE001
+        return f"failed:{type(exc).__name__}"

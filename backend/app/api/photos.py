@@ -536,7 +536,7 @@ def _parse_user_date(s: str) -> datetime | None:
 def _summarize(counter: Counter) -> CaptureFixResponse:
     ok = counter.get("ok", 0)
     failed = sum(v for k, v in counter.items() if k.startswith("failed") or k in ("not-found", "bad-date"))
-    skipped = sum(v for k, v in counter.items() if k in ("has-exif", "no-date"))
+    skipped = sum(v for k, v in counter.items() if k in ("no-date", "already-ok"))
     return CaptureFixResponse(ok=ok, skipped=skipped, failed=failed, details=dict(counter))
 
 
@@ -549,12 +549,19 @@ async def capture_audit(
     파일명에서 추정한 촬영일을 반환(파일 무변경). 자동/수동 대상 분류."""
     _gate_home_path(session, root)
     rows = await asyncio.to_thread(capture_fix.scan_audit, root, 5000)
-    auto = sum(1 for r in rows if r["source"] == "filename")
+    # auto = 촬영일을 알아냈고 현재 표시값(mtime)과 달라 교정이 필요한 것.
+    # manual = 촬영일 단서가 없는 것. (이미 맞는 건 둘 다 아님.)
+    auto = sum(
+        1
+        for r in rows
+        if r["detected"] and r["detected"][:10] != r["current"][:10]
+    )
+    manual = sum(1 for r in rows if not r["detected"])
     return CaptureAuditResponse(
         items=[CaptureAuditItem(**r) for r in rows],
         total=len(rows),
         auto=auto,
-        manual=len(rows) - auto,
+        manual=manual,
     )
 
 
