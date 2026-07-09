@@ -35,7 +35,7 @@ export function FolderPickerDialog({
 
   const title =
     mode === "toTeam"
-      ? `${count}장 공용으로 보내기`
+      ? `${count}장 공용에 복사`
       : mode === "toPersonal"
         ? `${count}장 내 사진(2차)으로`
         : mode === "copy"

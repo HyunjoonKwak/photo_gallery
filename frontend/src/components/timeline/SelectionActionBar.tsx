@@ -13,6 +13,9 @@ export function SelectionActionBar() {
   const clear = useTimelineStore((s) => s.clearSelection);
   const activeZone = useTimelineStore((s) => s.activeZone);
   const viewedOwner = useTimelineStore((s) => s.viewedOwner);
+  const space = useTimelineStore((s) => s.space);
+  // 이미 공용을 보고 있으면 '공용에 복사'는 공용→공용이라 무의미 → 숨김.
+  const canSendToTeam = space !== "team";
   const ops = useFileOps();
   const [picker, setPicker] = useState<PickerMode | null>(null);
   const [albumPicker, setAlbumPicker] = useState(false);
@@ -61,13 +64,16 @@ export function SelectionActionBar() {
             <button className={btn} disabled={ops.isBusy} onClick={() => setPicker("copy")}>
               복사
             </button>
-            <button
-              className={btn}
-              disabled={ops.isBusy}
-              onClick={() => setPicker("toTeam")}
-            >
-              공용으로 보내기
-            </button>
+            {canSendToTeam && (
+              <button
+                className={btn}
+                disabled={ops.isBusy}
+                title="개인 사진을 공용(공유) 공간으로 복사합니다. 원본은 개인에 그대로 남습니다(창에서 '이동'으로 바꿀 수 있음)."
+                onClick={() => setPicker("toTeam")}
+              >
+                공용에 복사
+              </button>
+            )}
           </>
         )}
         {canAddToAlbum && (
