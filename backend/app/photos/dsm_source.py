@@ -781,7 +781,10 @@ class DsmPhotoSource:
                 version=1,
                 sid=self._sid,
                 extra={
-                    "keyword": keyword,
+                    # JSON 인코딩 필수: 평문이면 "2016"·"2016-08" 같은 숫자/날짜꼴
+                    # 키워드를 DSM이 수식으로 파싱해 code 120 (rename과 동일 함정,
+                    # 2026-07-10 실 NAS 확인).
+                    "keyword": json.dumps(keyword),
                     "offset": offset,
                     "limit": page_size,
                     "additional": json.dumps(["thumbnail", "resolution", "video_meta"]),
