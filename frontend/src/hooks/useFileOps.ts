@@ -329,27 +329,120 @@ export function useFileOps() {
     return s.space;
   };
 
-  return {
-    move: (
+    // 대량 이동/복사: 서버는 요청당 500장 제한이라, 500장씩 나눠 순차 전송하고
+    // 진행바(장 단위)를 클라이언트가 직접 구동한다. 이름 충돌은 첫 청크에서 한 번
+    // 물어보고(취소하면 중단) 선택한 방식(skip/overwrite/rename)을 남은 청크에도
+    // 적용한다. 되돌리기는 청크별 개별 작업이라 요약 토스트만(작업 기록에서 개별
+    // undo 가능).
+    const MOVE_CHUNK = 500;
+    const moveChunked = async (
       itemIds: string[],
       folderId: string,
       copyMode: boolean,
-      conflictStrategy?: ConflictStrategy,
     ) => {
-      const p = startProgress(copyMode ? "복사" : "이동");
-      moveMutation.mutate(
-        {
-          space: spaceOf(itemIds),
-          item_ids: itemIds,
-          dest_folder_id: folderId,
-          copy_mode: copyMode,
-          conflict_strategy: conflictStrategy,
-          target_user: targetUser(),
-          progress_key: p.key,
-        },
-        { onSettled: p.stop },
-      );
-    },
+      if (itemIds.length === 0) return;
+      const label = copyMode ? "복사" : "이동";
+      const space = spaceOf(itemIds);
+      const tuser = targetUser();
+      const key = genProgressKey();
+      useProgressStore.getState().start(key, label, "장");
+      useProgressStore.getState().patch(key, 0, itemIds.length);
+
+      let strategy: ConflictStrategy | undefined;
+      let done = 0;
+      let cancelled = false;
+      const affected = new Map<string, { space: Space; day: string }>();
+      const emptied: EmptiedFolder[] = [];
+
+      const askStrategy = (info: NonNullable<ReturnType<typeof conflictInfoOf>>) =>
+        new Promise<string | null>((resolve) => {
+          useConflictStore.getState().ask({
+            kind: info.kind,
+            names: info.names,
+            folderExtras: info.folderExtras,
+            copyMode,
+            onChoose: (s) => resolve(s),
+            onCancel: () => resolve(null),
+          });
+        });
+
+      try {
+        for (let i = 0; i < itemIds.length && !cancelled; i += MOVE_CHUNK) {
+          const chunk = itemIds.slice(i, i + MOVE_CHUNK);
+          const base = done; // 이 청크 시작 전까지 처리된 장수
+          for (;;) {
+            // 청크 내부는 서버가 25장씩 처리하므로, 그 진행률을 폴링해 바를
+            // 부드럽게 채운다(500장 동안 멈춘 것처럼 보이지 않게).
+            const chunkKey = genProgressKey();
+            const timer = window.setInterval(() => {
+              api
+                .opProgress(chunkKey)
+                .then((r) => {
+                  if (r.active)
+                    useProgressStore
+                      .getState()
+                      .patch(
+                        key,
+                        Math.min(base + r.done, itemIds.length),
+                        itemIds.length,
+                      );
+                })
+                .catch(() => {});
+            }, 500);
+            try {
+              const res = await api.opMove({
+                space,
+                item_ids: chunk,
+                dest_folder_id: folderId,
+                copy_mode: copyMode,
+                conflict_strategy: strategy,
+                target_user: tuser,
+                progress_key: chunkKey,
+              });
+              done = base + chunk.length;
+              useProgressStore.getState().patch(key, done, itemIds.length);
+              for (const a of res.affected) affected.set(`${a.space}:${a.day}`, a);
+              for (const e of res.emptied_folders ?? []) emptied.push(e);
+              break;
+            } catch (err) {
+              const info = conflictInfoOf(err);
+              if (info && strategy === undefined) {
+                const chosen = await askStrategy(info);
+                if (chosen === null) {
+                  cancelled = true;
+                  break;
+                }
+                strategy = chosen as ConflictStrategy;
+                continue; // 같은 청크를 선택한 방식으로 재시도
+              }
+              throw err;
+            } finally {
+              window.clearInterval(timer);
+            }
+          }
+        }
+        useTimelineStore.getState().clearSelection();
+        const merged = {
+          affected: [...affected.values()],
+          emptied_folders: emptied,
+        } as unknown as OperationResponse;
+        invalidateAffected(merged);
+        offerCleanup(merged);
+        resettleFolders();
+        if (done > 0)
+          useToastStore
+            .getState()
+            .push(`${done}장${cancelled ? " (중단됨)" : ""} ${label}했습니다`);
+      } catch (err) {
+        onError(err);
+      } finally {
+        window.setTimeout(() => useProgressStore.getState().clear(key), 1000);
+      }
+    };
+
+  return {
+    move: (itemIds: string[], folderId: string, copyMode: boolean) =>
+      moveChunked(itemIds, folderId, copyMode),
     remove: (itemIds: string[], onSuccess?: () => void) => {
       const p = startProgress("삭제");
       deleteMutation.mutate(

@@ -15,6 +15,7 @@ interface Pending {
   // (원본이 대상에 이미 다 있음) → 이동 시 원본 삭제 제안 / 복사 시 "동일" 안내.
   folderExtras?: number[];
   onChoose: (strategy: string) => void; // skip | rename | overwrite | merge | purge_source
+  onCancel?: () => void; // 취소(닫기) — 분할 이동 등이 루프를 중단하는 데 사용
 }
 
 interface ConflictState {

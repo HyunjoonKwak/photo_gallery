@@ -221,7 +221,10 @@ export function ConflictDialogHost() {
         pending.onChoose(strategy);
         clear();
       }}
-      onCancel={clear}
+      onCancel={() => {
+        pending.onCancel?.();
+        clear();
+      }}
     />
   );
 }
