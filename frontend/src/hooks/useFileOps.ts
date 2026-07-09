@@ -408,18 +408,39 @@ export function useFileOps() {
       area?: AreaScope,
       onDone?: () => void,
     ) => {
+      // 벌크 삭제: 폴더마다 rmdirMutation.onSuccess가 folder-counts를 무효화하고
+      // resettleFolders(1.5·4·8초 지연 재무효화)까지 돌면, 103개 삭제 시 폴더 수
+      // 세기 재요청이 수백 회로 폭주해 DSM 동시성을 포화시킨다(실측). 그래서
+      // 여기서는 조용히 순차 삭제만 하고, 캐시 무효화·재수렴·요약 토스트는
+      // 배치가 끝난 뒤 한 번만 수행한다.
+      let done = 0;
       for (const f of folders) {
         try {
-          await rmdirMutation.mutateAsync({
-            space: f.space,
-            folder_id: f.id,
-            recursive: true,
-            target_user: targetUser(),
-            _area: area,
-          });
-        } catch {
-          break; // 한 폴더 실패 시 중단(onError가 토스트로 안내)
+          await api.removeFolder(
+            {
+              space: f.space,
+              folder_id: f.id,
+              recursive: true,
+              target_user: targetUser(),
+            },
+            area,
+          );
+          done += 1;
+        } catch (err) {
+          onError(err); // 실패 토스트 후 중단
+          break;
         }
+      }
+      if (done > 0) {
+        queryClient.invalidateQueries({ queryKey: ["folders"] });
+        queryClient.invalidateQueries({ queryKey: ["folder-items"] });
+        queryClient.invalidateQueries({ queryKey: ["folder-counts"] });
+        queryClient.invalidateQueries({ queryKey: ["buckets"] });
+        queryClient.invalidateQueries({ queryKey: ["ops"] });
+        resettleFolders();
+        useToastStore
+          .getState()
+          .push(`${done}개 폴더를 휴지통으로 옮겼습니다`);
       }
       onDone?.();
     },
