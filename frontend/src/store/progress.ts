@@ -11,6 +11,7 @@ import { create } from "zustand";
 export interface BulkProgress {
   key: string;
   label: string; // 이동 | 복사 | 삭제 | 되돌리기
+  unit: string; // 장(사진) | 개(폴더)
   done: number;
   total: number;
   startedAt: number;
@@ -18,15 +19,17 @@ export interface BulkProgress {
 
 interface ProgressState {
   current: BulkProgress | null;
-  start: (key: string, label: string) => void;
+  start: (key: string, label: string, unit?: string) => void;
   patch: (key: string, done: number, total: number, label?: string) => void;
   clear: (key: string) => void;
 }
 
 export const useProgressStore = create<ProgressState>()((set, get) => ({
   current: null,
-  start: (key, label) =>
-    set({ current: { key, label, done: 0, total: 0, startedAt: Date.now() } }),
+  start: (key, label, unit = "장") =>
+    set({
+      current: { key, label, unit, done: 0, total: 0, startedAt: Date.now() },
+    }),
   patch: (key, done, total, label) => {
     const cur = get().current;
     if (!cur || cur.key !== key) return; // a newer operation took over

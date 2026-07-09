@@ -20,8 +20,11 @@ export function BulkProgress() {
 
   if (!current || Date.now() - current.startedAt < SHOW_AFTER_MS) return null;
 
-  const { done, total, label } = current;
+  const { done, total, label, unit } = current;
   const pct = total > 0 ? Math.round((done / total) * 100) : null;
+  // 완료 프레임: 마지막 항목까지 처리되면 잠깐 "✓ … 완료"를 보여준 뒤(스토어가
+  // 곧 clear) 사라진다 — 작업이 끝났는지 명확히 알 수 있게.
+  const complete = total > 0 && done >= total;
 
   return (
     <div
@@ -30,10 +33,16 @@ export function BulkProgress() {
       className="fixed bottom-32 left-1/2 z-40 w-72 -translate-x-1/2 rounded-xl bg-slate-800/95 px-4 py-3 text-white shadow-lg backdrop-blur md:bottom-20"
     >
       <p className="mb-2 text-sm font-medium">
-        {total > 0 ? `${done}/${total}장 ${label} 중…` : `${label} 중…`}
+        {complete
+          ? `✓ ${total}${unit} ${label} 완료`
+          : total > 0
+            ? `${done}/${total}${unit} ${label} 중…`
+            : `${label} 중…`}
       </p>
       <div className="h-1.5 overflow-hidden rounded-full bg-slate-600">
-        {pct != null ? (
+        {complete ? (
+          <div className="h-full w-full rounded-full bg-emerald-400" />
+        ) : pct != null ? (
           <div
             className="h-full rounded-full bg-blue-400 transition-[width] duration-500"
             style={{ width: `${pct}%` }}

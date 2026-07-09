@@ -52,7 +52,16 @@ function startProgress(label: string) {
     key,
     stop: () => {
       window.clearInterval(timer);
-      useProgressStore.getState().clear(key);
+      // 완료 프레임: 진행률이 잡혔던 작업은 100%로 스냅해 잠깐 "완료"를 보여준
+      // 뒤 치운다(끝났는지 명확히). 진행률 정보가 없던 작업은 즉시 치운다.
+      const st = useProgressStore.getState();
+      const cur = st.current;
+      if (cur && cur.key === key && cur.total > 0) {
+        st.patch(key, cur.total, cur.total);
+        window.setTimeout(() => useProgressStore.getState().clear(key), 900);
+      } else {
+        st.clear(key);
+      }
     },
   };
 }
@@ -394,7 +403,10 @@ export function useFileOps() {
       recursive: boolean,
       onSuccess?: () => void,
       area?: AreaScope,
-    ) =>
+    ) => {
+      // 재귀 삭제는 사진 많은 폴더면 수 초 걸릴 수 있어 진행 표시를 띄운다.
+      // 서버가 하위 진행을 보고하지 않으므로 총계 없는 "삭제 중…" 형태.
+      const p = startProgress("삭제");
       rmdirMutation.mutate(
         {
           space,
@@ -403,8 +415,9 @@ export function useFileOps() {
           target_user: targetUser(),
           _area: area,
         },
-        { onSuccess: () => onSuccess?.() },
-      ),
+        { onSuccess: () => onSuccess?.(), onSettled: p.stop },
+      );
+    },
     // 선택한 여러 폴더를 휴지통으로(재귀·가역). 분할 뷰의 폴더 선택 삭제.
     // 순차 실행 — 실 NAS FileStation 태스크가 겹치지 않게(purgeSourceFolders 패턴).
     removeFolders: async (
@@ -417,6 +430,12 @@ export function useFileOps() {
       // 세기 재요청이 수백 회로 폭주해 DSM 동시성을 포화시킨다(실측). 그래서
       // 여기서는 조용히 순차 삭제만 하고, 캐시 무효화·재수렴·요약 토스트는
       // 배치가 끝난 뒤 한 번만 수행한다.
+      // 진행률: 폴더 삭제는 클라이언트가 순차로 도는 루프라 서버 폴링 없이
+      // done/total을 직접 진행바에 반영한다("12/103개 삭제 중…" → "✓ 완료").
+      const store = useProgressStore.getState();
+      const key = genProgressKey();
+      store.start(key, "삭제", "개");
+      store.patch(key, 0, folders.length);
       let done = 0;
       for (const f of folders) {
         try {
@@ -430,11 +449,14 @@ export function useFileOps() {
             area,
           );
           done += 1;
+          useProgressStore.getState().patch(key, done, folders.length);
         } catch (err) {
           onError(err); // 실패 토스트 후 중단
           break;
         }
       }
+      // 완료 프레임을 잠깐 보여준 뒤 진행바를 치운다.
+      window.setTimeout(() => useProgressStore.getState().clear(key), 1200);
       if (done > 0) {
         queryClient.invalidateQueries({ queryKey: ["folders"] });
         queryClient.invalidateQueries({ queryKey: ["folder-items"] });
