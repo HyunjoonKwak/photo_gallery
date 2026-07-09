@@ -1186,12 +1186,17 @@ class DsmPhotoSource:
     async def thumbnail(
         self, space: str, item_id: str, cache_key: str, size: str
     ) -> tuple[bytes, str]:
+        # 썸네일은 item id가 아니라 cache_key 접두의 unit_id로 요청해야 한다.
+        # 복사/이동으로 생긴 항목은 원본의 썸네일 유닛을 공유해 두 id가 다르고,
+        # item id로 부르면 DSM이 404를 준다(2026-07-10 실 NAS 확인: id=102703은
+        # 404, unit 102622는 OK — Synology Photos 웹도 unit_id로 요청).
+        unit = cache_key.split("_", 1)[0]
         return await self._dsm.fetch_binary(
             _ns(space, "SYNO.Foto.Thumbnail"),
             "get",
             sid=self._sid,
             extra={
-                "id": item_id,
+                "id": unit if unit.isdigit() else item_id,
                 "cache_key": cache_key,
                 "type": "unit",
                 "size": size,

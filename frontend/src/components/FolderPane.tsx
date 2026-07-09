@@ -1,5 +1,5 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDroppable } from "@dnd-kit/core";
 import { api, type AreaScope } from "../api/client";
 import type { PhotoFolder } from "../api/types";
@@ -8,6 +8,7 @@ import { useFileOps } from "../hooks/useFileOps";
 import { useTimelineStore } from "../store/timeline";
 import type { FolderSort, FolderSortKey } from "../store/timeline";
 import { PhotoCell } from "./timeline/PhotoCell";
+import { VirtualRows } from "./VirtualRows";
 import { SPRING_MS, folderBasename } from "./FolderTree";
 import { FolderNameAuditDialog } from "./FolderNameAuditDialog";
 import { CaptureDateDialog, type CaptureTarget } from "./CaptureDateDialog";
@@ -372,15 +373,30 @@ export function FolderPane({
   // Direct photo counts for the visible sub-folders (badge). One batched
   // request per level; failures just hide the badge.
   const countIds = useMemo(() => baseFolders.map((f) => f.id), [baseFolders]);
-  const countsQuery = useQuery({
-    queryKey: ["folder-counts", areaKey, countIds.join(",")],
-    queryFn: () => api.folderCounts(countIds, area),
-    enabled: countIds.length > 0,
-    // 폴더 내용은 앱 내 작업(무효화 동반)으로만 바뀜 → 길게 신선 취급해
-    // 드나들 때마다의 재요청(DSM 왕복 폭주)을 줄인다.
-    staleTime: 300_000,
+  // 청크(20개)별 쿼리 — 예전엔 전체 id join이 키라 폴더 1개만 바뀌어도 전부
+  // 재요청됐다. 정렬 후 청크 단위 키로 나누면 변화 지점 이후 청크만 다시 온다.
+  const countChunks = useMemo(() => {
+    const sorted = [...countIds].sort();
+    const out: string[][] = [];
+    for (let i = 0; i < sorted.length; i += 20) out.push(sorted.slice(i, i + 20));
+    return out;
+  }, [countIds]);
+  const countQueries = useQueries({
+    queries: countChunks.map((chunk) => ({
+      queryKey: ["folder-counts", areaKey, chunk.join(",")],
+      queryFn: () => api.folderCounts(chunk, area),
+      // 폴더 내용은 앱 내 작업(무효화 동반)으로만 바뀜 → 길게 신선 취급해
+      // 드나들 때마다의 재요청(DSM 왕복 폭주)을 줄인다.
+      staleTime: 300_000,
+    })),
   });
-  const counts = countsQuery.data?.counts ?? {};
+  const counts = useMemo(() => {
+    const merged: Record<string, number> = {};
+    for (const q of countQueries)
+      if (q.data) Object.assign(merged, q.data.counts);
+    return merged;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [countQueries.map((q) => q.dataUpdatedAt).join(",")]);
 
   const folderDisplay = useTimelineStore((s) => s.folderDisplay);
   const setFolderDisplay = useTimelineStore((s) => s.setFolderDisplay);
@@ -435,6 +451,7 @@ export function FolderPane({
   });
 
   const gridRef = useRef<HTMLDivElement | null>(null);
+  const paneScrollRef = useRef<HTMLDivElement | null>(null);
   const [width, setWidth] = useState(0);
   useLayoutEffect(() => {
     const el = gridRef.current;
@@ -448,10 +465,21 @@ export function FolderPane({
     () => (width > 0 && items.length > 0 ? layoutBucket("folder", items, width) : []),
     [items, width],
   );
+  const photoRows = useMemo(
+    () => rows.filter((r) => r.kind === "photos"),
+    [rows],
+  );
+  const heightOfRow = useCallback(
+    (i: number) => photoRows[i]?.height ?? 0,
+    [photoRows],
+  );
 
   return (
     <div
-      ref={bgDrop.setNodeRef}
+      ref={(el) => {
+        bgDrop.setNodeRef(el);
+        paneScrollRef.current = el;
+      }}
       onMouseDownCapture={() => {
         if (!active) onActivate();
       }}
@@ -708,19 +736,23 @@ export function FolderPane({
                 이 폴더에 직접 담긴 사진은 없습니다. 위 하위 폴더를 열어 보세요.
               </p>
             )}
-            {rows.map(
-              (row) =>
-                row.kind === "photos" && (
-                  <div
-                    key={row.key}
-                    style={{ position: "relative", height: row.height }}
-                  >
+            {/* 행 단위 가상화 — 1000+장 폴더가 셀 전량(각각 dnd 훅)을
+             * 마운트하며 얼던 문제 해결. 보이는 행만 마운트한다. */}
+            <VirtualRows
+              count={photoRows.length}
+              heightOf={heightOfRow}
+              scrollRef={paneScrollRef}
+              renderRow={(i) => {
+                const row = photoRows[i];
+                return (
+                  <div style={{ position: "relative", height: row.height }}>
                     {row.cells.map((cell) => (
                       <PhotoCell key={cell.item.id} cell={cell} />
                     ))}
                   </div>
-                ),
-            )}
+                );
+              }}
+            />
           </section>
         )}
 

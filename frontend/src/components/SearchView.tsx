@@ -1,10 +1,11 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { libraryLabel } from "../lib/library";
 import { layoutBucket } from "../lib/rowModel";
 import { useTimelineStore } from "../store/timeline";
 import { PhotoCell } from "./timeline/PhotoCell";
+import { VirtualRows } from "./VirtualRows";
 
 /** Search results view: DSM's own index (filename/folder/tag — 실 NAS 검증).
  * Results feed the shared selection model, so the existing action bar / DnD /
@@ -44,9 +45,15 @@ export function SearchView() {
     () => (width > 0 && items.length > 0 ? layoutBucket("search", items, width) : []),
     [items, width],
   );
+  const photoRows = useMemo(() => rows.filter((r) => r.kind === "photos"), [rows]);
+  const heightOfRow = useCallback(
+    (i: number) => photoRows[i]?.height ?? 0,
+    [photoRows],
+  );
+  const scrollRef = useRef<HTMLDivElement | null>(null);
 
   return (
-    <div className="h-full overflow-y-auto">
+    <div ref={scrollRef} className="h-full overflow-y-auto">
       <div
         data-no-boxselect
         className="sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b border-slate-100 bg-white/90 px-4 py-2 text-sm backdrop-blur"
@@ -92,19 +99,22 @@ export function SearchView() {
             </p>
           )}
           <div className="py-3">
-            {rows.map(
-              (row) =>
-                row.kind === "photos" && (
-                  <div
-                    key={row.key}
-                    style={{ position: "relative", height: row.height }}
-                  >
+            {/* 행 단위 가상화 — 광범위 검색(수천 결과)도 얼지 않게. */}
+            <VirtualRows
+              count={photoRows.length}
+              heightOf={heightOfRow}
+              scrollRef={scrollRef}
+              renderRow={(i) => {
+                const row = photoRows[i];
+                return (
+                  <div style={{ position: "relative", height: row.height }}>
                     {row.cells.map((cell) => (
                       <PhotoCell key={cell.item.id} cell={cell} />
                     ))}
                   </div>
-                ),
-            )}
+                );
+              }}
+            />
           </div>
         </div>
       </div>

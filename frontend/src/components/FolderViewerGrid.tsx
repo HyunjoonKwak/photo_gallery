@@ -1,15 +1,17 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
 import type { PhotoFolder, PhotoItem } from "../api/types";
 import { useTimelineStore } from "../store/timeline";
 import { Thumb } from "./timeline/Thumb";
 import { folderBasename } from "./FolderTree";
+import { VirtualRows } from "./VirtualRows";
 
 /** 사진 뷰어의 폴더 줌 — 폴더 구조를 그대로 탐색(순수 뷰어). 폴더 카드에 직속
  * 사진 4장 미리보기, 클릭하면 한 depth 진입. 리프 폴더의 사진은 썸네일 그리드
  * 로, 탭하면 라이트박스. 이동/삭제 없음(정리는 폴더 분류에서). */
 export function FolderViewerGrid() {
+  const scrollRef = useRef<HTMLDivElement | null>(null);
   const librarySpace = useTimelineStore((s) => s.space);
   const registerBack = useTimelineStore((s) => s.registerBack);
   const setScreenBackDepth = useTimelineStore((s) => s.setScreenBackDepth);
@@ -86,7 +88,7 @@ export function FolderViewerGrid() {
         ))}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
         {subQuery.isPending && (
           <p className="p-6 text-center text-sm text-slate-400">
             폴더 불러오는 중…
@@ -114,7 +116,8 @@ export function FolderViewerGrid() {
 
         {/* 현재 폴더 직속 사진 */}
         {current && (
-          <FolderPhotos items={items} pending={itemsQuery.isPending} hasSub={subFolders.length > 0} />
+          <FolderPhotos
+          scrollRef={scrollRef} items={items} pending={itemsQuery.isPending} hasSub={subFolders.length > 0} />
         )}
 
         {!current && !subQuery.isPending && subFolders.length === 0 && (
@@ -173,16 +176,33 @@ function FolderPhotos({
   items,
   pending,
   hasSub,
+  scrollRef,
 }: {
   items: PhotoItem[];
   pending: boolean;
   hasSub: boolean;
+  scrollRef: React.RefObject<HTMLDivElement | null>;
 }) {
   const setOrdered = useTimelineStore((s) => s.setOrdered);
   const openLightbox = useTimelineStore((s) => s.openLightbox);
   useEffect(() => {
     if (items.length) setOrdered(items);
   }, [items, setOrdered]);
+
+  // 폭 프로브 → 열 수/행 높이(정사각: 타일 한 변 + gap 4px).
+  const probeRef = useRef<HTMLDivElement | null>(null);
+  const [width, setWidth] = useState(0);
+  useLayoutEffect(() => {
+    const el = probeRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setWidth(Math.floor(el.clientWidth)));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [pending, items.length]);
+  const cols = Math.max(1, Math.floor((width + 4) / (116 + 4)));
+  const rowCount = Math.ceil(items.length / cols);
+  const tile = width > 0 ? (width - (cols - 1) * 4) / cols : 0;
+  const heightOfRow = useCallback(() => tile + 4, [tile]);
 
   if (pending)
     return <p className="p-6 text-center text-sm text-slate-400">불러오는 중…</p>;
@@ -199,22 +219,30 @@ function FolderPhotos({
       <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
         사진 ({items.length})
       </h3>
-      {/* 부모 스크롤에 얹는 정사각 그리드. 리프 폴더가 아주 크면 후속에서
-       * 가상화 고려(대개 정리된 폴더라 수백 이하). */}
-      <div
-        className="grid gap-1"
-        style={{ gridTemplateColumns: "repeat(auto-fill, minmax(116px, 1fr))" }}
-      >
-        {items.map((it) => (
-          <button
-            key={it.id}
-            data-photo-id={it.id}
-            onClick={() => openLightbox(it.id)}
-            className="aspect-square overflow-hidden rounded-sm outline-none"
-          >
-            <Thumb item={it} space={it.space} />
-          </button>
-        ))}
+      {/* 부모 스크롤에 얹는 정사각 그리드 — 행 단위 가상화(1000+장 폴더 대비). */}
+      <div ref={probeRef}>
+        <VirtualRows
+          count={rowCount}
+          heightOf={heightOfRow}
+          scrollRef={scrollRef}
+          renderRow={(r) => (
+            <div
+              className="grid gap-1 pb-1"
+              style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+            >
+              {items.slice(r * cols, r * cols + cols).map((it) => (
+                <button
+                  key={it.id}
+                  data-photo-id={it.id}
+                  onClick={() => openLightbox(it.id)}
+                  className="aspect-square overflow-hidden rounded-sm outline-none"
+                >
+                  <Thumb item={it} space={it.space} />
+                </button>
+              ))}
+            </div>
+          )}
+        />
       </div>
     </div>
   );
