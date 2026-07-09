@@ -991,7 +991,9 @@ class DsmPhotoSource:
                     "rename",
                     version=1,
                     sid=self._sid,
-                    extra={"id": int(folder_id), "name": new_name},
+                    # name은 JSON 인코딩 필수: 평문이면 날짜꼴 이름("2012-01-29")을
+                    # DSM이 숫자/수식으로 파싱해 code 120(type) — 실 NAS 확인.
+                    extra={"id": int(folder_id), "name": json.dumps(new_name)},
                 )
                 invalidate_folder_cache(self._sid)
                 return str(folder_id), new_name
