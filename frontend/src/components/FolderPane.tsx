@@ -456,6 +456,9 @@ export function FolderPane({
   useLayoutEffect(() => {
     const el = gridRef.current;
     if (!el) return;
+    // 초기 폭은 동기 측정 — RO 초기 전달이 지연/누락되는 환경(백그라운드 탭 등)
+    // 에서 width=0에 갇혀 그리드가 영영 안 그려지는 문제 방지(2026-07-10 실측).
+    setWidth(Math.floor(el.clientWidth));
     const ro = new ResizeObserver(() => setWidth(Math.floor(el.clientWidth)));
     ro.observe(el);
     return () => ro.disconnect();

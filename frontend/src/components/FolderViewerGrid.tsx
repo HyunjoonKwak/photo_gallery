@@ -195,6 +195,7 @@ function FolderPhotos({
   useLayoutEffect(() => {
     const el = probeRef.current;
     if (!el) return;
+    setWidth(Math.floor(el.clientWidth)); // 초기 폭 동기 측정(RO 초기 전달 미보장)
     const ro = new ResizeObserver(() => setWidth(Math.floor(el.clientWidth)));
     ro.observe(el);
     return () => ro.disconnect();
