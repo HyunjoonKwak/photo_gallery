@@ -159,7 +159,7 @@
 
 ## F. 전체 리뷰(2026-07-09, 3에이전트 분석) — 속도 개선 로드맵
 - [x] **Phase A(배포·실측 완료)** — 타임라인 3계층 캐시(L1 scope 공유/L2 SQLite/SWR 백그라운드 재스캔), 트래시 병렬·증분 캐시(전역), gzip(썸네일·비디오 제외), 코드 스플리팅(leaflet·Manage·Albums lazy), 썸네일 immutable 1y+ETag/304+SW CacheFirst, staleTime 5m, `_FOLDER_META` rename/move 정확성 수정. **실측: 공용(69k장+트래시 158폴더) 타임라인 콜드 300s 타임아웃→첫 스캔 17.6s(1회)→웜 0.0s·재시작 후 0.04s; JS 전송 578KB→113KB.**
-- [ ] **Phase B(체감)**: 큰 폴더 그리드 가상화(FolderPane/FolderViewerGrid/SearchView — 1000+장 프리즈, 가상 그리드 3종 통합), 무효화 스코프 축소(areaKey/day)+resettle 통합, folder-counts 쿼리 키 재설계(1폴더 변화에 전체 재요청), 낙관적 업데이트(이동/삭제 즉시 반영), CopyMove 청크 25→100+적응형 폴링, undo 목적지별 그룹화(500태스크→폴더수), 라이브러리 전환 `queryClient.clear()`→scoped removeQueries(4곳)
+- [~] **Phase B(체감)** — 완료(264802b): CopyMove 청크 25→바이트예산 패킹(200개/6KB — URL 414 함정 회피, 500장 이동 20→3~5태스크), 적응형 폴링(0.1s→0.5s), undo 목적지별 그룹화(500태스크→폴더수), 라이브러리 전환 clear()→스코프 제거(세션·메타 유지). **남음**: 큰 폴더 그리드 가상화(FolderPane/FolderViewerGrid/SearchView — 1000+장 프리즈, 가상 그리드 3종 통합), 무효화 스코프 축소(areaKey/day)+resettle 통합, folder-counts 쿼리 키 재설계, 낙관적 업데이트(이동/삭제 즉시 반영)
 - [ ] **Phase C(구조)**: dsm_source.py 1900줄 분할(browse/fileops/cache), 세션 만료 시 캐시 회수, capture-audit 재귀 병렬화, persons/places 캐시+name_person 재스캔 제거, SQLite to_thread/세션 캐시(이벤트 루프 블로킹), `_ensure_dir` 오류 삼킴 완화, 죽은 코드 제거(DateHeader.tsx·rowModel 미사용 export·@air/react-drag-to-select 의존성), window.prompt/confirm 8곳→공용 Modal(+a11y)
 - [ ] **Phase D(기능 균형)**: 앨범 보강(이름변경·사진 빼기·감상에서 담기), 휴지통 개별 복원 UI, 박스 선택 복원 여부 결정(명세엔 있고 코드 제거됨), 타인 열람 중 검색창 숨김, B-7 타인 고위험 작업 확인, 명세 §2/§9 IA 재작성 + 문서 체크 상태 일괄 갱신(A-5 root 실행·156·157·149 등)
 - [x] CLIP 임베딩 기반 탐지(Immich 방식)는 NAS 사양·목적상 **비권고** — 도입하지 않음(설계 준수)
