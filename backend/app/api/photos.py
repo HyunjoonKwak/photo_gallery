@@ -33,6 +33,7 @@ from ..photos.source import PhotoSource
 from ..photos.thumb_cache import THUMB_MEDIA_TYPE, ThumbCache
 from .. import progress
 from ..photos import capture_fix
+from ..photos.dsm_source import invalidate_bucket_cache
 from ..schemas import (
     AddToAlbumRequest,
     AlbumMutationResponse,
@@ -588,6 +589,9 @@ async def capture_fix_auto(
     cb = progress.callback(progress_key, "촬영일 교정")
     counter = await asyncio.to_thread(_run_auto, req.paths, cb)
     progress.clear(progress_key)
+    # 내 사진(Synology) 타임라인은 백엔드 버킷 캐시(TTL 300s)를 거치므로, 파일
+    # 날짜를 바꾼 뒤 캐시를 비워 다음 조회가 재인덱싱된 날짜를 즉시 반영하게 한다.
+    invalidate_bucket_cache(session.sid)
     return _summarize(counter)
 
 
@@ -612,6 +616,7 @@ async def capture_fix_manual(
     for it in req.items:
         _gate_home_path(session, it.path)
     counter = await asyncio.to_thread(_run_manual, req.items)
+    invalidate_bucket_cache(session.sid)
     return _summarize(counter)
 
 

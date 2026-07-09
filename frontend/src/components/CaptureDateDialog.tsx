@@ -55,7 +55,8 @@ export function CaptureDateDialog({
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["folder-items"] });
     qc.invalidateQueries({ queryKey: ["folders"] });
-    qc.invalidateQueries({ queryKey: ["buckets"] });
+    qc.invalidateQueries({ queryKey: ["buckets"] }); // 타임라인 일자 목록
+    qc.invalidateQueries({ queryKey: ["bucket"] }); // 일자별 사진 목록
     qc.invalidateQueries({ queryKey: ["capture-audit", root] });
   };
 
