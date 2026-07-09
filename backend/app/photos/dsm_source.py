@@ -1251,13 +1251,16 @@ class DsmPhotoSource:
         *,
         remove_src: bool,
         on_progress: ProgressFn | None,
+        overwrite: bool = False,
     ) -> None:
         total = len(src_paths)
         if on_progress:
             on_progress(0, total)
         for start in range(0, total, self.COPYMOVE_CHUNK):
             chunk = src_paths[start : start + self.COPYMOVE_CHUNK]
-            await self._copymove(chunk, dest_dir, remove_src=remove_src)
+            await self._copymove(
+                chunk, dest_dir, remove_src=remove_src, overwrite=overwrite
+            )
             if on_progress:
                 on_progress(min(start + len(chunk), total), total)
 
