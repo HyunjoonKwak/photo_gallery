@@ -16,7 +16,12 @@ from typing import Any
 
 import httpx
 
+from contextlib import nullcontext
+
 from .errors import DsmError, message_for
+
+# 인증 호출용 no-op 컨텍스트(세마포어 우회) — _send 참고.
+_NULL_SEM = nullcontext()
 
 
 @dataclass(frozen=True)
@@ -318,7 +323,11 @@ class DsmClient:
         which DSM/PAM delays and escalates — fails fast instead of hanging).
         """
         try:
-            async with self._sem:
+            # 인증(SYNO.API.Auth)은 세마포어를 우회한다 — 대량 스캔이 24개
+            # 슬롯을 점유한 동안 로그인이 줄 서면 사용자는 '로그인 중'에서
+            # 멈춘 것으로 본다(2026-07-09 장애). 인증 호출은 드물고 가볍다.
+            sem = self._sem if api != "SYNO.API.Auth" else _NULL_SEM
+            async with sem:
                 kwargs: dict[str, Any] = {} if timeout is None else {"timeout": timeout}
                 if method == "POST":
                     resp = await self._http.post(url, data=params, **kwargs)

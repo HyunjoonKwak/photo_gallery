@@ -73,6 +73,25 @@ _TOP_FOLDER_CACHE: dict[str, tuple[float, list[PhotoFolder]]] = {}
 # 쓰기마다 비우지 않고 삭제/복원 훅이 증분 갱신한다(TTL은 외부 변경 수렴용).
 _TRASH_IDS: tuple[float, frozenset[str]] | None = None
 _TRASH_TTL = 600.0
+# 재구축 single-flight: 캐시가 빈 순간(재시작 직후) 동시 유입되는 items/buckets
+# 호출들이 각자 158-폴더 병렬 재구축을 발사하면 DSM 세마포어(24)가 포화되어
+# 로그인·폴더 목록까지 굶는다(2026-07-09 장애). 한 명만 재구축, 나머지는 대기.
+_TRASH_LOCK = asyncio.Lock()
+# 재구축 내부 동시성 상한 — 세마포어 24 중 상당수를 인터랙티브 요청 몫으로 남긴다.
+_TRASH_CONCURRENCY = 6
+# 백그라운드 재스캔 태스크 강한 참조(참조 없는 create_task는 GC로 중단될 수 있음).
+_BG_TASKS: set["asyncio.Task"] = set()
+
+
+async def _bounded_gather(coros: list, limit: int) -> list:
+    """gather with a concurrency cap (DSM 세마포어를 독점하지 않기 위함)."""
+    gate = asyncio.Semaphore(limit)
+
+    async def run(coro):
+        async with gate:
+            return await coro
+
+    return await asyncio.gather(*(run(c) for c in coros))
 
 
 def _trash_cache_add(item_ids: list[str]) -> None:
@@ -238,8 +257,14 @@ class DsmPhotoSource:
             _BUCKET_CACHE[scope] = (_time.monotonic(), out)
             if not fresh and scope not in _BUCKET_SCANNING:
                 # Stale-while-revalidate: 지난 결과를 즉시 내주고 뒤에서 재스캔.
+                # 태스크는 강한 참조로 보관 — 참조 없는 create_task는 GC가
+                # 중간에 회수할 수 있어 재스캔이 소리 없이 사라진다.
                 _BUCKET_SCANNING.add(scope)
-                asyncio.create_task(self._rescan_buckets(scope, space, sqlite_path))
+                task = asyncio.create_task(
+                    self._rescan_buckets(scope, space, sqlite_path)
+                )
+                _BG_TASKS.add(task)
+                task.add_done_callback(_BG_TASKS.discard)
             return out
         # 첫 스캔(스코프에 데이터 자체가 없음) — 동기로 한 번 채운다.
         return await self._rescan_buckets(scope, space, sqlite_path, register=False)
@@ -366,6 +391,15 @@ class DsmPhotoSource:
         cached = _TRASH_IDS
         if cached and (_time.monotonic() - cached[0]) < _TRASH_TTL:
             return cached[1]
+        async with _TRASH_LOCK:
+            # 잠금 대기 중 다른 요청이 재구축을 끝냈으면 그 결과를 그대로 쓴다.
+            cached = _TRASH_IDS
+            if cached and (_time.monotonic() - cached[0]) < _TRASH_TTL:
+                return cached[1]
+            return await self._rebuild_trash_ids()
+
+    async def _rebuild_trash_ids(self) -> frozenset[str]:
+        global _TRASH_IDS
         try:
             trash = next(
                 (
@@ -403,7 +437,10 @@ class DsmPhotoSource:
                             return got
                         offset += 1000
 
-                for part in await asyncio.gather(*(collect(f) for f in folder_ids)):
+                parts = await _bounded_gather(
+                    [collect(f) for f in folder_ids], _TRASH_CONCURRENCY
+                )
+                for part in parts:
                     ids.update(part)
         except DsmError:
             # Filtering is best-effort — a probe failure must not break the
@@ -526,10 +563,12 @@ class DsmPhotoSource:
         out = [root_id]
         frontier = [root_id]
         # 레벨 단위 병렬 조회 — 트래시가 폴더 150+로 커지면 순차 왕복이 분 단위가
-        # 된다(2026-07-09 실측). 동시성 상한은 DsmClient 세마포어가 잡는다.
+        # 된다(2026-07-09 실측). 상한을 두어 DSM 세마포어를 독점하지 않는다
+        # (독점하면 로그인·폴더 목록까지 굶는다 — 같은 날 장애).
         while frontier:
-            results = await asyncio.gather(
-                *(self._list_children(space, fid) for fid in frontier)
+            results = await _bounded_gather(
+                [self._list_children(space, fid) for fid in frontier],
+                _TRASH_CONCURRENCY,
             )
             frontier = []
             for children in results:
