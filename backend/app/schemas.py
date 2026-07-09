@@ -254,6 +254,13 @@ class CaptureFixResponse(BaseModel):
     details: dict[str, int]  # 상태별 카운트(ok/has-exif/no-date/failed/not-found)
 
 
+# 내 사진/공용(Synology Photos): 파일이 아니라 Synology 인덱스의 촬영시간을 직접
+# 변경(SYNO.Foto.Browse.Item set). path=Foto item id(문자열), date=지정 촬영일.
+class CaptureFixFotoRequest(BaseModel):
+    space: str = "personal"  # personal | team
+    items: list[CaptureFixManualItem] = Field(default_factory=list, max_length=5000)
+
+
 class ItemDetail(BaseModel):
     """On-demand detail for the lightbox info panel — folder path, EXIF and
     shooting location, fetched only when the panel opens (list responses stay

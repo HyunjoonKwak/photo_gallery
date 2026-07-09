@@ -499,6 +499,21 @@ class DsmPhotoSource:
             space, {"folder_id": int(folder_id)}, limit
         )
 
+    async def set_item_time(self, space: str, item_id: str, epoch: int) -> None:
+        """Set a Synology Photos item's taken time (촬영일 교정, 내 사진/공용).
+
+        SYNO.Foto(Team).Browse.Item `set` with id=[..] + time=<epoch초> updates
+        Synology's own index directly (실 NAS 확인 2026-07-09) — no file edit and
+        no reindex needed, so it's the reliable fix for photos already in Photos.
+        """
+        await self._dsm.call(
+            _ns(space, "SYNO.Foto.Browse.Item"),
+            "set",
+            version=1,
+            sid=self._sid,
+            extra={"id": json.dumps([int(item_id)]), "time": int(epoch)},
+        )
+
     # EXIF keys worth showing, normalized to fixed names the frontend labels.
     _EXIF_KEYS = (
         "camera",

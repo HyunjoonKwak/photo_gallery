@@ -19,20 +19,33 @@ function fmtDate(iso: string | null): string {
   return iso.slice(0, 10);
 }
 
+/** fs = 1차 구역/homes: 파일에 EXIF/mtime 직접 기록(앱이 파일을 실시간으로 읽음).
+ *  foto = 내 사진/공용: 파일이 아니라 Synology 인덱스의 촬영시간을 API로 변경
+ *  (Synology는 파일 변경을 재색인하지 않으므로 이미 색인된 사진은 이 경로로). */
+export type CaptureTarget =
+  | { kind: "fs"; root: string }
+  | { kind: "foto"; folder: string; space: string };
+
 export function CaptureDateDialog({
-  root,
+  target,
   onClose,
   onDone,
 }: {
-  root: string;
+  target: CaptureTarget;
   onClose: () => void;
   onDone: () => void;
 }) {
   const qc = useQueryClient();
   const pushToast = useToastStore((s) => s.push);
   const q = useQuery({
-    queryKey: ["capture-audit", root],
-    queryFn: () => api.captureAudit(root),
+    queryKey:
+      target.kind === "fs"
+        ? ["capture-audit", target.root]
+        : ["capture-audit-foto", target.folder, target.space],
+    queryFn: () =>
+      target.kind === "fs"
+        ? api.captureAudit(target.root)
+        : api.captureAuditFoto(target.folder),
   });
   const items = q.data?.items ?? [];
   // 자동 = 촬영일을 알아냈고 현재 표시값(mtime)과 달라 교정이 필요한 것.
@@ -57,7 +70,12 @@ export function CaptureDateDialog({
     qc.invalidateQueries({ queryKey: ["folders"] });
     qc.invalidateQueries({ queryKey: ["buckets"] }); // 타임라인 일자 목록
     qc.invalidateQueries({ queryKey: ["bucket"] }); // 일자별 사진 목록
-    qc.invalidateQueries({ queryKey: ["capture-audit", root] });
+    qc.invalidateQueries({
+      queryKey:
+        target.kind === "fs"
+          ? ["capture-audit", target.root]
+          : ["capture-audit-foto", target.folder, target.space],
+    });
   };
 
   const applyAuto = async () => {
@@ -75,10 +93,17 @@ export function CaptureDateDialog({
       }
     }, 700);
     try {
-      const res = await api.captureFix(
-        autoItems.map((i) => i.path),
-        key,
-      );
+      const res =
+        target.kind === "fs"
+          ? await api.captureFix(
+              autoItems.map((i) => i.path),
+              key,
+            )
+          : await api.captureFixFoto(
+              target.space,
+              autoItems.map((i) => ({ path: i.path, date: i.detected! })),
+              key,
+            );
       pushToast(
         `${res.ok}개 촬영일을 교정했습니다` +
           (res.skipped ? ` (건너뜀 ${res.skipped})` : "") +
@@ -102,7 +127,10 @@ export function CaptureDateDialog({
     if (picked.length === 0 || busy) return;
     setBusy(true);
     try {
-      const res = await api.captureFixManual(picked);
+      const res =
+        target.kind === "fs"
+          ? await api.captureFixManual(picked)
+          : await api.captureFixFoto(target.space, picked);
       pushToast(
         `${res.ok}개 촬영일을 지정했습니다` +
           (res.failed ? ` (실패 ${res.failed})` : ""),

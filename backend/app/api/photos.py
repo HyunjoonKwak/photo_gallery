@@ -33,6 +33,7 @@ from ..photos.source import PhotoSource
 from ..photos.thumb_cache import THUMB_MEDIA_TYPE, ThumbCache
 from .. import progress
 from ..photos import capture_fix
+from ..photos.capture_date import parse_from_filename
 from ..photos.dsm_source import invalidate_bucket_cache
 from ..schemas import (
     AddToAlbumRequest,
@@ -42,6 +43,7 @@ from ..schemas import (
     BucketsResponse,
     CaptureAuditItem,
     CaptureAuditResponse,
+    CaptureFixFotoRequest,
     CaptureFixManualRequest,
     CaptureFixRequest,
     CaptureFixResponse,
@@ -616,6 +618,67 @@ async def capture_fix_manual(
     for it in req.items:
         _gate_home_path(session, it.path)
     counter = await asyncio.to_thread(_run_manual, req.items)
+    invalidate_bucket_cache(session.sid)
+    return _summarize(counter)
+
+
+# --- 내 사진/공용(Synology Photos): 파일이 아니라 Synology 인덱스의 촬영시간을
+# --- 직접 변경(SYNO.Foto.Browse.Item set). 파일 편집은 Synology가 재색인하지
+# --- 않아 반영 안 되므로, 이미 색인된 사진은 이 경로로 교정한다.
+@router.get("/capture-audit-foto", response_model=CaptureAuditResponse)
+async def capture_audit_foto(
+    folder: str,
+    _session: Session = Depends(get_current_session),
+    source: PhotoSource = Depends(get_photo_source),
+) -> CaptureAuditResponse:
+    """Foto 폴더(직속) 사진의 현재 촬영일(Synology 인덱스)과 파일명 추정 촬영일을
+    반환. 파일 무변경(진단)."""
+    items = await source.folder_items(folder)
+    rows: list[CaptureAuditItem] = []
+    for it in items:
+        det = parse_from_filename(it.filename)
+        rows.append(
+            CaptureAuditItem(
+                path=it.id,
+                filename=it.filename,
+                current=it.taken_at,
+                detected=det.isoformat() if det else None,
+                source="filename" if det else "none",
+            )
+        )
+    auto = sum(1 for r in rows if r.detected and r.detected[:10] != r.current[:10])
+    manual = sum(1 for r in rows if not r.detected)
+    return CaptureAuditResponse(items=rows, total=len(rows), auto=auto, manual=manual)
+
+
+@router.post("/capture-fix-foto", response_model=CaptureFixResponse)
+async def capture_fix_foto(
+    req: CaptureFixFotoRequest,
+    progress_key: str | None = Query(default=None, max_length=64),
+    session: Session = Depends(get_current_session),
+    source: PhotoSource = Depends(get_photo_source),
+) -> CaptureFixResponse:
+    """지정한 촬영일을 Synology 인덱스에 기록(set). 자동/수동 모두 {id, date}."""
+    if req.space not in ("personal", "team"):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="space 오류"
+        )
+    cb = progress.callback(progress_key, "촬영일 교정")
+    counter: Counter = Counter()
+    total = len(req.items)
+    for i, it in enumerate(req.items):
+        dt = _parse_user_date(it.date)
+        if dt is None:
+            counter["bad-date"] += 1
+        else:
+            try:
+                await source.set_item_time(req.space, it.path, int(dt.timestamp()))
+                counter["ok"] += 1
+            except Exception as exc:  # noqa: BLE001
+                counter[f"failed:{type(exc).__name__}"] += 1
+        if cb:
+            cb(i + 1, total)
+    progress.clear(progress_key)
     invalidate_bucket_cache(session.sid)
     return _summarize(counter)
 

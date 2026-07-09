@@ -146,6 +146,20 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ items }),
     }),
+  // 내 사진/공용(Synology Photos): 파일이 아니라 Synology 인덱스의 촬영시간 변경
+  captureAuditFoto: (folder: string) =>
+    request<CaptureAuditResponse>(
+      `/api/photos/capture-audit-foto?folder=${encodeURIComponent(folder)}`,
+    ),
+  captureFixFoto: (
+    space: string,
+    items: { path: string; date: string }[],
+    progressKey?: string,
+  ) =>
+    request<CaptureFixResponse>(
+      `/api/photos/capture-fix-foto${progressKey ? `?progress_key=${progressKey}` : ""}`,
+      { method: "POST", body: JSON.stringify({ space, items }) },
+    ),
   systemInfo: () => request<ApiInfoResponse>("/api/system/info"),
   photoBuckets: (space: Space) =>
     request<BucketsResponse>(`/api/photos/buckets?space=${space}${scopeQS()}`),

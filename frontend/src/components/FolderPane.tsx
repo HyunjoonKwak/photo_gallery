@@ -10,7 +10,7 @@ import type { FolderSort, FolderSortKey } from "../store/timeline";
 import { PhotoCell } from "./timeline/PhotoCell";
 import { SPRING_MS, folderBasename } from "./FolderTree";
 import { FolderNameAuditDialog } from "./FolderNameAuditDialog";
-import { CaptureDateDialog } from "./CaptureDateDialog";
+import { CaptureDateDialog, type CaptureTarget } from "./CaptureDateDialog";
 
 /** Order sub-folders by the user's chosen key/direction. Name uses a Korean,
  * numeric-aware compare (so 2·10 sort naturally); date uses mtime with folders
@@ -228,16 +228,16 @@ export function FolderPane({
   const isFsContext = isFsScope || Boolean(area?.zone || area?.targetUser);
   const [auditOpen, setAuditOpen] = useState(false);
 
-  // 촬영일 교정: 경로형 폴더(1차 구역/타 homes = FileStation)에서만 노출한다.
-  // 이런 폴더는 앱이 파일 mtime을 실시간으로 읽으므로 파일 교정이 즉시 반영된다.
-  // 내 사진/공용(Synology Photos)은 Synology가 날짜를 색인하고 파일 변경으로
-  // 재색인하지 않아 파일 교정이 반영되지 않으므로 여기서는 제외(Synology
-  // 'update_time' API 별도 구현 필요 — Phase 2).
+  // 촬영일 교정 대상 판별:
+  //  - 경로형 폴더(1차 구역/homes = FileStation): 파일에 EXIF/mtime 직접 기록.
+  //  - Foto 폴더(내 사진/공용): Synology 인덱스의 촬영시간을 API로 변경(파일
+  //    변경은 Synology가 재색인 안 해 반영 안 되므로).
   const [captureOpen, setCaptureOpen] = useState(false);
-  const captureRoot = useMemo(
-    () => (current && current.id.startsWith("/homes/") ? current.id : null),
-    [current],
-  );
+  const captureTarget = useMemo((): CaptureTarget | null => {
+    if (!current) return null;
+    if (current.id.startsWith("/homes/")) return { kind: "fs", root: current.id };
+    return { kind: "foto", folder: current.id, space: current.space };
+  }, [current]);
 
   const openFolder = (f: PhotoFolder) => onPathChange([...path, f]);
   const jumpTo = (index: number) => onPathChange(path.slice(0, index + 1));
@@ -462,10 +462,10 @@ export function FolderPane({
               이름 정리
             </button>
           )}
-          {captureRoot && (
+          {captureTarget && (
             <button
               onClick={() => setCaptureOpen(true)}
-              title="이 폴더 아래 사진의 촬영일을 파일명에서 읽어 파일에 기록(복사시각으로 잘못 잡힌 날짜 교정)"
+              title="이 폴더 사진의 촬영일을 파일명에서 읽어 교정(복사시각으로 잘못 잡힌 날짜 정정)"
               className="rounded-lg border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:border-slate-400 hover:text-slate-700"
             >
               촬영일 교정
@@ -682,9 +682,9 @@ export function FolderPane({
         )}
         </div>
       </div>
-      {captureOpen && captureRoot && (
+      {captureOpen && captureTarget && (
         <CaptureDateDialog
-          root={captureRoot}
+          target={captureTarget}
           onClose={() => setCaptureOpen(false)}
           onDone={() => setCaptureOpen(false)}
         />

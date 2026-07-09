@@ -917,6 +917,10 @@ class MockPhotoSource:
             if fid == folder_id and item_id not in self._deleted
         )
 
+    async def set_item_time(self, space: str, item_id: str, epoch: int) -> None:
+        # Dev mock: no persistent taken-time store — accept and no-op.
+        return None
+
     async def members(self) -> list[MemberInfo]:
         # 마지막 한 명은 "사진 없음" 케이스 데모용.
         return [

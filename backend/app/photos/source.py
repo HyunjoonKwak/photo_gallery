@@ -84,6 +84,10 @@ class PhotoSource(Protocol):
         """Number of items directly in a folder (folder view badges)."""
         ...
 
+    async def set_item_time(self, space: str, item_id: str, epoch: int) -> None:
+        """Set a Photos item's taken time (촬영일 교정, 내 사진/공용)."""
+        ...
+
     async def item_detail(self, space: str, item_id: str) -> ItemDetail:
         """Folder path + EXIF + location for one item (lightbox info panel)."""
         ...
