@@ -308,18 +308,26 @@ export function GroupedPhotoGrid({
       const idx = rs.findIndex(
         (r) => r.kind === "header" && r.groupKey === scrollToGroup,
       );
-      if (idx < 0) return;
-      const item = virtualizer.getVirtualItems().find((v) => v.index === idx);
-      const off = virtualizer.scrollOffset ?? 0;
+      const box = scrollRef.current;
+      if (idx < 0 || !box) return;
+      // 대상 offset은 측정 캐시에서 직접 계산 — getVirtualItems()는 가상화기
+      // 내부 offset이 스크롤을 못 따라간 동안(실측: scrollOffset 0 고정) 대상
+      // 행을 아예 포함하지 않아 기준으로 쓸 수 없다.
+      const target = virtualizer.getOffsetForIndex(idx, "start")?.[0];
+      if (target == null) return;
+      // 판정은 요소의 실제 scrollTop(진실) 기준.
       const g = groupsRef.current.find((gr) => gr.key === scrollToGroup);
       const firstDay = g ? previewDaysOf(g)[0] : null;
-      const anchored = item != null && Math.abs(item.start - off) < 8;
+      const anchored = Math.abs(target - box.scrollTop) < 8;
       if (anchored && firstDay && loadedRef.current.has(firstDay)) {
         stable += 1;
         return; // 위치 유지 확인만(불필요한 재스크롤로 떨림 방지)
       }
       stable = 0;
-      virtualizer.scrollToIndex(idx, { align: "start" });
+      box.scrollTo({ top: target });
+      // 가상화기 offset 구독이 프로그램 스크롤을 놓치는 경우가 있어(실측)
+      // 명시적 scroll 이벤트로 동기화를 강제한다 — 없으면 렌더가 상단에 묶임.
+      box.dispatchEvent(new Event("scroll"));
     }, 200);
     return () => {
       window.clearInterval(timer);
@@ -332,7 +340,7 @@ export function GroupedPhotoGrid({
   // 뷰포트 최상단에 보이는 그룹 라벨 보고 — 상단 크럼이 실제 위치를 따라간다.
   useEffect(() => {
     if (!onTopGroupChange) return;
-    const offset = virtualizer.scrollOffset ?? scrollTop;
+    const offset = scrollRef.current?.scrollTop ?? scrollTop;
     const vis = virtualizer.getVirtualItems();
     const top = vis.find((v) => v.end > offset + 1);
     const row = top ? rows[top.index] : null;
