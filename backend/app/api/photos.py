@@ -664,25 +664,29 @@ async def capture_audit_foto(
         for it in items_of:
             pairs.append((it, fdisk))
 
+    def probe(pair) -> CaptureAuditItem:
+        it, fdisk = pair
+        det = parse_from_filename(it.filename)
+        src = "filename" if det else "none"
+        if det is None:
+            ex = _exif_lookup(fdisk, it.filename)
+            if ex:
+                det, src = ex, "exif"
+        return CaptureAuditItem(
+            path=it.id,
+            filename=it.filename,
+            current=it.taken_at,
+            detected=det.isoformat() if det else None,
+            source=src,
+        )
+
     def build() -> list[CaptureAuditItem]:
-        out: list[CaptureAuditItem] = []
-        for it, fdisk in pairs:
-            det = parse_from_filename(it.filename)
-            src = "filename" if det else "none"
-            if det is None:
-                ex = _exif_lookup(fdisk, it.filename)
-                if ex:
-                    det, src = ex, "exif"
-            out.append(
-                CaptureAuditItem(
-                    path=it.id,
-                    filename=it.filename,
-                    current=it.taken_at,
-                    detected=det.isoformat() if det else None,
-                    source=src,
-                )
-            )
-        return out
+        # EXIF 판독(파일당 디스크 IO)이 지배 비용 — 순차면 3천 장에 2분+
+        # (2026-07-10 실측 146s). 스레드풀 병렬로 단축.
+        from concurrent.futures import ThreadPoolExecutor
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            return list(pool.map(probe, pairs))
 
     rows = await asyncio.to_thread(build)
     auto = sum(1 for r in rows if r.detected and r.detected[:10] != r.current[:10])
