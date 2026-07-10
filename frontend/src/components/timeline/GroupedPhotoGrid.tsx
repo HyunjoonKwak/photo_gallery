@@ -279,60 +279,55 @@ export function GroupedPhotoGrid({
   // scrollToGroup으로 초기 스크롤(연→월 드릴 등). 가상화 + 동적 높이라
   // placeholder 추정 위에서 한 번 스크롤하면 어긋남 → 대상 그룹이 로드돼
   // 높이가 실측될 때까지 rows/loaded 변화마다 재스크롤.
-  const scrolledFor = useRef<string | null>(null);
-  const scrollTries = useRef(0);
-  const settleStreak = useRef(0);
-  const userScrolled = useRef(false);
+  // 연→월 드릴 안착: 독립 200ms 타이머로 대상 헤더를 상단에 재고정.
+  // 위쪽 행들이 로드/실측되며 offset이 계속 밀리므로, "2회 연속 안정 + 대상
+  // 그룹 로드됨"일 때까지 반복(휠/터치 개입 시 즉시 중단, 8초 상한).
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
+  const loadedRef = useRef(loaded);
+  loadedRef.current = loaded;
+  const groupsRef = useRef(groups);
+  groupsRef.current = groups;
   useEffect(() => {
-    scrollTries.current = 0;
-    settleStreak.current = 0;
-    userScrolled.current = false;
-  }, [scrollToGroup]);
-  // 사용자가 직접 스크롤을 시작하면 자동 재안착을 중단(위치 뺏김 방지).
-  useEffect(() => {
-    const el = scrollEl;
-    if (!el) return;
+    if (!scrollToGroup) return;
+    const el = scrollRef.current;
+    let stable = 0;
+    let stopped = false;
     const stop = () => {
-      userScrolled.current = true;
+      stopped = true;
     };
-    el.addEventListener("wheel", stop, { passive: true });
-    el.addEventListener("touchstart", stop, { passive: true });
+    el?.addEventListener("wheel", stop, { passive: true });
+    el?.addEventListener("touchstart", stop, { passive: true });
+    const deadline = Date.now() + 8000;
+    const timer = window.setInterval(() => {
+      if (stopped || stable >= 2 || Date.now() > deadline) {
+        window.clearInterval(timer);
+        return;
+      }
+      const rs = rowsRef.current;
+      const idx = rs.findIndex(
+        (r) => r.kind === "header" && r.groupKey === scrollToGroup,
+      );
+      if (idx < 0) return;
+      const item = virtualizer.getVirtualItems().find((v) => v.index === idx);
+      const off = virtualizer.scrollOffset ?? 0;
+      const g = groupsRef.current.find((gr) => gr.key === scrollToGroup);
+      const firstDay = g ? previewDaysOf(g)[0] : null;
+      const anchored = item != null && Math.abs(item.start - off) < 8;
+      if (anchored && firstDay && loadedRef.current.has(firstDay)) {
+        stable += 1;
+        return; // 위치 유지 확인만(불필요한 재스크롤로 떨림 방지)
+      }
+      stable = 0;
+      virtualizer.scrollToIndex(idx, { align: "start" });
+    }, 200);
     return () => {
-      el.removeEventListener("wheel", stop);
-      el.removeEventListener("touchstart", stop);
+      window.clearInterval(timer);
+      el?.removeEventListener("wheel", stop);
+      el?.removeEventListener("touchstart", stop);
     };
-  }, [scrollEl]);
-  useEffect(() => {
-    if (!scrollToGroup || scrolledFor.current === scrollToGroup) return;
-    if (userScrolled.current || scrollTries.current > 200) {
-      scrolledFor.current = scrollToGroup; // 포기(사용자 개입/수렴 실패)
-      return;
-    }
-    const idx = rows.findIndex(
-      (r) => r.kind === "header" && r.groupKey === scrollToGroup,
-    );
-    if (idx < 0) return;
-    scrollTries.current += 1;
-    virtualizer.scrollToIndex(idx, { align: "start" });
-    const g = groups.find((gr) => gr.key === scrollToGroup);
-    const firstDay = g ? previewDaysOf(g)[0] : null;
-    // 완료 판정: 대상 그룹이 로드돼 높이가 실측됐고, 헤더가 실제로 뷰포트
-    // 상단에 안착(±8px)했을 때만 — 위쪽 추정 높이가 실측으로 바뀌며 밀리는
-    // 문제를 rows/loaded/scroll 변화마다 재안착해 흡수한다.
-    const headerStart = virtualizer
-      .getVirtualItems()
-      .find((v) => v.index === idx)?.start;
-    const settled =
-      headerStart != null &&
-      Math.abs((virtualizer.scrollOffset ?? 0) - headerStart) < 8;
-    if (firstDay && loaded.has(firstDay) && settled) {
-      settleStreak.current += 1;
-      // 3연속 프레임 안정일 때만 완료 — 위쪽 행 실측으로 밀리는 드리프트 흡수.
-      if (settleStreak.current >= 3) scrolledFor.current = scrollToGroup;
-    } else {
-      settleStreak.current = 0;
-    }
-  }, [scrollToGroup, rows, loaded, groups, previewDaysOf, virtualizer, scrollTop, measureTick]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scrollToGroup, virtualizer]);
 
   // 뷰포트 최상단에 보이는 그룹 라벨 보고 — 상단 크럼이 실제 위치를 따라간다.
   useEffect(() => {
