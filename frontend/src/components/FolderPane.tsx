@@ -425,7 +425,7 @@ export function FolderPane({
     if (active) setOrdered(items);
   }, [active, items, setOrdered]);
 
-  // 모두 선택 토글 상태 — DateHeader처럼 선택 집합에서 매 렌더 파생
+  // 모두 선택 토글 상태 — 선택 집합에서 매 렌더 파생(2차 장부 없음)
   // (IMPROVEMENTS B-3: 이중 장부 금지).
   const photoSelState = useTimelineStore((s) => {
     if (items.length === 0) return "none" as const;

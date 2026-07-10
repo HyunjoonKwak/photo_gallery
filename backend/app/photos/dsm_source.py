@@ -128,6 +128,10 @@ _PAGE = 5000
 # Video list cache: sid -> {space: (ts, items)}. videos()는 라이브러리 전체를
 # 스캔해 type==video만 거르므로(무거움) 결과를 buckets와 같은 창으로 캐시.
 _VIDEO_CACHE: dict[tuple[str, str], tuple[float, list["PhotoItem"]]] = {}
+# 사람/장소 목록 캐시 — 전량 페이징(100~200/왕복)이라 렌즈를 열 때마다 풀스캔
+# 하던 것을 캐시. 이름 지정/병합이 무효화한다.
+_PERSON_CACHE: dict[tuple[str, str], tuple[float, list["PersonInfo"]]] = {}
+_PLACE_CACHE: dict[tuple[str, str], tuple[float, list["PlaceInfo"]]] = {}
 # 전량 스캔 페이지를 동시에 몇 개까지 조회할지(첫 조회 지연 단축; DsmClient
 # 세마포어 24 안에서 여유 있게 — 69k 라이브러리 기준 2웨이브면 끝).
 _SCAN_CONCURRENCY = 10
@@ -189,6 +193,20 @@ def invalidate_bucket_cache(sid: str, space: str | None = None) -> None:
             pass
     for key in [k for k in _VIDEO_CACHE if k[0] == sid]:
         _VIDEO_CACHE.pop(key, None)
+
+
+def drop_session_caches(sid: str) -> None:
+    """만료/로그아웃 세션의 sid 키 캐시 회수(session_store가 호출) — 안 하면
+    로그인마다 쌓여 영구 잔존한다. 팀 공유 캐시(_BUCKET_CACHE 'team',
+    _TRASH_IDS)는 계정 무관이라 남긴다."""
+    _SID_ACCOUNT.pop(sid, None)
+    _FOLDER_META.pop(sid, None)
+    _TOP_FOLDER_CACHE.pop(sid, None)
+    _REMOVED_FOLDERS.pop(sid, None)
+    _REMOVED_ITEMS.pop(sid, None)
+    for cache in (_VIDEO_CACHE, _PERSON_CACHE, _PLACE_CACHE):
+        for key in [k for k in cache if k[0] == sid]:
+            cache.pop(key, None)
 
 
 def invalidate_folder_cache(sid: str) -> None:
@@ -650,12 +668,19 @@ class DsmPhotoSource:
         rf = (root or {}).get("folder")
         if rf:
             out.append((str(rf["id"]), rf.get("name", "")))
-        stack = [int(root_id)]
-        while stack:
-            pid = stack.pop()
-            for f in await self._list_children(space, pid):
-                out.append((str(f["id"]), f.get("name", "")))
-                stack.append(int(f["id"]))
+        # 레벨 병렬(BFS) — 깊은 트리에서 폴더당 1왕복 순차(N+1)로 수 초씩 걸리던
+        # 것을 트래시 워크와 같은 상한(_TRASH_CONCURRENCY)으로 병렬화.
+        frontier = [int(root_id)]
+        while frontier:
+            results = await _bounded_gather(
+                [self._list_children(space, pid) for pid in frontier],
+                _TRASH_CONCURRENCY,
+            )
+            frontier = []
+            for children in results:
+                for f in children:
+                    out.append((str(f["id"]), f.get("name", "")))
+                    frontier.append(int(f["id"]))
         return out
 
     async def set_item_time(self, space: str, item_id: str, epoch: int) -> None:
@@ -807,6 +832,16 @@ class DsmPhotoSource:
     # (2026-07-02): (Foto|FotoTeam).Browse.Person v1~3, Browse.Geocoding v1.
 
     async def persons(self, space: str) -> list[PersonInfo]:
+        # 전량 페이징(100/왕복)이라 캐시 — 이름 지정/병합마다 name_person이
+        # persons()를 재호출해 매번 풀스캔하던 것도 이 캐시로 흡수.
+        cached = _PERSON_CACHE.get((self._sid, space))
+        if cached and (_time.monotonic() - cached[0]) < _BUCKET_TTL:
+            return cached[1]
+        out = await self._persons_scan(space)
+        _PERSON_CACHE[(self._sid, space)] = (_time.monotonic(), out)
+        return out
+
+    async def _persons_scan(self, space: str) -> list[PersonInfo]:
         out: list[PersonInfo] = []
         offset = 0
         while True:
@@ -861,6 +896,7 @@ class DsmPhotoSource:
         **미검증**이라 best-effort로 처리한다: 이름을 먼저 지정하고, 같은 이름의
         기존 인물이 있으면 병합을 시도하되 실패해도(메서드 상이/자동병합 등)
         이름은 이미 적용됐으므로 계속 진행한다. 관련: name_person(mock)."""
+        _PERSON_CACHE.pop((self._sid, space), None)  # 이름/병합은 목록을 바꾼다
         name = name.strip()
         if not name:
             raise DsmError(100, "이름이 비어 있습니다.")
@@ -908,6 +944,7 @@ class DsmPhotoSource:
 
 
     async def merge_duplicate_persons(self, space: str) -> dict:
+        _PERSON_CACHE.pop((self._sid, space), None)
         # 같은 이름 인물들을 가장 큰 그룹(persons가 개수 내림차순)으로 병합.
         # merge(target_id=유지, merged_id=[나머지들]) — 실 NAS 확정 파라미터.
         persons = await self.persons(space)
@@ -935,6 +972,14 @@ class DsmPhotoSource:
         return {"merged": merged}
 
     async def places(self, space: str) -> list[PlaceInfo]:
+        cached = _PLACE_CACHE.get((self._sid, space))
+        if cached and (_time.monotonic() - cached[0]) < _BUCKET_TTL:
+            return cached[1]
+        out = await self._places_scan(space)
+        _PLACE_CACHE[(self._sid, space)] = (_time.monotonic(), out)
+        return out
+
+    async def _places_scan(self, space: str) -> list[PlaceInfo]:
         out: list[PlaceInfo] = []
         offset = 0
         while True:
@@ -1804,8 +1849,12 @@ class DsmPhotoSource:
                     "SYNO.FileStation.CreateFolder", "create", version=2,
                     sid=self._sid, extra={"folder_path": parent, "name": name},
                 )
-            except DsmError:
-                pass  # already exists → fine
+            except DsmError as exc:
+                # already-exists는 정상 경로. 그 외(권한/쿼터/경로)는 삼키면
+                # 나중에 CopyMove가 엉뚱한 에러로 실패해 진단이 어려워지므로
+                # 로그를 남긴다(동작은 기존과 동일하게 계속 시도).
+                if exc.code not in (1100,):  # 1100 = create failed(존재 포함)
+                    logger.warning("_ensure_dir %s/%s: %s", parent, name, exc)
 
     async def create_folder(
         self, space: str, name: str, parent_id: str | None = None

@@ -650,10 +650,18 @@ async def capture_audit_foto(
     base = "/photo" if space == "team" else f"/homes/{session.account}/Photos"
     folders = await source.capture_subtree(space, folder)
     # (item, folder_disk) 쌍으로 수집 — 하위 폴더 EXIF는 그 폴더 경로에서 읽는다.
+    # 폴더별 수집을 유계 병렬로(순차 N+1이면 큰 트리에서 수십 초).
+    sem = asyncio.Semaphore(6)
+
+    async def collect(fid: str, fname: str):
+        async with sem:
+            return fname, await source.capture_items(space, fid)
+
+    results = await asyncio.gather(*(collect(fid, fn) for fid, fn in folders))
     pairs: list[tuple[object, str]] = []
-    for fid, fname in folders:
+    for fname, items_of in results:
         fdisk = base + fname
-        for it in await source.capture_items(space, fid):
+        for it in items_of:
             pairs.append((it, fdisk))
 
     def build() -> list[CaptureAuditItem]:

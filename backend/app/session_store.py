@@ -13,6 +13,11 @@ from datetime import datetime, timedelta, timezone
 
 from .db import connect
 
+# In-process TTL cache: get_session은 인증된 '모든' 요청에서 불려 요청당 SQLite
+# 왕복(이벤트 루프 블로킹)을 만들었다. 30초 캐시로 흡수하고 삭제 시 즉시 비운다.
+_SESSION_TTL = 30.0
+_session_cache: dict[str, tuple[float, "Session"]] = {}
+
 
 @dataclass(frozen=True)
 class Session:
@@ -66,6 +71,11 @@ def create_session(
 
 def get_session(sqlite_path: str, token: str) -> Session | None:
     """Return a live session, or None if missing/expired (expired rows pruned)."""
+    import time as _t
+
+    hit = _session_cache.get(token)
+    if hit and (_t.monotonic() - hit[0]) < _SESSION_TTL:
+        return hit[1]
     with connect(sqlite_path) as conn:
         row = conn.execute(
             "SELECT token, sid, account, role, can_browse_homes, expires_at "
@@ -78,13 +88,15 @@ def get_session(sqlite_path: str, token: str) -> Session | None:
             conn.execute("DELETE FROM session WHERE token = ?", (token,))
             conn.commit()
             return None
-    return Session(
+    session = Session(
         token=row["token"],
         sid=row["sid"],
         account=row["account"],
         role=row["role"],
         can_browse_homes=bool(row["can_browse_homes"]),
     )
+    _session_cache[token] = (_t.monotonic(), session)
+    return session
 
 
 def delete_session(sqlite_path: str, token: str) -> str | None:
@@ -95,10 +107,34 @@ def delete_session(sqlite_path: str, token: str) -> str | None:
         ).fetchone()
         conn.execute("DELETE FROM session WHERE token = ?", (token,))
         conn.commit()
+    _session_cache.pop(token, None)
+    if row:
+        _drop_sid_caches(row["sid"])
     return row["sid"] if row else None
 
 
 def purge_expired(sqlite_path: str) -> None:
     with connect(sqlite_path) as conn:
+        expired = [
+            r["sid"]
+            for r in conn.execute(
+                "SELECT sid FROM session WHERE expires_at <= ?",
+                (_now().isoformat(),),
+            )
+        ]
         conn.execute("DELETE FROM session WHERE expires_at <= ?", (_now().isoformat(),))
         conn.commit()
+    _session_cache.clear()
+    for sid in expired:
+        _drop_sid_caches(sid)
+
+
+def _drop_sid_caches(sid: str) -> None:
+    """만료/로그아웃된 세션의 프로세스 캐시 회수 — 예전엔 sid 키 캐시들이
+    로그인마다 쌓이기만 하고 영구 잔존했다(메모리 누수)."""
+    try:
+        from .photos.dsm_source import drop_session_caches
+
+        drop_session_caches(sid)
+    except Exception:  # noqa: BLE001 - 회수는 best-effort
+        pass
