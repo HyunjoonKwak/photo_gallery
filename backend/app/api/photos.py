@@ -50,6 +50,7 @@ from ..schemas import (
     CreateAlbumRequest,
     CreateFolderRequest,
     FolderAuditResponse,
+    RenameAlbumRequest,
     RenameFolderRequest,
     RenameFolderResponse,
     DeleteRequest,
@@ -346,6 +347,28 @@ async def delete_album(
     """앨범 삭제(사진 자체는 그대로)."""
     await source.delete_album(_ALBUM_SPACE, album_id)
     return AlbumMutationResponse(album=None, added=0)
+
+
+@router.post("/albums/rename", response_model=AlbumMutationResponse)
+async def rename_album(
+    req: RenameAlbumRequest,
+    _session: Session = Depends(get_current_session),
+    source: PhotoSource = Depends(get_photo_source),
+) -> AlbumMutationResponse:
+    """앨범 이름 변경."""
+    await source.rename_album(_ALBUM_SPACE, req.album_id, req.name)
+    return AlbumMutationResponse(album=None, added=0)
+
+
+@router.post("/albums/remove", response_model=AlbumMutationResponse)
+async def remove_from_album(
+    req: AddToAlbumRequest,
+    _session: Session = Depends(get_current_session),
+    source: PhotoSource = Depends(get_photo_source),
+) -> AlbumMutationResponse:
+    """앨범에서 사진 빼기(사진 자체는 그대로)."""
+    removed = await source.remove_from_album(_ALBUM_SPACE, req.album_id, req.item_ids)
+    return AlbumMutationResponse(album=None, added=-removed)
 
 
 # ------------------------------------------------------------ file operations

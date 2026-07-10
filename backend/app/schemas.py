@@ -189,6 +189,11 @@ class AddToAlbumRequest(BaseModel):
     item_ids: list[str] = Field(min_length=1, max_length=5000)
 
 
+class RenameAlbumRequest(BaseModel):
+    album_id: str = Field(min_length=1)
+    name: str = Field(min_length=1, max_length=255)
+
+
 class AlbumMutationResponse(BaseModel):
     album: AlbumInfo | None = None  # 생성/추가 후 최신 앨범(삭제는 None)
     added: int = 0

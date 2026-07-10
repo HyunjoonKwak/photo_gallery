@@ -179,6 +179,16 @@ class PhotoSource(Protocol):
         """Delete an album (the photos themselves are untouched)."""
         ...
 
+    async def rename_album(self, space: str, album_id: str, name: str) -> None:
+        """Rename an album."""
+        ...
+
+    async def remove_from_album(
+        self, space: str, album_id: str, item_ids: list[str]
+    ) -> int:
+        """Remove items from an album (photos untouched). Returns count."""
+        ...
+
     # ---- 폴더 이름 정리 (날짜부 밑줄→하이픈) ----
 
     async def audit_folder_names(self, root_id: str | None) -> list[FolderRename]:

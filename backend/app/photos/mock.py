@@ -740,6 +740,21 @@ class MockPhotoSource:
     async def delete_album(self, space: str, album_id: str) -> None:
         self._albums.pop(album_id, None)
 
+    async def rename_album(self, space: str, album_id: str, name: str) -> None:
+        if album_id in self._albums:
+            self._albums[album_id]["name"] = name.strip()
+
+    async def remove_from_album(
+        self, space: str, album_id: str, item_ids: list[str]
+    ) -> int:
+        al = self._albums.get(album_id)
+        if not al:
+            return 0
+        drop = set(item_ids)
+        before = len(al["item_ids"])
+        al["item_ids"] = [i for i in al["item_ids"] if i not in drop]
+        return before - len(al["item_ids"])
+
     # ---- 폴더 이름 정리 ----
 
     async def audit_folder_names(self, root_id: str | None) -> list[FolderRename]:

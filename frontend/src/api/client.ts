@@ -248,6 +248,16 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ album_id: albumId, item_ids: itemIds }),
     }),
+  renameAlbum: (albumId: string, name: string) =>
+    request<AlbumMutationResponse>(`/api/photos/albums/rename`, {
+      method: "POST",
+      body: JSON.stringify({ album_id: albumId, name }),
+    }),
+  removeFromAlbum: (albumId: string, itemIds: string[]) =>
+    request<AlbumMutationResponse>(`/api/photos/albums/remove`, {
+      method: "POST",
+      body: JSON.stringify({ album_id: albumId, item_ids: itemIds }),
+    }),
   deleteAlbum: (id: string) =>
     request<AlbumMutationResponse>(
       `/api/photos/albums/${encodeURIComponent(id)}`,

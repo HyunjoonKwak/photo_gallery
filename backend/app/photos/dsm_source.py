@@ -1139,6 +1139,35 @@ class DsmPhotoSource:
         )
         return len(item_ids)
 
+    async def rename_album(self, space: str, album_id: str, name: str) -> None:
+        # 실 NAS 확정(2026-07-11): set_name은 Browse.Album에만 있다(NormalAlbum은
+        # 103). name은 JSON 인코딩(날짜꼴 이름 code 120 함정 공통).
+        await self._dsm.call(
+            "SYNO.Foto.Browse.Album",
+            "set_name",
+            version=1,
+            sid=self._sid,
+            extra={"id": int(album_id), "name": json.dumps(name)},
+            http_method="POST",
+        )
+
+    async def remove_from_album(
+        self, space: str, album_id: str, item_ids: list[str]
+    ) -> int:
+        # 실 NAS 확정(2026-07-11): NormalAlbum delete_item v1.
+        await self._dsm.call(
+            "SYNO.Foto.Browse.NormalAlbum",
+            "delete_item",
+            version=1,
+            sid=self._sid,
+            extra={
+                "id": int(album_id),
+                "item": json.dumps([int(i) for i in item_ids]),
+            },
+            http_method="POST",
+        )
+        return len(item_ids)
+
     async def delete_album(self, space: str, album_id: str) -> None:
         await self._dsm.call(
             "SYNO.Foto.Browse.NormalAlbum",

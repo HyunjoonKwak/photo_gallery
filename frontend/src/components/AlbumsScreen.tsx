@@ -6,6 +6,7 @@ import type { AlbumInfo } from "../api/types";
 import { useTimelineStore } from "../store/timeline";
 import { useToastStore } from "../store/toast";
 import { UniformPhotoGrid } from "./timeline/UniformPhotoGrid";
+import { Thumb } from "./timeline/Thumb";
 
 /** 앨범(큐레이션 전용) — 사용자가 직접 만드는 Synology 네이티브 앨범(개인 공간).
  *
@@ -120,6 +121,23 @@ function AlbumCard({
     },
     onError: () => pushToast("앨범 삭제에 실패했습니다."),
   });
+  const renameMut = useMutation({
+    mutationFn: (name: string) => api.renameAlbum(album.id, name),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["albums"] });
+      pushToast("앨범 이름을 변경했습니다.");
+    },
+    onError: () => pushToast("이름 변경에 실패했습니다."),
+  });
+  const rename = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const name = await askPrompt({
+      title: "앨범 이름 변경",
+      initial: album.name,
+      confirmLabel: "변경",
+    });
+    if (name?.trim() && name.trim() !== album.name) renameMut.mutate(name.trim());
+  };
   const del = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (
@@ -162,6 +180,13 @@ function AlbumCard({
           {album.name}
         </span>
         <span
+          onClick={rename}
+          title="이름 변경"
+          className="hidden shrink-0 rounded px-1 text-xs text-slate-400 hover:text-blue-600 group-hover:inline"
+        >
+          ✎
+        </span>
+        <span
           onClick={del}
           title="앨범 삭제"
           className="hidden shrink-0 rounded px-1 text-xs text-slate-400 hover:text-red-500 group-hover:inline"
@@ -193,6 +218,18 @@ function AlbumDetail({
     ...it,
     space: "personal" as const,
   }));
+  const qc = useQueryClient();
+  const pushToast = useToastStore((s) => s.push);
+  const [removeMode, setRemoveMode] = useState(false);
+  const removeMut = useMutation({
+    mutationFn: (itemId: string) => api.removeFromAlbum(id, [itemId]),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["album-items", id] });
+      qc.invalidateQueries({ queryKey: ["albums"] });
+      pushToast("앨범에서 뺐습니다. (사진 자체는 그대로)");
+    },
+    onError: () => pushToast("빼기에 실패했습니다."),
+  });
   return (
     <div className="flex h-full flex-col">
       <div
@@ -209,7 +246,24 @@ function AlbumDetail({
         {!q.isPending && (
           <span className="text-xs text-slate-400">({items.length})</span>
         )}
+        {items.length > 0 && (
+          <button
+            onClick={() => setRemoveMode((v) => !v)}
+            className={`ml-auto rounded-lg px-2 py-1 text-xs ${
+              removeMode
+                ? "bg-red-600 text-white"
+                : "border border-slate-200 text-slate-500 hover:bg-slate-100"
+            }`}
+          >
+            {removeMode ? "빼기 완료" : "사진 빼기"}
+          </button>
+        )}
       </div>
+      {removeMode && (
+        <p className="border-b border-red-100 bg-red-50 px-4 py-1.5 text-xs text-red-600">
+          사진을 탭하면 이 앨범에서 빠집니다. (사진 자체는 지워지지 않음)
+        </p>
+      )}
       <div className="min-h-0 flex-1">
         {q.isPending ? (
           <p className="p-6 text-center text-sm text-slate-400">불러오는 중…</p>
@@ -218,6 +272,25 @@ function AlbumDetail({
             이 앨범에는 아직 사진이 없습니다. 폴더 분류에서 사진을 선택해
             앨범에 담아 보세요.
           </p>
+        ) : removeMode ? (
+          <div
+            className="grid gap-1 overflow-y-auto p-4"
+            style={{ gridTemplateColumns: "repeat(auto-fill, minmax(116px, 1fr))" }}
+          >
+            {items.map((it) => (
+              <button
+                key={it.id}
+                onClick={() => removeMut.mutate(it.id)}
+                title="앨범에서 빼기"
+                className="relative aspect-square overflow-hidden rounded-sm outline-none ring-red-400 hover:ring-2"
+              >
+                <Thumb item={it} space="personal" />
+                <span className="absolute right-1 top-1 rounded-full bg-red-600 px-1.5 text-xs font-bold text-white">
+                  −
+                </span>
+              </button>
+            ))}
+          </div>
         ) : (
           <UniformPhotoGrid items={items} space="personal" />
         )}
