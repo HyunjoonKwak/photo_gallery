@@ -217,3 +217,7 @@
   - [x] **실 NAS 데이터 검증(2026-07-02, 배포 후 사용자 확인)** — 분류 탭에서 인물·장소 그룹 정상 표시 확인(공용/개인)
   - [ ] (옵트인) 클라우드 비전 API 폴더명/그룹 제안 — 대표 사진만 전송, API 키 .env 옵트인
 - 운영: 리버스 프록시는 **Nginx Proxy Manager 사용 확정**(2026-07-02) — DEPLOYMENT.md §3 절차 참조(Proxy Host → :9800, Let's Encrypt, 이후 `COOKIE_SECURE=true`)
+
+### F-D 진행 메모(2026-07-11, 앨범 보강 착수)
+- ①소형 UX(검색창 숨김·비우기 차단·문서)·②공용 다이얼로그(87d6ec2·8043d32) **배포 완료**.
+- ③앨범 보강용 DSM API **실 NAS 프로브 확정**: 이름변경=`SYNO.Foto.Browse.Album` `set_name` v1(POST, name은 json.dumps — NormalAlbum엔 set_name 없음/103), 사진 빼기=`SYNO.Foto.Browse.NormalAlbum` `delete_item` v1(id=<album>, item=json.dumps([ids])), 삭제=`Browse.Album delete` v1도 동작. 남은 구현: 백엔드 rename_album/remove_album_items + 라우트, 프론트 AlbumsScreen 이름변경 버튼·상세에서 선택→빼기, 감상 선택 액션바에 "앨범에 담기" 노출(canAddToAlbum 조건 재사용). 이후 ④무효화 스코프+낙관적, ⑤휴지통 복원 UI.
