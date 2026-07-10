@@ -218,6 +218,12 @@
   - [ ] (옵트인) 클라우드 비전 API 폴더명/그룹 제안 — 대표 사진만 전송, API 키 .env 옵트인
 - 운영: 리버스 프록시는 **Nginx Proxy Manager 사용 확정**(2026-07-02) — DEPLOYMENT.md §3 절차 참조(Proxy Host → :9800, Let's Encrypt, 이후 `COOKIE_SECURE=true`)
 
-### F-D 진행 메모(2026-07-11, 앨범 보강 착수)
+### F-D 진행 메모(2026-07-11) — ①②③ 완료
+- ①소형 UX(타인 열람 중 검색창 숨김·휴지통 비우기 차단 B-7·명세 §9 현행 IA·박스선택 미구현 확정) **완료**(87d6ec2).
+- ②공용 다이얼로그: Modal+askConfirm/askPrompt(Esc·배경닫기·role=dialog·포커스), window.prompt/confirm 8곳 전부 교체 **완료**(8043d32).
+- ③앨범 보강 **완료**(620917a·ae22bda): 이름변경(Browse.Album set_name v1 POST·json.dumps)+사진 빼기(NormalAlbum delete_item v1, 상세 '사진 빼기' 모드)+**기존 삭제 고장 수정**(NormalAlbum delete=103 → Browse.Album delete). 실 NAS 스모크: 생성→이름변경→삭제 전부 200. '감상 화면에서 담기'는 뷰어에 선택 모델이 없어 보류(대형 작업).
+- **남음**: ④무효화 스코프 축소+resettle 통합·낙관적 업데이트, ⑤휴지통 개별 복원 UI, ⑥dsm_source.py 분할(별도 세션 권장), 정리 마법사(D-139).
+
+### (구) 앨범 보강 착수 메모
 - ①소형 UX(검색창 숨김·비우기 차단·문서)·②공용 다이얼로그(87d6ec2·8043d32) **배포 완료**.
 - ③앨범 보강용 DSM API **실 NAS 프로브 확정**: 이름변경=`SYNO.Foto.Browse.Album` `set_name` v1(POST, name은 json.dumps — NormalAlbum엔 set_name 없음/103), 사진 빼기=`SYNO.Foto.Browse.NormalAlbum` `delete_item` v1(id=<album>, item=json.dumps([ids])), 삭제=`Browse.Album delete` v1도 동작. 남은 구현: 백엔드 rename_album/remove_album_items + 라우트, 프론트 AlbumsScreen 이름변경 버튼·상세에서 선택→빼기, 감상 선택 액션바에 "앨범에 담기" 노출(canAddToAlbum 조건 재사용). 이후 ④무효화 스코프+낙관적, ⑤휴지통 복원 UI.
