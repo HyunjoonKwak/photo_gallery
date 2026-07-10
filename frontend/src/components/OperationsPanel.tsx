@@ -81,6 +81,7 @@ export function OperationsPanel({ onClose }: { onClose: () => void }) {
   const user = useAuthStore((s) => s.user);
   const queryClient = useQueryClient();
   const [confirming, setConfirming] = useState(false);
+  const [trashOpen, setTrashOpen] = useState(false);
 
   const query = useQuery({ queryKey: ["ops"], queryFn: api.listOps });
   const entries = query.data?.operations ?? [];
@@ -124,6 +125,12 @@ export function OperationsPanel({ onClose }: { onClose: () => void }) {
           <p className="text-xs text-slate-500">
             🗑 휴지통: <b>{trash.items.toLocaleString()}장</b> ({trash.operations}개
             작업)
+            <button
+              onClick={() => setTrashOpen((v) => !v)}
+              className="ml-2 rounded border border-slate-200 px-1.5 py-0.5 text-[11px] text-slate-500 hover:bg-slate-100"
+            >
+              {trashOpen ? "닫기" : "내용 보기"}
+            </button>
           </p>
           {user?.role === "admin" && (
             <button
@@ -146,6 +153,7 @@ export function OperationsPanel({ onClose }: { onClose: () => void }) {
           )}
         </div>
       )}
+      {trashOpen && <TrashBrowser onDone={() => setTrashOpen(false)} />}
 
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
         {query.isPending && (
@@ -208,6 +216,94 @@ export function OperationsPanel({ onClose }: { onClose: () => void }) {
           onCancel={() => setConfirming(false)}
           onConfirm={() => emptyMutation.mutate()}
         />
+      )}
+    </div>
+  );
+}
+
+
+/** 휴지통 내용(사진 단위) + 선택 복원 — 작업 undo의 부분집합. */
+function TrashBrowser({ onDone }: { onDone: () => void }) {
+  const queryClient = useQueryClient();
+  const q = useQuery({ queryKey: ["trash-items"], queryFn: api.trashItems });
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const keyOf = (e: { op_id: number; item_id: string }) => `${e.op_id}:${e.item_id}`;
+  const restoreMut = useMutation({
+    mutationFn: (entries: { op_id: number; item_id: string }[]) =>
+      api.trashRestore(entries),
+    onSuccess: (res) => {
+      useToastStore.getState().push(`${res.summary}했습니다`);
+      setSel(new Set());
+      queryClient.invalidateQueries({ queryKey: ["trash-items"] });
+      queryClient.invalidateQueries({ queryKey: ["trash"] });
+      queryClient.invalidateQueries({ queryKey: ["ops"] });
+      queryClient.invalidateQueries({ queryKey: ["buckets"] });
+      queryClient.invalidateQueries({ queryKey: ["folder-items"] });
+    },
+    onError: (err) => useToastStore.getState().push((err as Error).message),
+  });
+  const items = q.data?.items ?? [];
+  const toggle = (k: string) =>
+    setSel((prev) => {
+      const next = new Set(prev);
+      if (next.has(k)) next.delete(k);
+      else next.add(k);
+      return next;
+    });
+  return (
+    <div className="max-h-64 overflow-y-auto border-b border-slate-100">
+      {q.isPending && (
+        <p className="px-4 py-3 text-xs text-slate-400">불러오는 중…</p>
+      )}
+      {!q.isPending && items.length === 0 && (
+        <p className="px-4 py-3 text-xs text-slate-400">
+          개별 복원 가능한 사진이 없습니다. (폴더째 삭제는 작업 목록에서 통째로
+          되돌리세요.)
+        </p>
+      )}
+      {items.map((e) => {
+        const k = keyOf(e);
+        return (
+          <label
+            key={k}
+            className="flex cursor-pointer items-center gap-2 px-4 py-1.5 text-xs hover:bg-slate-50"
+          >
+            <input
+              type="checkbox"
+              checked={sel.has(k)}
+              onChange={() => toggle(k)}
+            />
+            <span className="min-w-0 flex-1 truncate text-slate-700">
+              {e.filename}
+            </span>
+            <span className="hidden max-w-[40%] truncate text-slate-400 sm:inline">
+              {e.src_dir}
+            </span>
+            <span className="shrink-0 text-slate-400">{e.day}</span>
+          </label>
+        );
+      })}
+      {items.length > 0 && (
+        <div className="sticky bottom-0 flex justify-end gap-2 border-t border-slate-100 bg-white px-4 py-2">
+          <button
+            onClick={() => {
+              const entries = items
+                .filter((e) => sel.has(keyOf(e)))
+                .map((e) => ({ op_id: e.op_id, item_id: e.item_id }));
+              if (entries.length) restoreMut.mutate(entries);
+            }}
+            disabled={sel.size === 0 || restoreMut.isPending}
+            className="rounded-lg bg-blue-600 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-40"
+          >
+            {restoreMut.isPending ? "복원 중…" : `${sel.size}장 원위치 복원`}
+          </button>
+          <button
+            onClick={onDone}
+            className="rounded-lg px-3 py-1 text-xs text-slate-500 hover:bg-slate-100"
+          >
+            닫기
+          </button>
+        </div>
       )}
     </div>
   );

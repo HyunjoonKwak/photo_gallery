@@ -52,6 +52,7 @@ function resetView() {
     orderedIds: [] as string[],
     itemsById: new Map<string, PhotoItem>(),
     lightboxId: null,
+    visibleGroupLabel: null as string | null,
   };
 }
 
@@ -115,6 +116,8 @@ interface TimelineState {
   focusYear: string | null; // "2024"
   focusMonth: string | null; // "2024-03"
   focusDay: string | null; // "2024-03-15"
+  visibleGroupLabel: string | null;
+  setVisibleGroupLabel: (label: string | null) => void;
   setZoom: (z: ViewerZoom) => void;
   drillTo: (ctx: {
     zoom: ViewerZoom;
@@ -314,6 +317,11 @@ export const useTimelineStore = create<TimelineState>()((set, get) => ({
   focusYear: null,
   focusMonth: null,
   focusDay: null,
+  // 뷰포트 최상단에 실제로 보이는 그룹 라벨(월뷰 크럼이 스크롤을 따라가게).
+  visibleGroupLabel: null,
+  setVisibleGroupLabel: (visibleGroupLabel: string | null) => {
+    if (get().visibleGroupLabel !== visibleGroupLabel) set({ visibleGroupLabel });
+  },
   setZoom: (zoom) => set({ zoom, ...resetView() }),
   drillTo: (ctx) =>
     set((s) => ({

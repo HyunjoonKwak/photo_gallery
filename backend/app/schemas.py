@@ -428,6 +428,31 @@ class OperationEntry(BaseModel):
     target_user: str | None = None
 
 
+class TrashEntry(BaseModel):
+    op_id: int
+    item_id: str
+    filename: str
+    src_dir: str
+    day: str
+    space: str
+    deleted_at: str
+    deleted_by: str
+
+
+class TrashItemsResponse(BaseModel):
+    items: list[TrashEntry]
+
+
+class TrashRestoreEntry(BaseModel):
+    op_id: int
+    item_id: str
+
+
+class TrashRestoreRequest(BaseModel):
+    entries: list[TrashRestoreEntry] = Field(min_length=1, max_length=1000)
+    progress_key: str | None = Field(default=None, max_length=64)
+
+
 class TrashStatsResponse(BaseModel):
     """App-trash contents (pending delete ops whose files sit in #trash)."""
 

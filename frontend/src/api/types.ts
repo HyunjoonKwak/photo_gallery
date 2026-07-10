@@ -283,6 +283,21 @@ export interface OperationEntry {
   target_user: string | null;
 }
 
+export interface TrashEntry {
+  op_id: number;
+  item_id: string;
+  filename: string;
+  src_dir: string;
+  day: string;
+  space: string;
+  deleted_at: string;
+  deleted_by: string;
+}
+
+export interface TrashItemsResponse {
+  items: TrashEntry[];
+}
+
 export interface TrashStatsResponse {
   operations: number;
   items: number;

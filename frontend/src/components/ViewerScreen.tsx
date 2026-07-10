@@ -74,6 +74,7 @@ function TimelineLens() {
         maxRows={Infinity}
         onPhotoClick={toLightbox}
         scrollToGroup={focusMonth}
+        onTopGroupChange={useTimelineStore.getState().setVisibleGroupLabel}
       />
     );
   return (
@@ -131,7 +132,12 @@ function LensBar() {
   const groupLabel = useTimelineStore((s) => s.groupLabel);
   const closeGroup = useTimelineStore((s) => s.closeGroup);
 
-  const crumb = zoom === "month" && focusMonth ? monthLabel(focusMonth) : null;
+  const visibleGroupLabel = useTimelineStore((s) => s.visibleGroupLabel);
+  // 크럼은 실제 뷰포트 상단 그룹을 따른다(스크롤과 타이틀 불일치 해소).
+  const crumb =
+    zoom === "month"
+      ? (visibleGroupLabel ?? (focusMonth ? monthLabel(focusMonth) : null))
+      : null;
 
   return (
     <div

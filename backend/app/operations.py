@@ -344,6 +344,97 @@ def trash_stats(sqlite_path: str) -> tuple[int, int]:
     return len(rows), items
 
 
+def list_trash_items(sqlite_path: str, limit: int = 500) -> list[dict]:
+    """휴지통 내용(대기 중 delete 작업들의 사진 단위 항목) — 개별 복원용.
+
+    파일 시스템을 다시 훑지 않고 작업로그의 placements를 그대로 펼친다(원경로
+    포함). 폴더째 삭제(trash_folder)는 폴더 단위 undo가 이미 있으므로 제외."""
+    with connect(sqlite_path) as conn:
+        rows = conn.execute(
+            "SELECT id, created_at, user, payload_json FROM operation "
+            "WHERE type = 'delete' AND status = 'done' ORDER BY id DESC"
+        ).fetchall()
+    out: list[dict] = []
+    for r in rows:
+        for p in json.loads(r["payload_json"]).get("deleted", []):
+            src = p.get("src_path") or ""
+            out.append(
+                {
+                    "op_id": r["id"],
+                    "item_id": p["id"],
+                    "filename": src.rsplit("/", 1)[-1] if src else p["id"],
+                    "src_dir": src.rsplit("/", 1)[0] if src else "",
+                    "day": p.get("day", ""),
+                    "space": p.get("space", "team"),
+                    "deleted_at": r["created_at"],
+                    "deleted_by": r["user"],
+                }
+            )
+            if len(out) >= limit:
+                return out
+    return out
+
+
+async def execute_restore_items(
+    source: PhotoSource,
+    sqlite_path: str,
+    *,
+    user: str,
+    entries: list[tuple[int, str]],  # (op_id, item_id)
+    on_progress: ProgressFn | None = None,
+) -> OperationResponse:
+    """휴지통에서 선택한 사진만 원위치로 복원(작업 단위 undo의 부분집합).
+
+    복원한 placements는 해당 delete 작업의 payload에서 제거해, 남은 항목의
+    전체 undo가 이미 복원된 파일을 다시 옮기려다 실패하지 않게 한다."""
+    wanted: dict[int, set[str]] = {}
+    for op_id, item_id in entries:
+        wanted.setdefault(op_id, set()).add(item_id)
+    restored: list[PlacedItem] = []
+    affected: set[tuple[str, str]] = set()
+    with connect(sqlite_path) as conn:
+        for op_id, ids in wanted.items():
+            row = conn.execute(
+                "SELECT payload_json, status FROM operation WHERE id = ?",
+                (op_id,),
+            ).fetchone()
+            if row is None or row["status"] != "done":
+                continue
+            payload = json.loads(row["payload_json"])
+            keep, take = [], []
+            for p in payload.get("deleted", []):
+                (take if p["id"] in ids else keep).append(p)
+            if not take:
+                continue
+            placements = [PlacedItem(**p) for p in take]
+            got = await source.restore(placements, on_progress)
+            affected.update(got)
+            restored.extend(placements)
+            payload["deleted"] = keep
+            new_status = "done" if keep else "undone"
+            conn.execute(
+                "UPDATE operation SET payload_json = ?, status = ? WHERE id = ?",
+                (json.dumps(payload, ensure_ascii=False), new_status, op_id),
+            )
+        conn.commit()
+    summary = f"{len(restored)}장을 휴지통에서 복원"
+    op_id = _record(
+        sqlite_path,
+        user=user,
+        target_user=None,
+        type_="restore",
+        space_from=None,
+        space_to=None,
+        payload={"summary": summary, "restored": [p.model_dump() for p in restored]},
+    )
+    return OperationResponse(
+        operation_id=op_id,
+        summary=summary,
+        affected=_affected(sorted(affected)),
+        undoable=False,
+    )
+
+
 async def execute_empty_trash(
     source: PhotoSource, sqlite_path: str, *, user: str
 ) -> OperationResponse:

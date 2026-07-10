@@ -7,7 +7,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from ..config import Settings, get_settings
 from ..operations import (
     execute_empty_trash,
+    execute_restore_items,
     list_operations,
+    list_trash_items,
     trash_stats,
     undo_operation,
 )
@@ -16,6 +18,8 @@ from ..schemas import (
     OperationResponse,
     OperationsResponse,
     ProgressResponse,
+    TrashItemsResponse,
+    TrashRestoreRequest,
     TrashStatsResponse,
 )
 from ..session_store import Session
@@ -55,6 +59,42 @@ async def get_trash_stats(
 ) -> TrashStatsResponse:
     ops_count, items = trash_stats(settings.sqlite_path)
     return TrashStatsResponse(operations=ops_count, items=items)
+
+
+@router.get("/trash-items", response_model=TrashItemsResponse)
+async def get_trash_items(
+    _session: Session = Depends(get_current_session),
+    settings: Settings = Depends(get_settings),
+) -> TrashItemsResponse:
+    """휴지통 내용(사진 단위) — 개별 복원용. 작업로그의 placements를 펼친다."""
+    return TrashItemsResponse(
+        items=list_trash_items(settings.sqlite_path)  # type: ignore[arg-type]
+    )
+
+
+@router.post("/trash-restore", response_model=OperationResponse)
+async def restore_trash_items(
+    req: TrashRestoreRequest,
+    session: Session = Depends(get_current_session),
+    source: PhotoSource = Depends(get_photo_source),
+    settings: Settings = Depends(get_settings),
+) -> OperationResponse:
+    """선택한 사진만 원위치로 복원(작업 undo의 부분집합)."""
+    try:
+        return await execute_restore_items(
+            source,
+            settings.sqlite_path,
+            user=session.account,
+            entries=[(e.op_id, e.item_id) for e in req.entries],
+            on_progress=(
+                progress_registry.callback(req.progress_key, "복원")
+                if req.progress_key
+                else None
+            ),
+        )
+    finally:
+        if req.progress_key:
+            progress_registry.clear(req.progress_key)
 
 
 @router.post("/trash/empty", response_model=OperationResponse)

@@ -73,7 +73,9 @@ export function useFileOps() {
   // 새 위치를 재색인할 때까지 옮긴 폴더가 목록에 안 나타난다(인덱스 지연,
   // 2026-07-04 실 NAS 보고). 즉시 무효화는 옛 인덱스를 다시 읽을 뿐이라,
   // 재색인이 따라잡을 시간을 두고 몇 차례 더 무효화해 자동으로 나타나게 한다.
-  const RESETTLE_MS = [1500, 4000, 8000];
+  // 2회로 축소(1.5s/6s): 즉시 무효화가 1차 반영을 하고, 재색인 지연 수렴은
+  // 두 번이면 충분(실측) — 3회는 작업당 재조회 폭주만 키웠다.
+  const RESETTLE_MS = [1500, 6000];
   const resettleFolders = () => {
     for (const ms of RESETTLE_MS) {
       window.setTimeout(() => {
@@ -141,6 +143,21 @@ export function useFileOps() {
       label: "빈 폴더 정리",
       run: () => cleanupEmptied(emptied),
     });
+  };
+
+  /** 낙관적 반영: 이동/삭제한 사진을 현재 캐시(폴더 목록·일자 버킷·검색)에서
+   * 즉시 제거 — 서버 재조회를 기다리는 1~3초간 사진이 남아 보이던 지연 제거.
+   * 실패 시 정확성은 onError 후 invalidate가 복구한다(제거는 표시용일 뿐). */
+  const optimisticRemove = (itemIds: string[]) => {
+    const drop = new Set(itemIds);
+    const prune = (data: unknown) => {
+      const d = data as { items?: { id: string }[] } | undefined;
+      if (!d?.items?.some((it) => drop.has(it.id))) return data;
+      return { ...d, items: d.items.filter((it) => !drop.has(it.id)) };
+    };
+    for (const key of ["folder-items", "bucket", "search", "album-items"]) {
+      queryClient.setQueriesData({ queryKey: [key] }, prune);
+    }
   };
 
   const afterOperation = (res: OperationResponse) => {
@@ -344,6 +361,9 @@ export function useFileOps() {
       copyMode: boolean,
     ) => {
       if (itemIds.length === 0) return;
+      // 이동은 원본 위치에서 사라지는 게 정답이라 즉시 캐시에서 제거(낙관).
+      // 복사는 원본이 남으므로 제거하지 않는다.
+      if (!copyMode) optimisticRemove(itemIds);
       const label = copyMode ? "복사" : "이동";
       const space = spaceOf(itemIds);
       const tuser = targetUser();
@@ -447,6 +467,7 @@ export function useFileOps() {
     move: (itemIds: string[], folderId: string, copyMode: boolean) =>
       moveChunked(itemIds, folderId, copyMode),
     remove: (itemIds: string[], onSuccess?: () => void) => {
+      optimisticRemove(itemIds); // 즉시 사라지게(실패 시 invalidate가 복구)
       const p = startProgress("삭제");
       deleteMutation.mutate(
         {

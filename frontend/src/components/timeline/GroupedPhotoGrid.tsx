@@ -43,6 +43,7 @@ export function GroupedPhotoGrid({
   minTile = DEFAULT_MIN_TILE,
   onPhotoClick,
   scrollToGroup,
+  onTopGroupChange,
 }: {
   space: Space;
   buckets: PhotoBucket[];
@@ -52,6 +53,8 @@ export function GroupedPhotoGrid({
   minTile?: number; // 타일 최소 폭(px) — 열 수/타일 크기 결정
   onPhotoClick: (item: PhotoItem) => void;
   scrollToGroup?: string | null;
+  /** 뷰포트 최상단에 실제로 보이는 그룹 라벨 보고(월뷰 크럼 동기화). */
+  onTopGroupChange?: (label: string | null) => void;
 }) {
   const setOrdered = useTimelineStore((s) => s.setOrdered);
 
@@ -264,18 +267,62 @@ export function GroupedPhotoGrid({
   // placeholder 추정 위에서 한 번 스크롤하면 어긋남 → 대상 그룹이 로드돼
   // 높이가 실측될 때까지 rows/loaded 변화마다 재스크롤.
   const scrolledFor = useRef<string | null>(null);
+  const scrollTries = useRef(0);
+  const userScrolled = useRef(false);
+  useEffect(() => {
+    scrollTries.current = 0;
+    userScrolled.current = false;
+  }, [scrollToGroup]);
+  // 사용자가 직접 스크롤을 시작하면 자동 재안착을 중단(위치 뺏김 방지).
+  useEffect(() => {
+    const el = scrollEl;
+    if (!el) return;
+    const stop = () => {
+      userScrolled.current = true;
+    };
+    el.addEventListener("wheel", stop, { passive: true });
+    el.addEventListener("touchstart", stop, { passive: true });
+    return () => {
+      el.removeEventListener("wheel", stop);
+      el.removeEventListener("touchstart", stop);
+    };
+  }, [scrollEl]);
   useEffect(() => {
     if (!scrollToGroup || scrolledFor.current === scrollToGroup) return;
+    if (userScrolled.current || scrollTries.current > 60) {
+      scrolledFor.current = scrollToGroup; // 포기(사용자 개입/수렴 실패)
+      return;
+    }
     const idx = rows.findIndex(
       (r) => r.kind === "header" && r.groupKey === scrollToGroup,
     );
     if (idx < 0) return;
+    scrollTries.current += 1;
     virtualizer.scrollToIndex(idx, { align: "start" });
     const g = groups.find((gr) => gr.key === scrollToGroup);
     const firstDay = g ? previewDaysOf(g)[0] : null;
-    // 높이가 실측된 뒤에야 "완료" 표시(그 전엔 loaded 갱신마다 재스크롤).
-    if (firstDay && loaded.has(firstDay)) scrolledFor.current = scrollToGroup;
-  }, [scrollToGroup, rows, loaded, groups, previewDaysOf, virtualizer]);
+    // 완료 판정: 대상 그룹이 로드돼 높이가 실측됐고, 헤더가 실제로 뷰포트
+    // 상단에 안착(±8px)했을 때만 — 위쪽 추정 높이가 실측으로 바뀌며 밀리는
+    // 문제를 rows/loaded/scroll 변화마다 재안착해 흡수한다.
+    const headerStart = virtualizer
+      .getVirtualItems()
+      .find((v) => v.index === idx)?.start;
+    const settled =
+      headerStart != null &&
+      Math.abs((virtualizer.scrollOffset ?? 0) - headerStart) < 8;
+    if (firstDay && loaded.has(firstDay) && settled)
+      scrolledFor.current = scrollToGroup;
+  }, [scrollToGroup, rows, loaded, groups, previewDaysOf, virtualizer, scrollTop]);
+
+  // 뷰포트 최상단에 보이는 그룹 라벨 보고 — 상단 크럼이 실제 위치를 따라간다.
+  useEffect(() => {
+    if (!onTopGroupChange) return;
+    const offset = virtualizer.scrollOffset ?? scrollTop;
+    const vis = virtualizer.getVirtualItems();
+    const top = vis.find((v) => v.end > offset + 1);
+    const row = top ? rows[top.index] : null;
+    onTopGroupChange(row ? labelOf(row.groupKey) : null);
+  }, [scrollTop, rows, virtualizer, onTopGroupChange, labelOf]);
 
   // 사이드 스크러버용 월 마커: 그룹 헤더가 시작하는 콘텐츠 offset. 그룹 키
   // 길이로 줌 판별(연 "2025" / 월 "2025-12" / 일 "2025-12-30") → 월(YYYY-MM)

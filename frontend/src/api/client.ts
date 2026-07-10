@@ -29,6 +29,7 @@ import type {
   ProgressResponse,
   RemoveFolderRequest,
   Space,
+  TrashItemsResponse,
   TrashStatsResponse,
   UserInfo,
   ZoneBrowseResponse,
@@ -367,6 +368,12 @@ export const api = {
       `/api/ops/progress?key=${encodeURIComponent(key)}`,
     ),
   trashStats: () => request<TrashStatsResponse>("/api/ops/trash"),
+  trashItems: () => request<TrashItemsResponse>("/api/ops/trash-items"),
+  trashRestore: (entries: { op_id: number; item_id: string }[], progressKey?: string) =>
+    request<OperationResponse>("/api/ops/trash-restore", {
+      method: "POST",
+      body: JSON.stringify({ entries, progress_key: progressKey }),
+    }),
   emptyTrash: () =>
     request<OperationResponse>("/api/ops/trash/empty", { method: "POST" }),
   dedupScan: (space: Space) =>
