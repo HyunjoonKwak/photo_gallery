@@ -1169,8 +1169,10 @@ class DsmPhotoSource:
         return len(item_ids)
 
     async def delete_album(self, space: str, album_id: str) -> None:
+        # 실 NAS 확정(2026-07-11): delete는 Browse.Album에 있다(NormalAlbum
+        # delete는 code 103 — 기존 구현이 실 NAS에서 실패하고 있었음).
         await self._dsm.call(
-            "SYNO.Foto.Browse.NormalAlbum",
+            "SYNO.Foto.Browse.Album",
             "delete",
             version=1,
             sid=self._sid,
