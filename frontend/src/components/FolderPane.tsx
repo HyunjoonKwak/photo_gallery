@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { askConfirm, askPrompt } from "./Dialog";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDroppable } from "@dnd-kit/core";
 import { api, type AreaScope } from "../api/client";
@@ -255,7 +256,7 @@ export function FolderPane({
   const onRenameFolder = async () => {
     if (!current) return;
     const cur = folderBasename(current.name);
-    const name = window.prompt(`'${cur}' 폴더의 새 이름`, cur);
+    const name = await askPrompt({ title: "폴더 이름 변경", body: `'${cur}' 폴더의 새 이름`, initial: cur, confirmLabel: "변경" });
     if (!name?.trim() || name.trim() === cur) return;
     try {
       const res = await api.renameFolder(
@@ -279,12 +280,15 @@ export function FolderPane({
     }
   };
 
-  const onCreateFolder = () => {
-    const name = window.prompt(
-      current
-        ? `'${folderBasename(current.name)}' 아래 새 폴더 이름`
-        : "새 폴더 이름 (최상위에 생성)",
-    );
+  const onCreateFolder = async () => {
+    const name = await askPrompt({
+      title: "새 폴더",
+      body: current
+        ? `'${folderBasename(current.name)}' 아래에 만듭니다.`
+        : "최상위에 만듭니다.",
+      placeholder: "폴더 이름",
+      confirmLabel: "만들기",
+    });
     if (!name?.trim()) return;
     const store = useTimelineStore.getState();
     const space =
@@ -300,12 +304,12 @@ export function FolderPane({
   // 폴더 삭제: 비어 있으면 바로 삭제, 사진·하위 폴더가 있으면 확인 후 통째로
   // 휴지통 이동(가역 — 되돌리기 가능). 빈 폴더 판단은 현재 화면에 이미 로드된
   // 직속 사진 수 + 하위 폴더 수로 한다(추가 조회 불필요).
-  const onRemoveFolder = () => {
+  const onRemoveFolder = async () => {
     if (!current) return;
     const name = folderBasename(current.name);
     const hasContent = items.length > 0 || subFolders.length > 0;
     if (!hasContent) {
-      if (!window.confirm(`빈 폴더 '${name}'을(를) 삭제할까요?`)) return;
+      if (!(await askConfirm({ title: "폴더 삭제", body: `빈 폴더 '${name}'을(를) 삭제할까요?`, confirmLabel: "삭제", danger: true }))) return;
       ops.removeFolder(
         current.space,
         current.id,
@@ -320,11 +324,14 @@ export function FolderPane({
       subFolders.length > 0 ? `하위 폴더 ${subFolders.length}개` : null,
     ].filter(Boolean);
     if (
-      !window.confirm(
-        `'${name}' 폴더에 ${parts.join("과(와) ")}이(가) 있습니다.\n` +
-          `폴더와 안의 내용을 모두 휴지통으로 옮길까요?\n` +
-          `(되돌리기로 복원할 수 있습니다.)`,
-      )
+      !(await askConfirm({
+        title: "폴더 삭제",
+        body:
+          `'${name}' 폴더에 ${parts.join("과(와) ")}이(가) 있습니다.\n` +
+          `폴더와 안의 내용을 모두 휴지통으로 옮길까요?\n(되돌리기로 복원할 수 있습니다.)`,
+        confirmLabel: "휴지통으로",
+        danger: true,
+      }))
     )
       return;
     ops.removeFolder(

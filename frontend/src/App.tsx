@@ -38,6 +38,7 @@ import { Toasts } from "./components/Toasts";
 import { PwaUpdater } from "./components/PwaUpdater";
 import { NavControls } from "./components/NavControls";
 import { ConflictDialogHost } from "./components/ConflictDialog";
+import { AskDialogHost } from "./components/Dialog";
 import { ZoneManager } from "./components/ZoneManager";
 
 // 상위 3영역 — 주 메뉴. 감상(사진/앨범)과 정리(폴더 분류)를 가른다.
@@ -489,6 +490,7 @@ export default function App() {
       <BulkProgress />
       <Toasts />
       <ConflictDialogHost />
+      <AskDialogHost />
       <PwaUpdater />
       <NavControls />
     </div>

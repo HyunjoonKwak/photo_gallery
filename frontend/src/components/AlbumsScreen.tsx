@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { askConfirm, askPrompt } from "./Dialog";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, thumbnailUrl } from "../api/client";
 import type { AlbumInfo } from "../api/types";
@@ -46,8 +47,8 @@ function AlbumList({ onOpen }: { onOpen: (a: AlbumInfo) => void }) {
     onError: () => pushToast("앨범 생성에 실패했습니다."),
   });
 
-  const create = () => {
-    const name = window.prompt("새 앨범 이름");
+  const create = async () => {
+    const name = await askPrompt({ title: "새 앨범", placeholder: "앨범 이름", confirmLabel: "만들기" });
     if (name?.trim()) createMut.mutate(name.trim());
   };
 
@@ -119,9 +120,16 @@ function AlbumCard({
     },
     onError: () => pushToast("앨범 삭제에 실패했습니다."),
   });
-  const del = (e: React.MouseEvent) => {
+  const del = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (window.confirm(`앨범 "${album.name}"을(를) 삭제할까요?\n(사진 자체는 지워지지 않습니다.)`))
+    if (
+      await askConfirm({
+        title: "앨범 삭제",
+        body: `앨범 "${album.name}"을(를) 삭제할까요?\n(사진 자체는 지워지지 않습니다.)`,
+        confirmLabel: "삭제",
+        danger: true,
+      })
+    )
       delMut.mutate();
   };
   return (

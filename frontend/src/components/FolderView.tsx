@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { askConfirm } from "./Dialog";
 import { useTimelineStore } from "../store/timeline";
 import { useFileOps } from "../hooks/useFileOps";
 import { useResizableWidth } from "../hooks/useResizableWidth";
@@ -75,13 +76,15 @@ function DualActions({
 
   // 선택한 폴더들을 휴지통으로(가역). 브레드크럼 [폴더 삭제]는 "현재 연 폴더"를
   // 지우지만, 이건 ✓ 체크한 폴더들을 한 번에 지운다.
-  const deleteFolders = () => {
+  const deleteFolders = async () => {
     const folders = [...folderSel.values()];
     if (
-      !window.confirm(
-        `선택한 ${folders.length}개 폴더를 휴지통으로 옮길까요?\n` +
-          `안의 사진·하위 폴더도 함께 이동됩니다. (되돌리기 가능)`,
-      )
+      !(await askConfirm({
+        title: "폴더 일괄 삭제",
+        body: `선택한 ${folders.length}개 폴더를 휴지통으로 옮길까요?\n안의 사진·하위 폴더도 함께 이동됩니다. (되돌리기 가능)`,
+        confirmLabel: "휴지통으로",
+        danger: true,
+      }))
     )
       return;
     void ops.removeFolders(

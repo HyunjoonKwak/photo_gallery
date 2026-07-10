@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { askPrompt } from "../Dialog";
 import { api } from "../../api/client";
 import { useToastStore } from "../../store/toast";
 
@@ -42,8 +43,8 @@ export function AlbumPickerDialog({
   });
   const busy = addMut.isPending || createMut.isPending;
 
-  const newAlbum = () => {
-    const name = window.prompt(`${count}장을 담을 새 앨범 이름`);
+  const newAlbum = async () => {
+    const name = await askPrompt({ title: "새 앨범", body: `${count}장을 담습니다.`, placeholder: "앨범 이름", confirmLabel: "만들기" });
     if (name?.trim()) createMut.mutate(name.trim());
   };
 
