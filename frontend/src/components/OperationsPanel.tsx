@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { useAuthStore } from "../store/auth";
 import { useToastStore } from "../store/toast";
+import { useTimelineStore } from "../store/timeline";
 import { useFileOps } from "../hooks/useFileOps";
 import type { OperationEntry } from "../api/types";
 
@@ -126,7 +127,18 @@ export function OperationsPanel({ onClose }: { onClose: () => void }) {
           </p>
           {user?.role === "admin" && (
             <button
-              onClick={() => setConfirming(true)}
+              onClick={() => {
+                // B-7: 타인 라이브러리 열람 중 영구 삭제 금지 — 되돌리기가
+                // 전 가족의 undo를 무효화하는 유일한 비가역 작업이라, 본인
+                // 컨텍스트로 돌아와 실행하게 한다.
+                if (useTimelineStore.getState().viewedOwner) {
+                  useToastStore
+                    .getState()
+                    .push("타인 사진 열람 중에는 비울 수 없습니다. 내 사진으로 돌아가 실행하세요.");
+                  return;
+                }
+                setConfirming(true);
+              }}
               className="rounded-lg border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50"
             >
               비우기

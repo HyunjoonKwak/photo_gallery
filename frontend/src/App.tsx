@@ -78,7 +78,10 @@ function SearchBox() {
   const activeZone = useTimelineStore((s) => s.activeZone);
   const [value, setValue] = useState("");
   // 1차 구역은 Photos 검색 인덱스 밖이라 검색이 무의미 — 숨김.
-  if (activeZone) return null;
+  const viewedOwner = useTimelineStore((s) => s.viewedOwner);
+  // 1차 구역(FileStation)과 타인 라이브러리는 DSM 검색 인덱스 대상이 아니어서
+  // 빈 결과만 나온다(오해 소지) → 검색창 자체를 숨긴다.
+  if (activeZone || viewedOwner) return null;
   const submit = () => {
     const q = value.trim();
     if (q) runSearch(q);
