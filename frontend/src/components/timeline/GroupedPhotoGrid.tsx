@@ -210,6 +210,18 @@ export function GroupedPhotoGrid({
     setOrdered(ordered);
   }, [ordered, setOrdered]);
 
+  // 스크롤·재측정 어느 쪽이든 위치가 바뀌면 tick — 안착 재확인과 크럼 갱신은
+  // scroll 이벤트만으론 부족하다(위쪽 행이 실측되며 내용이 '조용히' 밀림).
+  const [measureTick, setMeasureTick] = useState(0);
+  const tickScheduled = useRef(false);
+  const bumpTick = useCallback(() => {
+    if (tickScheduled.current) return;
+    tickScheduled.current = true;
+    requestAnimationFrame(() => {
+      tickScheduled.current = false;
+      setMeasureTick((t) => t + 1);
+    });
+  }, []);
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
@@ -221,6 +233,7 @@ export function GroupedPhotoGrid({
     },
     overscan: 8,
     getItemKey: (i) => rows[i]?.key ?? i,
+    onChange: bumpTick,
   });
   useEffect(() => {
     virtualizer.measure();
@@ -268,9 +281,11 @@ export function GroupedPhotoGrid({
   // 높이가 실측될 때까지 rows/loaded 변화마다 재스크롤.
   const scrolledFor = useRef<string | null>(null);
   const scrollTries = useRef(0);
+  const settleStreak = useRef(0);
   const userScrolled = useRef(false);
   useEffect(() => {
     scrollTries.current = 0;
+    settleStreak.current = 0;
     userScrolled.current = false;
   }, [scrollToGroup]);
   // 사용자가 직접 스크롤을 시작하면 자동 재안착을 중단(위치 뺏김 방지).
@@ -289,7 +304,7 @@ export function GroupedPhotoGrid({
   }, [scrollEl]);
   useEffect(() => {
     if (!scrollToGroup || scrolledFor.current === scrollToGroup) return;
-    if (userScrolled.current || scrollTries.current > 60) {
+    if (userScrolled.current || scrollTries.current > 200) {
       scrolledFor.current = scrollToGroup; // 포기(사용자 개입/수렴 실패)
       return;
     }
@@ -310,9 +325,14 @@ export function GroupedPhotoGrid({
     const settled =
       headerStart != null &&
       Math.abs((virtualizer.scrollOffset ?? 0) - headerStart) < 8;
-    if (firstDay && loaded.has(firstDay) && settled)
-      scrolledFor.current = scrollToGroup;
-  }, [scrollToGroup, rows, loaded, groups, previewDaysOf, virtualizer, scrollTop]);
+    if (firstDay && loaded.has(firstDay) && settled) {
+      settleStreak.current += 1;
+      // 3연속 프레임 안정일 때만 완료 — 위쪽 행 실측으로 밀리는 드리프트 흡수.
+      if (settleStreak.current >= 3) scrolledFor.current = scrollToGroup;
+    } else {
+      settleStreak.current = 0;
+    }
+  }, [scrollToGroup, rows, loaded, groups, previewDaysOf, virtualizer, scrollTop, measureTick]);
 
   // 뷰포트 최상단에 보이는 그룹 라벨 보고 — 상단 크럼이 실제 위치를 따라간다.
   useEffect(() => {
@@ -322,7 +342,7 @@ export function GroupedPhotoGrid({
     const top = vis.find((v) => v.end > offset + 1);
     const row = top ? rows[top.index] : null;
     onTopGroupChange(row ? labelOf(row.groupKey) : null);
-  }, [scrollTop, rows, virtualizer, onTopGroupChange, labelOf]);
+  }, [scrollTop, measureTick, rows, virtualizer, onTopGroupChange, labelOf]);
 
   // 사이드 스크러버용 월 마커: 그룹 헤더가 시작하는 콘텐츠 offset. 그룹 키
   // 길이로 줌 판별(연 "2025" / 월 "2025-12" / 일 "2025-12-30") → 월(YYYY-MM)
