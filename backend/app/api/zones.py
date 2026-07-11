@@ -7,6 +7,7 @@ Zone = Synology Photos 인덱스 밖의 폴더라 일반 folders API(Foto 인덱
 
 from __future__ import annotations
 
+import os
 import posixpath
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -27,11 +28,61 @@ from ..zone_store import (
     create_zone,
     delete_zone,
     list_zones,
+    mark_zone_seen,
     validate_zone_root,
 )
 from .deps import get_current_session, get_dsm_client
 
 router = APIRouter(prefix="/api/zones", tags=["zones"])
+
+# 신규 유입 카운트 캐시: zone_id -> (monotonic_ts, count). 디스크 스캔(os.walk)
+# 을 zones 목록 호출마다 반복하지 않게 짧게 캐시.
+_NEW_COUNT_CACHE: dict[str, tuple[float, int]] = {}
+_NEW_COUNT_TTL = 60.0
+
+
+def _count_new_files(disk_root: str, since_epoch: float) -> int:
+    """since 이후 NAS에 '생성'된 파일 수. 기준은 ctime — 백업 앱이 mtime을
+    촬영시각으로 넣으므로(2026-07-12) mtime은 신규 판별에 못 쓴다. 새 파일의
+    ctime은 업로드 시각이라 정확하다."""
+    count = 0
+    for root, dirs, files in os.walk(disk_root):
+        dirs[:] = [d for d in dirs if not d.startswith(("@", "#", "."))]
+        for f in files:
+            if f.startswith("."):
+                continue
+            try:
+                if os.stat(os.path.join(root, f)).st_ctime > since_epoch:
+                    count += 1
+            except OSError:
+                continue
+    return count
+
+
+async def _zone_new_count(zone) -> int:
+    import asyncio as _asyncio
+    import time as _time
+    from datetime import datetime, timezone
+
+    from ..photos.capture_fix import disk_path
+
+    cached = _NEW_COUNT_CACHE.get(zone.id)
+    if cached and (_time.monotonic() - cached[0]) < _NEW_COUNT_TTL:
+        return cached[1]
+    droot = disk_path(zone.root_path)
+    if not droot or not os.path.isdir(droot) or not zone.last_seen_at:
+        return 0
+    try:
+        seen = (
+            datetime.fromisoformat(zone.last_seen_at)
+            .replace(tzinfo=timezone.utc)
+            .timestamp()
+        )
+    except ValueError:
+        return 0
+    n = await _asyncio.to_thread(_count_new_files, droot, seen)
+    _NEW_COUNT_CACHE[zone.id] = (_time.monotonic(), n)
+    return n
 
 
 @router.get("", response_model=ZonesResponse)
@@ -40,9 +91,29 @@ async def get_zones(
     settings: Settings = Depends(get_settings),
 ) -> ZonesResponse:
     zones = list_zones(settings.sqlite_path, session.account)
-    return ZonesResponse(
-        zones=[ZoneInfo(id=z.id, root_path=z.root_path, label=z.label) for z in zones]
-    )
+    out = []
+    for z in zones:
+        out.append(
+            ZoneInfo(
+                id=z.id,
+                root_path=z.root_path,
+                label=z.label,
+                new_count=await _zone_new_count(z),
+            )
+        )
+    return ZonesResponse(zones=out)
+
+
+@router.post("/{zone_id}/seen")
+async def zone_seen(
+    zone_id: str,
+    session: Session = Depends(get_current_session),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    """구역을 열람했음 표시 — 신규 유입 뱃지 기준 시각 리셋."""
+    mark_zone_seen(settings.sqlite_path, session.account, zone_id)
+    _NEW_COUNT_CACHE.pop(zone_id, None)
+    return {"ok": True}
 
 
 @router.get("/browse", response_model=ZoneBrowseResponse)

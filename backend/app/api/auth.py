@@ -121,8 +121,22 @@ async def login(
         result = await dsm.login(body.account, body.passwd, body.otp_code)
     except DsmError as exc:
         # 400/401/402 -> bad credentials/disabled; 403/404 -> OTP needed/wrong.
+        # code 100 + 연결 계열 메시지는 대개 인증 타임아웃(12s) — DSM(PAM)이
+        # '실패한' 로그인일수록 응답을 지연시키므로, 기술 문구 대신 원인(주로
+        # 잘못된 비밀번호 반복)을 짚어주는 안내로 바꾼다.
+        if exc.code == 400:
+            detail = "계정 또는 비밀번호가 올바르지 않습니다."
+        elif exc.code in (403, 404):
+            detail = "OTP 코드가 필요하거나 올바르지 않습니다."
+        elif exc.code == 100 and "연결" in str(exc):
+            detail = (
+                "NAS 응답이 지연되고 있습니다. 비밀번호를 확인한 뒤 "
+                "잠시 후 다시 시도하세요. (실패가 반복되면 대기 시간이 늘어납니다)"
+            )
+        else:
+            detail = str(exc)
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)
+            status_code=status.HTTP_401_UNAUTHORIZED, detail=detail
         ) from exc
 
     clear_failures(settings.sqlite_path, body.account)

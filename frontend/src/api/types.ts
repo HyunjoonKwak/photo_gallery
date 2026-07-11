@@ -323,6 +323,8 @@ export interface ZoneInfo {
   id: string;
   root_path: string;
   label: string;
+  /** 마지막 확인 이후 새로 백업된 파일 수(신규 유입 뱃지). */
+  new_count?: number;
 }
 
 export interface ZonesResponse {

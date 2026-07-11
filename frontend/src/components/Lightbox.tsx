@@ -5,6 +5,7 @@ import { useTimelineStore } from "../store/timeline";
 import { useFileOps } from "../hooks/useFileOps";
 import { formatBytes, formatDuration } from "../lib/dates";
 import { FolderPickerDialog } from "./timeline/FolderPickerDialog";
+import { AlbumPickerDialog } from "./timeline/AlbumPickerDialog";
 
 /** EXIF field order + Korean labels for the info panel. */
 const EXIF_LABELS: [string, string][] = [
@@ -42,6 +43,12 @@ export function Lightbox() {
   const [showInfo, setShowInfo] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [showMove, setShowMove] = useState(false);
+  const [showAlbum, setShowAlbum] = useState(false);
+  // 앨범 담기는 감상 중에도 허용(발견→담기 흐름). 1차 구역·타인 열람은 제외
+  // (선택 액션바의 canAddToAlbum과 동일 조건).
+  const canAddToAlbum = useTimelineStore(
+    (s) => !s.activeZone && !s.viewedOwner,
+  );
 
   // Folder path / EXIF / location — fetched only while the panel is open
   // (list APIs stay light; details ride on Browse.Item "get").
@@ -257,6 +264,15 @@ export function Lightbox() {
           className="absolute right-4 top-4 flex gap-2"
           onClick={(e) => e.stopPropagation()}
         >
+          {canAddToAlbum && (
+            <button
+              onClick={() => setShowAlbum(true)}
+              title="이 사진을 앨범에 담기"
+              className="rounded-full bg-black/50 px-3 py-2 text-sm text-white/80 hover:bg-black/70 hover:text-white"
+            >
+              앨범
+            </button>
+          )}
           {/* 정리 버튼은 폴더 분류(manage)에서만 — 감상 영역은 순수 뷰어 */}
           {!readonly && (
             <>
@@ -378,6 +394,14 @@ export function Lightbox() {
       )}
 
       {/* In-viewer move (spec 9.4: 라이트박스에서도 정리 가능) */}
+      {showAlbum && item && (
+        <AlbumPickerDialog
+          count={1}
+          itemIds={[item.id]}
+          onClose={() => setShowAlbum(false)}
+          onDone={() => setShowAlbum(false)}
+        />
+      )}
       {showMove && !readonly && (
         <div onClick={(e) => e.stopPropagation()}>
           <FolderPickerDialog

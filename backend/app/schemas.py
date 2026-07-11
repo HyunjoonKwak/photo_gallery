@@ -482,6 +482,8 @@ class ZoneInfo(BaseModel):
     id: str
     root_path: str
     label: str
+    # 마지막 확인(last_seen) 이후 새로 들어온 파일 수 — 백업 앱 유입 뱃지.
+    new_count: int = 0
 
 
 class ZonesResponse(BaseModel):

@@ -342,6 +342,10 @@ export const api = {
   },
   // 1차 구역(zone) 관리
   listZones: () => request<ZonesResponse>("/api/zones"),
+  zoneSeen: (id: string) =>
+    request<{ ok: boolean }>(`/api/zones/${encodeURIComponent(id)}/seen`, {
+      method: "POST",
+    }),
   createZone: (body: { root_path: string; label: string }) =>
     request<ZoneInfo>("/api/zones", {
       method: "POST",

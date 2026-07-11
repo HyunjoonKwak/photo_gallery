@@ -21,6 +21,7 @@ class Zone:
     id: str
     root_path: str
     label: str
+    last_seen_at: str | None = None
 
 
 class ZonePathError(ValueError):
@@ -54,23 +55,36 @@ def validate_zone_root(account: str, root_path: str) -> str:
 def list_zones(sqlite_path: str, account: str) -> list[Zone]:
     with connect(sqlite_path) as conn:
         rows = conn.execute(
-            "SELECT id, root_path, label FROM zone_config "
+            "SELECT id, root_path, label, last_seen_at FROM zone_config "
             "WHERE account = ? ORDER BY created_at",
             (account,),
         ).fetchall()
-    return [Zone(id=r["id"], root_path=r["root_path"], label=r["label"]) for r in rows]
+    return [
+        Zone(
+            id=r["id"],
+            root_path=r["root_path"],
+            label=r["label"],
+            last_seen_at=r["last_seen_at"],
+        )
+        for r in rows
+    ]
 
 
 def get_zone(sqlite_path: str, account: str, zone_id: str) -> Zone | None:
     with connect(sqlite_path) as conn:
         row = conn.execute(
-            "SELECT id, root_path, label FROM zone_config "
+            "SELECT id, root_path, label, last_seen_at FROM zone_config "
             "WHERE account = ? AND id = ?",
             (account, zone_id),
         ).fetchone()
     if row is None:
         return None
-    return Zone(id=row["id"], root_path=row["root_path"], label=row["label"])
+    return Zone(
+        id=row["id"],
+        root_path=row["root_path"],
+        label=row["label"],
+        last_seen_at=row["last_seen_at"],
+    )
 
 
 def create_zone(sqlite_path: str, account: str, root_path: str, label: str) -> Zone:
@@ -94,3 +108,14 @@ def delete_zone(sqlite_path: str, account: str, zone_id: str) -> bool:
         )
         conn.commit()
         return cur.rowcount > 0
+
+
+def mark_zone_seen(sqlite_path: str, account: str, zone_id: str) -> None:
+    """신규 유입 뱃지 기준 시각 갱신 — 사용자가 해당 구역을 열었을 때 호출."""
+    with connect(sqlite_path) as conn:
+        conn.execute(
+            "UPDATE zone_config SET last_seen_at = datetime('now') "
+            "WHERE account = ? AND id = ?",
+            (account, zone_id),
+        )
+        conn.commit()

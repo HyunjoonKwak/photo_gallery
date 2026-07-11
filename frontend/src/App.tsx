@@ -146,6 +146,12 @@ function LibrarySelector({ account, isAdmin }: { account: string; isAdmin: boole
   }) => {
     setOpen(false);
     selectLibrary(lib);
+    if (lib.zone) {
+      // 구역을 열었으니 신규 유입 뱃지 리셋(백업 앱 유입분 확인 처리).
+      void api.zoneSeen(lib.zone.id).then(() => {
+        queryClient.invalidateQueries({ queryKey: ["zones"] });
+      });
+    }
     // 라이브러리가 통째로 바뀜 — 스코프 데이터만 제거(세션·메타는 유지)
     dropScopedQueries(queryClient);
   };
@@ -159,7 +165,7 @@ function LibrarySelector({ account, isAdmin }: { account: string; isAdmin: boole
     <div className="relative shrink-0">
       <button
         onClick={() => setOpen((v) => !v)}
-        className={`flex items-center gap-1.5 whitespace-nowrap rounded-xl px-3 py-1.5 text-sm font-semibold transition-colors ${
+        className={`relative flex items-center gap-1.5 whitespace-nowrap rounded-xl px-3 py-1.5 text-sm font-semibold transition-colors ${
           activeZone
             ? "bg-indigo-600 text-white hover:bg-indigo-700"
             : viewedOwner
@@ -169,6 +175,12 @@ function LibrarySelector({ account, isAdmin }: { account: string; isAdmin: boole
       >
         {label}
         <span className="text-xs opacity-60">▾</span>
+        {zones.some((z) => (z.new_count ?? 0) > 0 && activeZone?.id !== z.id) && (
+          <span
+            title="1차 구역에 새로 백업된 사진이 있습니다"
+            className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-amber-500"
+          />
+        )}
       </button>
       {open && (
         <>
@@ -228,6 +240,11 @@ function LibrarySelector({ account, isAdmin }: { account: string; isAdmin: boole
                     className={itemCls(activeZone?.id === z.id)}
                   >
                     📦 {z.label}
+                    {(z.new_count ?? 0) > 0 && (
+                      <span className="ml-auto rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                        +{z.new_count!.toLocaleString()}
+                      </span>
+                    )}
                   </button>
                 ))}
                 <button

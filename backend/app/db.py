@@ -133,6 +133,17 @@ def _migrate(conn: sqlite3.Connection) -> None:
         if column not in cache_columns:
             conn.execute(f"ALTER TABLE photo_cache ADD COLUMN {column} TEXT")
 
+    zone_columns = {
+        row["name"] for row in conn.execute("PRAGMA table_info(zone_config)")
+    }
+    if "last_seen_at" not in zone_columns:
+        # 신규 유입 뱃지 기준 시각 — 기존 행은 지금부터 센다(과거분 폭탄 방지).
+        conn.execute("ALTER TABLE zone_config ADD COLUMN last_seen_at TEXT")
+        conn.execute(
+            "UPDATE zone_config SET last_seen_at = datetime('now') "
+            "WHERE last_seen_at IS NULL"
+        )
+
     # A job left 'running' means the server died mid-scan; hashes are already
     # persisted per item, so a re-scan resumes cheaply from photo_cache.
     conn.execute(
