@@ -33,7 +33,7 @@
 
 ### A-5. [LOW] 인프라/품질 묶음
 - [x] `config.py` `session_secret` — 미사용이라 제거(쿠키가 무작위 토큰이라 서명 불필요). `.env.example`도 정리.
-- [x] `docker/Dockerfile` — `npm install` → **`npm ci`**, **non-root USER**(appuser) 추가.
+- [x] `docker/Dockerfile` — `npm install` → **`npm ci`**, **non-root USER**(appuser) 추가. ⚠️ 이후 예외: 공용(/photo) ACL의 EXIF 판독을 위해 **prod 컨테이너는 root(user 0:0)로 실행**(2026-07-09 사용자 승인, docker-compose.prod.yml).
 - [x] `docker-compose.yml` — `/api/health` 기반 **healthcheck** 추가(python urllib).
 - [x] `db.py` — `PRAGMA journal_mode=WAL` 설정. (2단계 해시 저장 시 sync SQLite → 스레드풀 오프로딩 재검토)
 - [x] `session_store.purge_expired` — 시작 시 1회 + **로그인마다 정리**(별도 백그라운드 스위퍼 없이 주기화).
