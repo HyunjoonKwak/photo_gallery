@@ -10,6 +10,7 @@ single geometry computation small (the Immich #28861 freeze mitigation).
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import os
 from collections import Counter
 from datetime import date, datetime
@@ -776,7 +777,10 @@ async def get_thumbnail(
 ) -> Response:
     # URL에 cache_key(내용 버전)가 들어 있어 내용이 바뀌면 URL이 바뀐다 → 사실상
     # 불변. 1년 immutable + ETag로 재방문 시 재다운로드/재검증을 없앤다.
-    etag = f'"{id}-{cache_key}-{size}"'
+    # ETag는 latin-1 안전해야 한다 — zone 아이템 id는 한글 경로라 원문을 그대로
+    # 쓰면 헤더 인코딩에서 500(2026-07-12 실장애: 1차 구역 한글 폴더 아래 모든
+    # 썸네일 500). 해시로 축약.
+    etag = '"' + hashlib.md5(f"{id}-{cache_key}-{size}".encode()).hexdigest() + '"'
     headers = {
         "Cache-Control": "private, max-age=31536000, immutable",
         "ETag": etag,
