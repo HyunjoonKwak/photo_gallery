@@ -325,12 +325,15 @@ export interface EventSuggestion {
   count: number;
   name_hint: string;
   item_ids: string[];
+  place?: string | null;
+  copied_count?: number;
   preview: PhotoItem[];
 }
 
 export interface EventSuggestionsResponse {
   events: EventSuggestion[];
   scanned: number;
+  hidden_copied?: number;
 }
 
 export interface JunkGroup {

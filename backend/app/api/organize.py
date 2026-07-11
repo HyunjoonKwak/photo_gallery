@@ -65,6 +65,38 @@ async def put_wizard_session(
     return WizardSession(step=body.step, stats=body.stats, updated_at=now)
 
 
+class CopiedRequest(BaseModel):
+    item_ids: list[str] = Field(min_length=1, max_length=5000)
+
+
+@router.post("/copied")
+async def record_copied(
+    body: CopiedRequest,
+    session: Session = Depends(get_current_session),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    """이벤트→공용 복사를 아이템 단위로 기록 — 제안에서 '이미 복사됨' 제외용."""
+    now = datetime.now(timezone.utc).isoformat()
+    with connect(settings.sqlite_path) as conn:
+        conn.executemany(
+            "INSERT OR IGNORE INTO organize_copied (user, file_id, copied_at) "
+            "VALUES (?, ?, ?)",
+            [(session.account, i, now) for i in body.item_ids],
+        )
+        conn.commit()
+    return {"ok": True, "count": len(body.item_ids)}
+
+
+def copied_ids(sqlite_path: str, user: str) -> set[str]:
+    with connect(sqlite_path) as conn:
+        return {
+            r["file_id"]
+            for r in conn.execute(
+                "SELECT file_id FROM organize_copied WHERE user = ?", (user,)
+            )
+        }
+
+
 @router.delete("/session")
 async def reset_wizard_session(
     session: Session = Depends(get_current_session),

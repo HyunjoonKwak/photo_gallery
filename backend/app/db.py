@@ -87,6 +87,15 @@ CREATE TABLE IF NOT EXISTS zone_config (
   PRIMARY KEY (account, id)
 );
 
+-- 정리 마법사: 공용으로 복사한 개인 아이템(클러스터 재구성돼도 아이템 단위로
+-- 안정적으로 "이미 복사됨"을 판정). undo로 복사를 되돌려도 남는다(v2 한계).
+CREATE TABLE IF NOT EXISTS organize_copied (
+  user      TEXT NOT NULL,
+  file_id   TEXT NOT NULL,
+  copied_at TEXT NOT NULL,
+  PRIMARY KEY (user, file_id)
+);
+
 -- 타임라인 일자 버킷 L2 캐시 (scope = "team" | "personal:<account>").
 -- 전량 스캔(69k 기준 수십 초)을 재시작·세션마다 반복하지 않기 위한 영속층.
 -- updated_at=0 은 "stale" 표식(쓰기 후) — 조회는 즉시 서빙 + 백그라운드 재스캔.

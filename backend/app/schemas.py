@@ -495,12 +495,15 @@ class EventSuggestion(BaseModel):
     count: int
     name_hint: str
     item_ids: list[str]
+    place: str | None = None  # 대표 아이템의 짧은 장소 라벨(best-effort)
+    copied_count: int = 0  # 이미 공용으로 복사한 아이템 수
     preview: list[PhotoItem]  # 대표 썸네일 4장
 
 
 class EventSuggestionsResponse(BaseModel):
     events: list[EventSuggestion]
     scanned: int
+    hidden_copied: int = 0  # '이미 복사됨'으로 숨긴 이벤트 수
 
 
 class ZoneInfo(BaseModel):

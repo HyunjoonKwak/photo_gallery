@@ -354,10 +354,15 @@ export const api = {
     ),
   resetOrganizeSession: () =>
     request<{ ok: boolean }>("/api/organize/session", { method: "DELETE" }),
-  eventSuggestions: (gapHours: number, minPhotos: number) =>
+  eventSuggestions: (gapHours: number, minPhotos: number, hideCopied = true) =>
     request<EventSuggestionsResponse>(
-      `/api/photos/event-suggestions?gap_hours=${gapHours}&min_photos=${minPhotos}`,
+      `/api/photos/event-suggestions?gap_hours=${gapHours}&min_photos=${minPhotos}&hide_copied=${hideCopied}`,
     ),
+  recordCopied: (itemIds: string[]) =>
+    request<{ ok: boolean }>("/api/organize/copied", {
+      method: "POST",
+      body: JSON.stringify({ item_ids: itemIds }),
+    }),
   junkCandidates: () =>
     request<JunkCandidatesResponse>("/api/photos/junk-candidates"),
   listZones: () => request<ZonesResponse>("/api/zones"),

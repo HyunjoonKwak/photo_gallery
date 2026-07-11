@@ -77,3 +77,20 @@ def event_rows(sqlite_path: str, space: str = "personal") -> list[tuple[str, str
                 (space,),
             )
         ]
+
+
+def annotate_copied(
+    events: list[dict], copied: set[str], hide_threshold: float = 0.9
+) -> tuple[list[dict], int]:
+    """각 이벤트에 copied_count를 달고, 대부분(기본 90%↑) 복사된 이벤트는
+    숨긴다. (hidden 수를 함께 반환 — UI 안내용)"""
+    kept: list[dict] = []
+    hidden = 0
+    for e in events:
+        n = sum(1 for i in e["item_ids"] if i in copied)
+        e["copied_count"] = n
+        if e["count"] > 0 and n / e["count"] >= hide_threshold:
+            hidden += 1
+            continue
+        kept.append(e)
+    return kept, hidden

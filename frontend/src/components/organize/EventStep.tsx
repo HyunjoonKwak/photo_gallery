@@ -23,9 +23,13 @@ export function EventStep({
   const pushToast = useToastStore((s) => s.push);
   const [gapHours, setGapHours] = useState(4);
   const [minPhotos, setMinPhotos] = useState(8);
+  const [hideCopied, setHideCopied] = useState(true);
+  // 562건 전량 마운트 방지 — 30개씩 증분 렌더(제안은 최신순이라 위에서부터 처리).
+  const PAGE = 30;
+  const [visible, setVisible] = useState(PAGE);
   const q = useQuery({
-    queryKey: ["event-suggestions", gapHours, minPhotos],
-    queryFn: () => api.eventSuggestions(gapHours, minPhotos),
+    queryKey: ["event-suggestions", gapHours, minPhotos, hideCopied],
+    queryFn: () => api.eventSuggestions(gapHours, minPhotos, hideCopied),
     staleTime: 60_000,
   });
   const [open, setOpen] = useState<string | null>(null); // start 키
@@ -68,7 +72,8 @@ export function EventStep({
 
   const createAlbum = async (ev: EventSuggestion) => {
     const key = ev.start;
-    const name = (names[key] ?? ev.name_hint).trim();
+    const defaultName = ev.place ? `${ev.name_hint} ${ev.place}` : ev.name_hint;
+    const name = (names[key] ?? defaultName).trim();
     if (!name) return;
     const skip = excluded[key] ?? new Set<string>();
     const ids = ev.item_ids.filter((id) => !skip.has(id));
@@ -77,6 +82,7 @@ export function EventStep({
       const dest = await ensureEventFolder(ev, name);
       ops.move(ids, dest, true); // 복사 — 진행바·충돌·undo 기존 경로
       setDoneKeys((prev) => new Set(prev).add(key));
+      void api.recordCopied(ids); // '이미 복사됨' 제외용 기록(best-effort)
       onCreated?.(1, ids.length);
       pushToast(`'${name}' — ${ids.length}장을 공용으로 복사합니다.`);
       qc.invalidateQueries({ queryKey: ["folders"] });
@@ -98,7 +104,10 @@ export function EventStep({
             min={1}
             max={24}
             value={gapHours}
-            onChange={(e) => setGapHours(Number(e.target.value))}
+            onChange={(e) => {
+              setGapHours(Number(e.target.value));
+              setVisible(PAGE);
+            }}
           />
         </label>
         <label className="flex items-center gap-2">
@@ -108,12 +117,28 @@ export function EventStep({
             min={3}
             max={50}
             value={minPhotos}
-            onChange={(e) => setMinPhotos(Number(e.target.value))}
+            onChange={(e) => {
+              setMinPhotos(Number(e.target.value));
+              setVisible(PAGE);
+            }}
           />
+        </label>
+        <label className="flex items-center gap-1">
+          <input
+            type="checkbox"
+            checked={hideCopied}
+            onChange={(e) => {
+              setHideCopied(e.target.checked);
+              setVisible(PAGE);
+            }}
+          />
+          복사한 이벤트 숨기기
         </label>
         {q.data && (
           <span className="text-slate-400">
             {q.data.scanned.toLocaleString()}장 → 제안 {events.length}건
+            {(q.data.hidden_copied ?? 0) > 0 &&
+              ` (복사됨 ${q.data.hidden_copied}건 숨김)`}
           </span>
         )}
       </div>
@@ -132,9 +157,10 @@ export function EventStep({
         </p>
       )}
 
-      {events.map((ev) => {
+      {events.slice(0, visible).map((ev) => {
         const key = ev.start;
-        const name = names[key] ?? ev.name_hint;
+        const defaultName = ev.place ? `${ev.name_hint} ${ev.place}` : ev.name_hint;
+        const name = names[key] ?? defaultName;
         const skip = excluded[key] ?? new Set<string>();
         const pickCount = ev.item_ids.length - skip.size;
         const done = doneKeys.has(key);
@@ -167,6 +193,9 @@ export function EventStep({
                 <p className="mt-0.5 text-xs text-slate-400">
                   {ev.start.slice(0, 16).replace("T", " ")} ~{" "}
                   {ev.end.slice(5, 16).replace("T", " ")} · {ev.count}장
+                  {ev.place && ` · 📍${ev.place}`}
+                  {(ev.copied_count ?? 0) > 0 &&
+                    ` · 복사됨 ${ev.copied_count}`}
                   {skip.size > 0 && ` (제외 ${skip.size})`}
                 </p>
               </div>
@@ -192,6 +221,16 @@ export function EventStep({
           </section>
         );
       })}
+      {events.length > visible && (
+        <div className="pb-6 text-center">
+          <button
+            onClick={() => setVisible((v) => v + PAGE)}
+            className="rounded-lg border border-slate-200 px-4 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
+          >
+            더 보기 ({events.length - visible}건 남음)
+          </button>
+        </div>
+      )}
     </div>
   );
 }

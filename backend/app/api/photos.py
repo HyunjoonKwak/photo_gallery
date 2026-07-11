@@ -423,22 +423,69 @@ async def junk_candidates_route(
     return await asyncio.to_thread(build)
 
 
+# 장소 힌트 캐시: item_id -> 짧은 장소 라벨(주소는 불변이라 TTL 없음).
+_PLACE_HINT_CACHE: dict[str, str | None] = {}
+
+
+def _short_place(address: str | None) -> str | None:
+    """긴 주소를 이벤트 이름에 붙일 짧은 라벨로: '대한민국' 제거 후 앞 2토큰."""
+    if not address:
+        return None
+    parts = [p for p in address.split() if p and p != "대한민국"]
+    return " ".join(parts[:2]) or None
+
+
 @router.get("/event-suggestions", response_model=EventSuggestionsResponse)
 async def event_suggestions_route(
     gap_hours: float = Query(4.0, ge=0.5, le=48.0),
     min_photos: int = Query(8, ge=2, le=500),
+    hide_copied: bool = Query(True),
+    place_hints: int = Query(40, ge=0, le=200),
     session: Session = Depends(get_current_session),
+    source: PhotoSource = Depends(get_photo_source),
     settings: Settings = Depends(get_settings),
 ) -> EventSuggestionsResponse:
     """정리 마법사 Step3: 시간 갭 클러스터로 '이벤트' 후보 제안(개인 공간).
 
     실행(공용 폴더 생성+복사)은 기존 API 조합을 프론트가 호출 — 여기는 제안만.
     """
-    from ..organize.events import cluster_events, event_rows
+    from ..organize.events import annotate_copied, cluster_events, event_rows
+    from .organize import copied_ids
 
-    def build():
+    def prepare():
         rows = event_rows(settings.sqlite_path, "personal")
         events = cluster_events(rows, gap_hours=gap_hours, min_photos=min_photos)
+        copied = copied_ids(settings.sqlite_path, session.account)
+        if hide_copied:
+            events, hidden = annotate_copied(events, copied)
+        else:
+            annotate_copied(list(events), copied)  # copied_count 주석만(제자리)
+            hidden = 0
+        return rows, events, hidden
+
+    rows, events, hidden = await asyncio.to_thread(prepare)
+
+    # 장소 힌트(best-effort): 앞 N개 클러스터의 대표(중간) 아이템 주소 조회.
+    # GPS 없는 사진(스크린샷 등)은 null — 그 클러스터는 힌트 생략.
+    sem = asyncio.Semaphore(6)
+
+    async def place_of(ev: dict) -> None:
+        mid = ev["item_ids"][len(ev["item_ids"]) // 2]
+        if mid in _PLACE_HINT_CACHE:
+            ev["place"] = _PLACE_HINT_CACHE[mid]
+            return
+        try:
+            async with sem:
+                detail = await source.item_detail("personal", mid)
+            place = _short_place(detail.address)
+        except Exception:  # noqa: BLE001 - 힌트는 부가 정보
+            place = None
+        _PLACE_HINT_CACHE[mid] = place
+        ev["place"] = place
+
+    await asyncio.gather(*(place_of(e) for e in events[:place_hints]))
+
+    def build():
         # 대표 썸네일: photo_cache에서 앞 4장 메타 로드
         from ..db import connect
 
@@ -469,13 +516,17 @@ async def event_suggestions_route(
                 count=e["count"],
                 name_hint=e["name_hint"],
                 item_ids=e["item_ids"],
+                place=e.get("place"),
+                copied_count=e.get("copied_count", 0),
                 preview=[
                     previews[i] for i in e["item_ids"][:4] if i in previews
                 ],
             )
             for e in events
         ]
-        return EventSuggestionsResponse(events=out, scanned=len(rows))
+        return EventSuggestionsResponse(
+            events=out, scanned=len(rows), hidden_copied=hidden
+        )
 
     return await asyncio.to_thread(build)
 

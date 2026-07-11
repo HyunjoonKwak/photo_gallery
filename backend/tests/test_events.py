@@ -41,3 +41,24 @@ def test_name_hint_formats():
     assert name_hint(d("2024-05-05T10:00"), d("2024-05-05T22:00")) == "2024-05-05"
     assert name_hint(d("2024-05-05T10:00"), d("2024-05-07T22:00")) == "2024-05-05~07"
     assert name_hint(d("2024-05-30T10:00"), d("2024-06-02T22:00")) == "2024-05-30~06-02"
+
+
+def test_annotate_copied_hides_mostly_copied():
+    from app.organize.events import annotate_copied
+
+    events = [
+        {"count": 10, "item_ids": [str(i) for i in range(10)]},
+        {"count": 10, "item_ids": [str(i) for i in range(100, 110)]},
+    ]
+    copied = {str(i) for i in range(9)}  # 첫 이벤트 90% 복사됨
+    kept, hidden = annotate_copied(events, copied)
+    assert hidden == 1
+    assert len(kept) == 1 and kept[0]["copied_count"] == 0
+
+
+def test_annotate_copied_partial_kept():
+    from app.organize.events import annotate_copied
+
+    events = [{"count": 10, "item_ids": [str(i) for i in range(10)]}]
+    kept, hidden = annotate_copied(events, {"0", "1", "2"})
+    assert hidden == 0 and kept[0]["copied_count"] == 3
