@@ -90,6 +90,14 @@ CREATE TABLE IF NOT EXISTS zone_config (
 -- 타임라인 일자 버킷 L2 캐시 (scope = "team" | "personal:<account>").
 -- 전량 스캔(69k 기준 수십 초)을 재시작·세션마다 반복하지 않기 위한 영속층.
 -- updated_at=0 은 "stale" 표식(쓰기 후) — 조회는 즉시 서빙 + 백그라운드 재스캔.
+-- 정리 마법사 세션(이어하기): 사용자당 1행, step과 단계별 처리 통계.
+CREATE TABLE IF NOT EXISTS workflow_session (
+  user       TEXT PRIMARY KEY,
+  step       INTEGER NOT NULL DEFAULT 1,   -- 1 중복 | 2 잡동사니 | 3 이벤트 | 4 요약
+  stats_json TEXT NOT NULL DEFAULT '{}',
+  updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS bucket_cache (
   scope  TEXT NOT NULL,
   day    TEXT NOT NULL,

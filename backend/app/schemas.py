@@ -478,6 +478,31 @@ class MembersResponse(BaseModel):
 # --- 1차 구역 (기기 백업 zone) ---
 
 
+class JunkGroup(BaseModel):
+    reason: str  # screenshot | messenger
+    label: str
+    items: list[PhotoItem]
+
+
+class JunkCandidatesResponse(BaseModel):
+    groups: list[JunkGroup]
+    scanned: int  # photo_cache에 있던 personal 행 수(스캔 안내용)
+
+
+class EventSuggestion(BaseModel):
+    start: str
+    end: str
+    count: int
+    name_hint: str
+    item_ids: list[str]
+    preview: list[PhotoItem]  # 대표 썸네일 4장
+
+
+class EventSuggestionsResponse(BaseModel):
+    events: list[EventSuggestion]
+    scanned: int
+
+
 class ZoneInfo(BaseModel):
     id: str
     root_path: str

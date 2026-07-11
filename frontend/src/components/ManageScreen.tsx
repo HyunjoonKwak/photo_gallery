@@ -1,6 +1,7 @@
 import { useTimelineStore, type ManageTab } from "../store/timeline";
 import { FolderView } from "./FolderView";
 import { DedupView } from "./DedupView";
+import { OrganizeView } from "./organize/OrganizeView";
 import { SearchView } from "./SearchView";
 import { FolderPanel } from "./FolderPanel";
 
@@ -10,6 +11,7 @@ import { FolderPanel } from "./FolderPanel";
 const MANAGE_TABS: { tab: ManageTab; label: string; icon: string }[] = [
   { tab: "folders", label: "폴더", icon: "📁" },
   { tab: "dedup", label: "중복 정리", icon: "🔁" },
+  { tab: "junk", label: "정리", icon: "✨" },
 ];
 
 export function ManageScreen() {
@@ -47,6 +49,7 @@ export function ManageScreen() {
       <div className="min-h-0 flex-1">
         {manageTab === "folders" && <FolderView />}
         {manageTab === "dedup" && <DedupView key={space} />}
+        {manageTab === "junk" && <OrganizeView />}
         {manageTab === "search" && (
           <div className="flex h-full">
             <FolderPanel />

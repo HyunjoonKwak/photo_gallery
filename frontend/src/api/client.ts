@@ -10,6 +10,8 @@ import type {
   FolderCountsResponse,
   FoldersResponse,
   ItemDetail,
+  EventSuggestionsResponse,
+  JunkCandidatesResponse,
   LoginRequest,
   MembersResponse,
   MoveFoldersRequest,
@@ -341,6 +343,23 @@ export const api = {
     });
   },
   // 1차 구역(zone) 관리
+  organizeSession: () =>
+    request<{ step: number; stats: Record<string, number>; updated_at: string | null }>(
+      "/api/organize/session",
+    ),
+  saveOrganizeSession: (step: number, stats: Record<string, number>) =>
+    request<{ step: number; stats: Record<string, number> }>(
+      "/api/organize/session",
+      { method: "PUT", body: JSON.stringify({ step, stats }) },
+    ),
+  resetOrganizeSession: () =>
+    request<{ ok: boolean }>("/api/organize/session", { method: "DELETE" }),
+  eventSuggestions: (gapHours: number, minPhotos: number) =>
+    request<EventSuggestionsResponse>(
+      `/api/photos/event-suggestions?gap_hours=${gapHours}&min_photos=${minPhotos}`,
+    ),
+  junkCandidates: () =>
+    request<JunkCandidatesResponse>("/api/photos/junk-candidates"),
   listZones: () => request<ZonesResponse>("/api/zones"),
   zoneSeen: (id: string) =>
     request<{ ok: boolean }>(`/api/zones/${encodeURIComponent(id)}/seen`, {

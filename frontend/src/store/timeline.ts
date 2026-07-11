@@ -31,7 +31,7 @@ export type ViewerLens = "timeline" | "folder" | "people" | "places" | "videos";
 /** 타임라인 렌즈 내부 줌(연/월/일). */
 export type ViewerZoom = "year" | "month" | "day";
 /** 폴더 분류 서브탭. */
-export type ManageTab = "folders" | "dedup" | "search";
+export type ManageTab = "folders" | "dedup" | "junk" | "search";
 export type FolderDisplay = "grid" | "list";
 
 /** Folder view ordering (persisted). key: 이름 | 날짜(생성일); dir: 오름/내림차순. */

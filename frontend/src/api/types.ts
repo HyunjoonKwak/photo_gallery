@@ -319,6 +319,31 @@ export interface MembersResponse {
 
 // --- 1차 구역 (기기 백업 zone) ---
 
+export interface EventSuggestion {
+  start: string;
+  end: string;
+  count: number;
+  name_hint: string;
+  item_ids: string[];
+  preview: PhotoItem[];
+}
+
+export interface EventSuggestionsResponse {
+  events: EventSuggestion[];
+  scanned: number;
+}
+
+export interface JunkGroup {
+  reason: string;
+  label: string;
+  items: PhotoItem[];
+}
+
+export interface JunkCandidatesResponse {
+  groups: JunkGroup[];
+  scanned: number;
+}
+
 export interface ZoneInfo {
   id: string;
   root_path: string;

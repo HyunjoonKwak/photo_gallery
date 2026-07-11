@@ -59,6 +59,10 @@ from ..schemas import (
     FoldersResponse,
     ConflictItem,
     ItemDetail,
+    EventSuggestion,
+    EventSuggestionsResponse,
+    JunkCandidatesResponse,
+    JunkGroup,
     MembersResponse,
     MoveCheckRequest,
     MoveCheckResponse,
@@ -69,6 +73,7 @@ from ..schemas import (
     NamePersonRequest,
     NamePersonResponse,
     PersonsResponse,
+    PhotoItem,
     PlacesResponse,
     RemoveFolderRequest,
 )
@@ -370,6 +375,109 @@ async def remove_from_album(
     """앨범에서 사진 빼기(사진 자체는 그대로)."""
     removed = await source.remove_from_album(_ALBUM_SPACE, req.album_id, req.item_ids)
     return AlbumMutationResponse(album=None, added=-removed)
+
+
+@router.get("/junk-candidates", response_model=JunkCandidatesResponse)
+async def junk_candidates_route(
+    session: Session = Depends(get_current_session),
+    settings: Settings = Depends(get_settings),
+) -> JunkCandidatesResponse:
+    """정리 마법사 Step2: 개인 공간 잡동사니 후보(사유 태그 포함).
+
+    데이터 기반은 dedup 스캔이 채운 photo_cache — 스캔 전이면 scanned=0으로
+    내려 프론트가 "먼저 중복 정리 스캔" 안내를 띄운다. 판별은 순수 함수
+    (organize/junk.py), 실행은 기존 이동/삭제+undo를 그대로 쓴다."""
+    from ..organize.junk import REASON_LABELS, junk_candidates
+
+    def build():
+        groups = junk_candidates(settings.sqlite_path, "personal")
+        with_counts = []
+        for reason, items in groups.items():
+            with_counts.append(
+                JunkGroup(
+                    reason=reason,
+                    label=REASON_LABELS.get(reason, reason),
+                    items=[
+                        PhotoItem(
+                            id=i["id"],
+                            filename=i["filename"],
+                            taken_at=i["taken_at"],
+                            width=i["width"],
+                            height=i["height"],
+                            size=i["size"],
+                            cache_key=i["cache_key"],
+                        )
+                        for i in items
+                    ],
+                )
+            )
+        with_counts.sort(key=lambda g: -len(g.items))
+        from ..db import connect
+
+        with connect(settings.sqlite_path) as conn:
+            scanned = conn.execute(
+                "SELECT COUNT(*) FROM photo_cache WHERE space='personal'"
+            ).fetchone()[0]
+        return JunkCandidatesResponse(groups=with_counts, scanned=scanned)
+
+    return await asyncio.to_thread(build)
+
+
+@router.get("/event-suggestions", response_model=EventSuggestionsResponse)
+async def event_suggestions_route(
+    gap_hours: float = Query(4.0, ge=0.5, le=48.0),
+    min_photos: int = Query(8, ge=2, le=500),
+    session: Session = Depends(get_current_session),
+    settings: Settings = Depends(get_settings),
+) -> EventSuggestionsResponse:
+    """정리 마법사 Step3: 시간 갭 클러스터로 '이벤트' 후보 제안(개인 공간).
+
+    실행(공용 폴더 생성+복사)은 기존 API 조합을 프론트가 호출 — 여기는 제안만.
+    """
+    from ..organize.events import cluster_events, event_rows
+
+    def build():
+        rows = event_rows(settings.sqlite_path, "personal")
+        events = cluster_events(rows, gap_hours=gap_hours, min_photos=min_photos)
+        # 대표 썸네일: photo_cache에서 앞 4장 메타 로드
+        from ..db import connect
+
+        previews: dict[str, PhotoItem] = {}
+        want: list[str] = []
+        for e in events:
+            want.extend(e["item_ids"][:4])
+        if want:
+            with connect(settings.sqlite_path) as conn:
+                marks = ",".join("?" for _ in want)
+                for r in conn.execute(
+                    f"SELECT file_id, path, taken_at, thumb_key, width, height "
+                    f"FROM photo_cache WHERE file_id IN ({marks})",
+                    want,
+                ):
+                    previews[r["file_id"]] = PhotoItem(
+                        id=r["file_id"],
+                        filename=(r["path"] or "").rsplit("/", 1)[-1],
+                        taken_at=r["taken_at"] or "",
+                        width=r["width"] or 4,
+                        height=r["height"] or 3,
+                        cache_key=r["thumb_key"] or "",
+                    )
+        out = [
+            EventSuggestion(
+                start=e["start"],
+                end=e["end"],
+                count=e["count"],
+                name_hint=e["name_hint"],
+                item_ids=e["item_ids"],
+                preview=[
+                    previews[i] for i in e["item_ids"][:4] if i in previews
+                ],
+            )
+            for e in events
+        ]
+        return EventSuggestionsResponse(events=out, scanned=len(rows))
+
+    return await asyncio.to_thread(build)
 
 
 # ------------------------------------------------------------ file operations

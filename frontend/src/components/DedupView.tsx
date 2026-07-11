@@ -13,8 +13,10 @@ import { useFileOps } from "../hooks/useFileOps";
  * several shots. Cleanup reuses the standard delete flow (trash + undo).
  * The threshold slider re-groups near-duplicates live from persisted hashes.
  */
-export function DedupView() {
-  const space = useTimelineStore((s) => s.space);
+export function DedupView({ forceSpace }: { forceSpace?: "personal" | "team" } = {}) {
+  const storeSpace = useTimelineStore((s) => s.space);
+  // 정리 마법사 Step1은 개인 공간 고정으로 임베드된다(ORGANIZE_WIZARD 원칙).
+  const space = forceSpace ?? storeSpace;
   const queryClient = useQueryClient();
   const ops = useFileOps();
   const [threshold, setThreshold] = useState(5);
