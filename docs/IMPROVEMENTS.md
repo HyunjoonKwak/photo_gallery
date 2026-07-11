@@ -162,9 +162,9 @@
   - ⚠️ **코드 스플리팅(Albums/Manage/PlacesMapView lazy)은 되돌림(ec0c352)** — 기존 설치 PWA의 옛 서비스워커가 새 동적 청크를 못 받아 Suspense 무한 대기("불러오는 중"에서 앱 전체 멈춤). 진단: 신규 브라우저는 정상 렌더 → 빌드/백엔드 정상, 기기 SW 캐시 문제. 단일 번들(578KB/gzip 175KB)이 안정. 재도입하려면 lazy 실패 시 1회 자동 새로고침 래퍼(new SW로 치유) 필수. [[nas-photo-pwa-cache]]
 - [x] **긴급 수정(a941dd5, 2026-07-09 밤)**: 세마포어 기아 장애 해소 — 재시작 직후 트래시 재구축이 요청마다 중복·무제한 병렬 발사되어 DSM 세마포어(24) 포화 → 로그인·folders·items 전부 기아(로그인 무한대기+사진 안 뜸). 수정: 트래시 재구축 single-flight(Lock)+동시성 6 상한, 인증은 세마포어 우회, 백그라운드 재스캔 태스크 강한 참조(GC 방지), 로그인 시도 선기록+인증 타임아웃 12s(d5b798c). 검증: 재시작 직후 동시부하(items×5+folders+login) 전부 완료, folders 60s타임아웃→1.8s, 웜 0.1s.
 - [~] **Phase B(체감)** — 2026-07-10 추가 완료(3ed775b~01c9b1f): 그리드 3종 행 가상화(VirtualRows — FolderPane·SearchView·FolderViewerGrid, 실측: 909장 폴더 DOM 62img/888건 검색 DOM 50img만 마운트), folder-counts 청크(20개) 키, 썸네일 unit_id 수정(복사본 404 — cache_key 접두가 unit), 검색 키워드 json.dumps(숫자/날짜꼴 code 120; 한국어는 escape·평문 모두 동작 확인), VirtualRows 함정 2건(부모 scroll ref 늦은 attach→scrollEl state 승격, RO 초기 전달 미보장→초기 폭 동기 측정). '고희연' 검색 0건은 DSM 특성(팀 폴더명 미매칭·파일명/태그만).
-- [~] **Phase B(이전분)** — 완료(264802b): CopyMove 청크 25→바이트예산 패킹(200개/6KB — URL 414 함정 회피, 500장 이동 20→3~5태스크), 적응형 폴링(0.1s→0.5s), undo 목적지별 그룹화(500태스크→폴더수), 라이브러리 전환 clear()→스코프 제거(세션·메타 유지). **남음**: 큰 폴더 그리드 가상화(FolderPane/FolderViewerGrid/SearchView — 1000+장 프리즈, 가상 그리드 3종 통합), 무효화 스코프 축소(areaKey/day)+resettle 통합, folder-counts 쿼리 키 재설계, 낙관적 업데이트(이동/삭제 즉시 반영)
-- [~] **Phase C(구조)** — 완료(f336eee·100675f, 2026-07-10): capture-audit 재귀 병렬화(subtree 레벨 BFS·수집 유계 6) + EXIF 판독 스레드풀 8 — **/2008 재귀 audit 146s→27.4s(실측)**; persons/places (sid,space) TTL 캐시(6.0s→0.0s)+name_person 재스캔 흡수·변경 시 무효화; get_session 30s 프로세스 캐시(요청당 SQLite 제거, 삭제 시 무효화); 세션 만료/로그아웃 시 sid 캐시 회수(drop_session_caches — 메모리 누수 해소); _ensure_dir 오류 로그화; 죽은 코드 제거(DateHeader.tsx·rowModel buildRows/placeholderRows/미사용 타입·@air/react-drag-to-select). **남음**: dsm_source.py 분할(browse/fileops/cache — 2000줄, 별도 세션 권장), window.prompt/confirm 8곳→공용 Modal(+a11y)
-- [ ] **Phase D(기능 균형)**: 앨범 보강(이름변경·사진 빼기·감상에서 담기), 휴지통 개별 복원 UI, 박스 선택 복원 여부 결정(명세엔 있고 코드 제거됨), 타인 열람 중 검색창 숨김, B-7 타인 고위험 작업 확인, 명세 §2/§9 IA 재작성 + 문서 체크 상태 일괄 갱신(A-5 root 실행·156·157·149 등)
+- [~] **Phase B(이전분)** — 완료(264802b): CopyMove 청크 25→바이트예산 패킹(200개/6KB — URL 414 함정 회피, 500장 이동 20→3~5태스크), 적응형 폴링(0.1s→0.5s), undo 목적지별 그룹화(500태스크→폴더수), 라이브러리 전환 clear()→스코프 제거(세션·메타 유지). (이후 전부 완료: 가상화 3종 3ed775b, counts 청크 키, 낙관적 업데이트+resettle 2회 fa83834)
+- [~] **Phase C(구조)** — 완료(f336eee·100675f, 2026-07-10): capture-audit 재귀 병렬화(subtree 레벨 BFS·수집 유계 6) + EXIF 판독 스레드풀 8 — **/2008 재귀 audit 146s→27.4s(실측)**; persons/places (sid,space) TTL 캐시(6.0s→0.0s)+name_person 재스캔 흡수·변경 시 무효화; get_session 30s 프로세스 캐시(요청당 SQLite 제거, 삭제 시 무효화); 세션 만료/로그아웃 시 sid 캐시 회수(drop_session_caches — 메모리 누수 해소); _ensure_dir 오류 로그화; 죽은 코드 제거(DateHeader.tsx·rowModel buildRows/placeholderRows/미사용 타입·@air/react-drag-to-select). **남음**: dsm_source.py 분할(browse/fileops/cache — 2100줄, 별도 세션 권장). (prompt→공용 Modal은 8043d32로 완료)
+- [~] **Phase D(기능 균형)** — 완료: 앨범 이름변경·사진 빼기(620917a), 휴지통 개별 복원(fa83834), 박스선택 미구현 확정·검색창 숨김·B-7(87d6ec2), 명세 §9 현행 IA 블록. **남음**: 감상 화면에서 앨범 담기(뷰어 선택 모델 필요 — 대형), 명세 §9 원문 전체 재작성(현행 IA 블록만 삽입됨), IMPROVEMENTS 문서 대청소
 - [x] CLIP 임베딩 기반 탐지(Immich 방식)는 NAS 사양·목적상 **비권고** — 도입하지 않음(설계 준수)
 
 ---
@@ -222,7 +222,8 @@
 - ①소형 UX(타인 열람 중 검색창 숨김·휴지통 비우기 차단 B-7·명세 §9 현행 IA·박스선택 미구현 확정) **완료**(87d6ec2).
 - ②공용 다이얼로그: Modal+askConfirm/askPrompt(Esc·배경닫기·role=dialog·포커스), window.prompt/confirm 8곳 전부 교체 **완료**(8043d32).
 - ③앨범 보강 **완료**(620917a·ae22bda): 이름변경(Browse.Album set_name v1 POST·json.dumps)+사진 빼기(NormalAlbum delete_item v1, 상세 '사진 빼기' 모드)+**기존 삭제 고장 수정**(NormalAlbum delete=103 → Browse.Album delete). 실 NAS 스모크: 생성→이름변경→삭제 전부 200. '감상 화면에서 담기'는 뷰어에 선택 모델이 없어 보류(대형 작업).
-- **남음**: ④무효화 스코프 축소+resettle 통합·낙관적 업데이트, ⑤휴지통 개별 복원 UI, ⑥dsm_source.py 분할(별도 세션 권장), 정리 마법사(D-139).
+- ④(낙관적 업데이트·resettle 2회)·⑤(휴지통 개별 복원) fa83834로 완료. 타임라인 드릴 안착·크럼 동기화 33b5a7d 완료. 백업 앱 mtime 소스 보존(photo_manager 46a12d4, 2026-07-12) 완료 — 신규 유입은 촬영일 오염 없음.
+- **현행 남음 목록(2026-07-12 정리)**: ⑴ 1차 구역 신규 유입 뱃지(서버+프론트 소형), ⑵ dsm_source.py 분할(별도 세션), ⑶ 감상에서 앨범 담기(대형), ⑷ 정리 마법사 D-139(대형·미결 4건 선행), ⑸ 문서 재작성(명세 §9·IMPROVEMENTS 대청소), ⑹ 선택: 업로드 전 해시 중복조회 API, 백업 완료 딥링크(photo_manager), 코드 스플리팅 재도입(lazy 실패 자동새로고침 래퍼 동반), 로그인 타임아웃 에러 문구 개선.
 
 ### (구) 앨범 보강 착수 메모
 - ①소형 UX(검색창 숨김·비우기 차단·문서)·②공용 다이얼로그(87d6ec2·8043d32) **배포 완료**.
