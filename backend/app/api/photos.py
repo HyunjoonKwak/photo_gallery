@@ -470,18 +470,26 @@ async def event_suggestions_route(
     sem = asyncio.Semaphore(6)
 
     async def place_of(ev: dict) -> None:
-        mid = ev["item_ids"][len(ev["item_ids"]) // 2]
-        if mid in _PLACE_HINT_CACHE:
-            ev["place"] = _PLACE_HINT_CACHE[mid]
-            return
-        try:
-            async with sem:
-                detail = await source.item_detail("personal", mid)
-            place = _short_place(detail.address)
-        except Exception:  # noqa: BLE001 - 힌트는 부가 정보
-            place = None
-        _PLACE_HINT_CACHE[mid] = place
-        ev["place"] = place
+        ids = ev["item_ids"]
+        # 대표 후보 3곳(중간/처음/끝) — 캐시가 낡아 죽은 id가 섞여 있어도
+        # 살아있는 샘플에서 힌트를 건진다.
+        samples = list(dict.fromkeys([ids[len(ids) // 2], ids[0], ids[-1]]))
+        for fid in samples:
+            if fid in _PLACE_HINT_CACHE:
+                if _PLACE_HINT_CACHE[fid]:
+                    ev["place"] = _PLACE_HINT_CACHE[fid]
+                    return
+                continue
+            try:
+                async with sem:
+                    detail = await source.item_detail("personal", fid)
+                place = _short_place(detail.address)
+            except Exception:  # noqa: BLE001 - 힌트는 부가 정보
+                place = None
+            _PLACE_HINT_CACHE[fid] = place
+            if place:
+                ev["place"] = place
+                return
 
     await asyncio.gather(*(place_of(e) for e in events[:place_hints]))
 

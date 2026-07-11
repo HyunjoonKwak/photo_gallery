@@ -137,10 +137,12 @@ async def _run_scan(source: PhotoSource, sqlite_path: str, space: str, job_id: i
                 item.width, item.height, item.size, sha, ph, th,
             )
 
+        live: set[str] = set()  # 이번 스캔에서 실제로 본 아이템 — 완주 시 stale 청소
         for bucket in buckets:
             if _job_status(sqlite_path, job_id) == "cancelled":
                 return
             items = await source.items(space, bucket.day)
+            live.update(it.id for it in items)
             to_hash = [it for it in items if it.id not in cached]
             processed += len(items) - len(to_hash)  # already-hashed count now
             # Process in chunks so a huge day (thousands of photos) still shows
@@ -167,6 +169,28 @@ async def _run_scan(source: PhotoSource, sqlite_path: str, space: str, job_id: i
 
         if skipped:
             logger.warning("dedup scan skipped %d unhashable photos", skipped)
+        # 완주했으므로 이번 스캔에서 못 본 행 = 이동/삭제된 낡은 캐시 → 청소.
+        # (개인→공용 대량 이동 후 옛 personal id가 남아 정리 마법사의 잡동사니/
+        # 이벤트 제안이 죽은 아이템을 가리키던 문제, 2026-07-12 실측)
+        with connect(sqlite_path) as conn:
+            stale = [
+                r["file_id"]
+                for r in conn.execute(
+                    "SELECT file_id FROM photo_cache WHERE space = ?", (space,)
+                )
+                if r["file_id"] not in live
+            ]
+            if stale:
+                conn.executemany(
+                    "DELETE FROM photo_cache WHERE file_id = ?",
+                    [(i,) for i in stale],
+                )
+                conn.commit()
+                logger.info(
+                    "dedup scan purged %d stale cache rows (space=%s)",
+                    len(stale),
+                    space,
+                )
         _update_job(sqlite_path, job_id, processed=processed, status="done")
     except Exception as exc:  # noqa: BLE001 - job boundary: persist, don't crash the app
         logger.exception("dedup scan failed (space=%s)", space)
