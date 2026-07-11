@@ -585,9 +585,19 @@ class _DsmBrowseOps:
             if v and v not in parts:
                 parts.append(str(v))
         address = " ".join(parts) or None
+        # 이벤트 이름에 붙일 도시급 라벨: 세밀한 단위 우선(town→city→…).
+        place_label = next(
+            (
+                str(raw_addr[k])
+                for k in ("town", "city", "county", "state", "country")
+                if raw_addr.get(k)
+            ),
+            None,
+        )
 
         return ItemDetail(
-            id=item_id, folder=folder_name, exif=exif, address=address
+            id=item_id, folder=folder_name, exif=exif, address=address,
+            place_label=place_label
         )
 
     async def item_folders(

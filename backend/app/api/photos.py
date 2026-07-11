@@ -483,7 +483,7 @@ async def event_suggestions_route(
             try:
                 async with sem:
                     detail = await source.item_detail("personal", fid)
-                place = _short_place(detail.address)
+                place = detail.place_label or _short_place(detail.address)
             except Exception:  # noqa: BLE001 - 힌트는 부가 정보
                 place = None
             _PLACE_HINT_CACHE[fid] = place
