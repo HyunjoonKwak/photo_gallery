@@ -278,6 +278,8 @@ class ItemDetail(BaseModel):
     # Only fields DSM actually has are included.
     exif: dict[str, str] = {}
     address: str | None = None  # geocoded shooting location
+    # 도시급 짧은 장소 라벨(town>city>county>state>country 우선) — 이벤트 힌트용.
+    place_label: str | None = None
 
 
 class ProgressResponse(BaseModel):
