@@ -616,15 +616,62 @@ async def op_create_folder(
     )
 
 
+@router.get("/download")
+async def download_original(
+    id: str,
+    space: Space = Query("team"),
+    cache_key: str = Query("", max_length=64),
+    filename: str = Query("", max_length=255),
+    source: PhotoSource = Depends(get_photo_source),
+) -> StreamingResponse:
+    """원본 파일 다운로드 — Foto Download(복사본은 cache_key의 unit) /
+    zone·homes는 FileStation Download를 그대로 프록시. 파일명은 RFC 5987
+    (filename*)로 인코딩 — 한글 파일명을 헤더에 그대로 넣으면 latin-1에서
+    깨진다(썸네일 ETag 함정과 동일 계열)."""
+    upstream = await source.video_stream(space, id, None, cache_key)
+    try:
+        from urllib.parse import quote
+
+        safe = (filename or f"photo-{id}").replace("/", "_").replace('"', "")
+        passthrough = {
+            k: v
+            for k, v in upstream.headers.items()
+            if k.lower() in ("content-type", "content-length")
+        }
+        passthrough["Content-Disposition"] = (
+            "attachment; filename*=UTF-8''" + quote(safe)
+        )
+
+        async def body():
+            try:
+                async for chunk in upstream.aiter_bytes(64 * 1024):
+                    yield chunk
+            finally:
+                await upstream.aclose()
+
+        return StreamingResponse(
+            body(),
+            status_code=upstream.status_code,
+            headers=passthrough,
+            background=BackgroundTask(upstream.aclose),
+        )
+    except Exception:
+        await upstream.aclose()
+        raise
+
+
 @router.get("/video")
 async def stream_video(
     id: str,
     request: Request,
     space: Space = Query("team"),
+    cache_key: str = Query("", max_length=64),
     source: PhotoSource = Depends(get_photo_source),
 ) -> StreamingResponse:
     """Video playback proxy — Range passthrough so <video> seeking works."""
-    upstream = await source.video_stream(space, id, request.headers.get("range"))
+    upstream = await source.video_stream(
+        space, id, request.headers.get("range"), cache_key
+    )
     # From here the upstream connection is checked out of the httpx pool; it is
     # only returned on aclose(). body()'s finally covers the normal path, but if
     # anything between here and the client consuming the stream raises/cancels

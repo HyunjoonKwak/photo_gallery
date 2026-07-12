@@ -294,10 +294,11 @@ class _FsRootMixin:
         )
 
     async def video_stream(
-        self, space: str, item_id: str, range_header: str | None
+        self, space: str, item_id: str, range_header: str | None,
+        cache_key: str = "",
     ):
         if not _is_path_id(item_id):
-            return await super().video_stream(space, item_id, range_header)
+            return await super().video_stream(space, item_id, range_header, cache_key)
         return await self._dsm.stream_binary(
             "SYNO.FileStation.Download",
             "download",

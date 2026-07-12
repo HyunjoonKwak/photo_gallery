@@ -956,7 +956,7 @@ class MockPhotoSource:
     ) -> tuple[bytes, str]:
         return _svg_thumbnail(self._resolve_item(item_id), size), "image/svg+xml"
 
-    async def video_stream(self, space: str, item_id: str, range_header):
+    async def video_stream(self, space: str, item_id: str, range_header, cache_key: str = ""):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="MOCK 모드에서는 동영상 재생을 지원하지 않습니다.",

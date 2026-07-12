@@ -429,10 +429,25 @@ function applyScope(q: URLSearchParams): void {
   else if (s.viewedOwner) q.set("target_user", s.viewedOwner);
 }
 
-export function videoUrl(space: Space, id: string): string {
+export function videoUrl(space: Space, id: string, cacheKey = ""): string {
   const q = new URLSearchParams({ space, id });
+  if (cacheKey) q.set("cache_key", cacheKey); // 복사본은 unit 해석에 필요
   applyScope(q);
   return `/api/photos/video?${q.toString()}`;
+}
+
+/** 원본 파일 다운로드 URL — 서버가 attachment 디스포지션으로 프록시. */
+export function downloadUrl(
+  space: Space,
+  id: string,
+  cacheKey = "",
+  filename = "",
+): string {
+  const q = new URLSearchParams({ space, id });
+  if (cacheKey) q.set("cache_key", cacheKey);
+  if (filename) q.set("filename", filename);
+  applyScope(q);
+  return `/api/photos/download?${q.toString()}`;
 }
 
 // 썸네일 획득 로직(백엔드)이 바뀌면 올린다 — URL이 달라져 브라우저/서비스워커의

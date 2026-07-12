@@ -213,7 +213,8 @@ class PhotoSource(Protocol):
         ...
 
     async def video_stream(
-        self, space: str, item_id: str, range_header: str | None
+        self, space: str, item_id: str, range_header: str | None,
+        cache_key: str = "",
     ):
         """Streaming response for video playback (Range passthrough).
 

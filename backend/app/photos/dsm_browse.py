@@ -1122,16 +1122,22 @@ class _DsmBrowseOps:
         )
 
     async def video_stream(
-        self, space: str, item_id: str, range_header: str | None
+        self, space: str, item_id: str, range_header: str | None,
+        cache_key: str = "",
     ):
         # SYNO.Foto(Team).Download 는 Range 요청에 206 + Content-Range 로
         # 응답한다 (실 NAS raw 확인 2026-07-03) — 시킹까지 그대로 프록시.
+        # Download도 썸네일처럼 item id가 아니라 cache_key 접두의 unit_id를
+        # 요구한다(복사본은 원본 유닛 공유 — 2026-07-12 실 NAS: item id=117,
+        # unit id=정상). cache_key가 없으면 item id로 폴백(비복사본은 동일).
+        unit = cache_key.split("_", 1)[0]
+        uid = int(unit) if unit.isdigit() else int(item_id)
         return await self._dsm.stream_binary(
             _ns(space, "SYNO.Foto.Download"),
             "download",
             version=1,
             sid=self._sid,
-            extra={"unit_id": f"[{int(item_id)}]"},
+            extra={"unit_id": f"[{uid}]"},
             range_header=range_header,
         )
 

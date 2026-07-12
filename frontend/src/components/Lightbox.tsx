@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { api, thumbnailUrl, videoUrl } from "../api/client";
+import { api, downloadUrl, thumbnailUrl, videoUrl } from "../api/client";
 import { useTimelineStore } from "../store/timeline";
 import { useFileOps } from "../hooks/useFileOps";
 import { formatBytes, formatDuration } from "../lib/dates";
@@ -218,7 +218,7 @@ export function Lightbox() {
           // key=id: stepping to another video swaps the source cleanly.
           <video
             key={item.id}
-            src={videoUrl(space, item.id)}
+            src={videoUrl(space, item.id, item.cache_key)}
             poster={thumbnailUrl(space, item.id, item.cache_key, "xl")}
             controls
             autoPlay
@@ -264,6 +264,21 @@ export function Lightbox() {
           className="absolute right-4 top-4 flex gap-2"
           onClick={(e) => e.stopPropagation()}
         >
+          <button
+            onClick={() => {
+              if (!item) return;
+              const a = document.createElement("a");
+              a.href = downloadUrl(space, item.id, item.cache_key, item.filename);
+              a.download = item.filename;
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+            }}
+            title="원본 파일 다운로드"
+            className="rounded-full bg-black/50 px-3 py-2 text-sm text-white/80 hover:bg-black/70 hover:text-white"
+          >
+            저장
+          </button>
           {canAddToAlbum && (
             <button
               onClick={() => setShowAlbum(true)}
