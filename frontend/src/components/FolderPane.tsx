@@ -10,6 +10,7 @@ import { useTimelineStore } from "../store/timeline";
 import type { FolderSort, FolderSortKey } from "../store/timeline";
 import { PhotoCell } from "./timeline/PhotoCell";
 import { VirtualRows } from "./VirtualRows";
+import { useMarqueeSelect } from "../hooks/useMarqueeSelect";
 import { SPRING_MS, folderBasename } from "./FolderTree";
 import { FolderNameAuditDialog } from "./FolderNameAuditDialog";
 import { CaptureDateDialog, type CaptureTarget } from "./CaptureDateDialog";
@@ -479,6 +480,15 @@ export function FolderPane({
     () => rows.filter((r) => r.kind === "photos"),
     [rows],
   );
+  // 마우스 러버밴드 선택(빈 공간 드래그) — 셀 좌표는 레이아웃 데이터 기반이라
+  // 가상화로 화면 밖인 사진까지 선택된다. Shift=기존 선택에 추가.
+  const marqueeGridRef = useRef<HTMLDivElement | null>(null);
+  const marquee = useMarqueeSelect({
+    scrollRef: paneScrollRef,
+    gridRef: marqueeGridRef,
+    photoRows: photoRows as never,
+    enabled: true,
+  });
   const heightOfRow = useCallback(
     (i: number) => photoRows[i]?.height ?? 0,
     [photoRows],
@@ -493,7 +503,7 @@ export function FolderPane({
       onMouseDownCapture={() => {
         if (!active) onActivate();
       }}
-      className={`flex h-full min-w-0 flex-1 flex-col overflow-y-auto transition-colors ${
+      className={`relative flex h-full min-w-0 flex-1 flex-col overflow-y-auto transition-colors ${
         bgDrop.isOver ? "bg-blue-50" : ""
       }`}
     >
@@ -748,6 +758,7 @@ export function FolderPane({
             )}
             {/* 행 단위 가상화 — 1000+장 폴더가 셀 전량(각각 dnd 훅)을
              * 마운트하며 얼던 문제 해결. 보이는 행만 마운트한다. */}
+            <div ref={marqueeGridRef}>
             <VirtualRows
               count={photoRows.length}
               heightOf={heightOfRow}
@@ -763,6 +774,7 @@ export function FolderPane({
                 );
               }}
             />
+            </div>
           </section>
         )}
 
@@ -770,6 +782,17 @@ export function FolderPane({
           <p className="py-10 text-center text-sm text-slate-400">폴더가 없습니다.</p>
         )}
         </div>
+        {marquee && (
+          <div
+            className="pointer-events-none absolute z-30 rounded border border-blue-400 bg-blue-400/10"
+            style={{
+              left: marquee.left,
+              top: marquee.top,
+              width: marquee.width,
+              height: marquee.height,
+            }}
+          />
+        )}
       </div>
       {captureOpen && captureTarget && (
         <CaptureDateDialog
