@@ -337,12 +337,18 @@ class _FsRootMixin:
         if parent_id is not None and not _is_path_id(parent_id):
             return await super().create_folder(space, name, parent_id)
         folder_path = parent_id if parent_id else self._root_path
+        # JSON 인코딩 필수: 평문이면 "2026-03-30 오사카여행"처럼 날짜/숫자로
+        # 시작하는 이름을 DSM이 수식으로 파싱해 파라미터 오류가 난다(공용
+        # create_folder·rename·검색과 동일 함정 — 2026-07-12 1차 구역 보고).
         await self._dsm.call(
             "SYNO.FileStation.CreateFolder",
             "create",
             version=2,
             sid=self._sid,
-            extra={"folder_path": folder_path, "name": name},
+            extra={
+                "folder_path": json.dumps(folder_path),
+                "name": json.dumps(name),
+            },
         )
         path = f"{folder_path.rstrip('/')}/{name}"
         return self._fs_folder({"path": path}, parent_id)
