@@ -121,7 +121,10 @@ export function useMarqueeSelect({
       const t = e.target as HTMLElement;
       // 사진(버튼)·입력·툴바/다이얼로그(data-no-boxselect)에서는 시작하지 않음
       // — 사진 위 드래그는 dnd 이동, 여기는 '빈 공간' 러버밴드 전용.
-      if (t.closest("button, input, a, [data-no-boxselect]")) return;
+      // PhotoCell 루트는 button이 아니라 div[data-photo-id](dnd 드래그 소스)
+      // — 셀 위 드래그는 이동(dnd)이므로 러버밴드를 시작하지 않는다.
+      if (t.closest("button, input, a, [data-no-boxselect], [data-photo-id]"))
+        return;
       const p = contentPoint(e);
       startX = p.x;
       startY = p.y;
