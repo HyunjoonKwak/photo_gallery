@@ -625,7 +625,12 @@ class _DsmFileOps:
             try:
                 await self._dsm.call(
                     "SYNO.FileStation.CreateFolder", "create", version=2,
-                    sid=self._sid, extra={"folder_path": parent, "name": name},
+                    sid=self._sid,
+                    # 숫자꼴 세그먼트 방어(위 create_folder와 동일 함정).
+                    extra={
+                        "folder_path": json.dumps(parent),
+                        "name": json.dumps(name),
+                    },
                 )
             except DsmError as exc:
                 # already-exists는 정상 경로. 그 외(권한/쿼터/경로)는 삼키면
@@ -659,9 +664,12 @@ class _DsmFileOps:
             _FOLDER_META.setdefault(self._sid, {})[pf.id] = (space, pf.name)
             return pf
         prefix = self._share_prefix(space)
+        # JSON 인코딩 필수: 평문이면 "2024" 같은 숫자 이름을 DSM이 수식으로
+        # 파싱해 400 (rename·검색과 동일 함정 — 2026-07-12 실 NAS 확인:
+        # 평문 2024=400, json "2024"=성공. 글자 이름은 평문도 통과해 잠복).
         await self._dsm.call(
             "SYNO.FileStation.CreateFolder", "create", version=2, sid=self._sid,
-            extra={"folder_path": prefix, "name": name},
+            extra={"folder_path": json.dumps(prefix), "name": json.dumps(name)},
         )
         invalidate_folder_cache(self._sid)
         # Re-resolve via Photos so the new folder carries a Photos folder id
