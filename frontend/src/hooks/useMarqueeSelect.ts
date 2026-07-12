@@ -42,6 +42,7 @@ export function useMarqueeSelect({
     let active = false; // 8px 임계 통과 후에만 발동(배경 클릭 보존)
     let base: Set<string> = new Set(); // Shift 시작 시점의 기존 선택
     let raf = 0;
+    let pendingRect: MarqueeRect | null = null; // rAF 미실행분 — mouseup에서 플러시
 
     const contentPoint = (e: MouseEvent) => {
       const box = sc.getBoundingClientRect();
@@ -99,7 +100,9 @@ export function useMarqueeSelect({
         height: Math.abs(p.y - startY),
       };
       cancelAnimationFrame(raf);
+      pendingRect = r;
       raf = requestAnimationFrame(() => {
+        pendingRect = null;
         setRect(r);
         const ids = hitIds(r);
         useTimelineStore
@@ -113,6 +116,15 @@ export function useMarqueeSelect({
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
       cancelAnimationFrame(raf);
+      // 빠른 드래그(플릭)는 마지막 rAF가 실행되기 전에 mouseup이 오므로,
+      // 취소만 하면 마지막 구간(짧으면 선택 전체)이 유실된다 — 여기서 플러시.
+      if (pendingRect) {
+        const ids = hitIds(pendingRect);
+        useTimelineStore
+          .getState()
+          .replaceSelection([...new Set([...base, ...ids])]);
+        pendingRect = null;
+      }
       setRect(null);
     };
 
