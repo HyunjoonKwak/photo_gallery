@@ -14,14 +14,22 @@ export function Modal({
   onClose: () => void;
 }) {
   const boxRef = useRef<HTMLDivElement | null>(null);
+  // onClose는 렌더마다 새 함수 — deps에 넣으면 키 입력(재렌더)마다 effect가
+  // 재실행돼 box.focus()가 입력창의 포커스를 강탈했다(2026-07-12 보고: 새 폴더
+  // 이름이 한 글자마다 끊김). 마운트 1회만 실행하고 최신 onClose는 ref로.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") onCloseRef.current();
     };
     window.addEventListener("keydown", onKey);
-    boxRef.current?.focus();
+    // 내부(입력창 autoFocus)가 이미 포커스를 가졌으면 뺏지 않는다.
+    if (!boxRef.current?.contains(document.activeElement)) {
+      boxRef.current?.focus();
+    }
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, []);
   return (
     <div
       data-no-boxselect

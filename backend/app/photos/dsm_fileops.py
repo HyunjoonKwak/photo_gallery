@@ -642,15 +642,24 @@ class _DsmFileOps:
     async def create_folder(
         self, space: str, name: str, parent_id: str | None = None
     ) -> PhotoFolder:
-        if parent_id is not None:
-            # 하위 폴더 생성: Browse.Folder create + target_id — 실 NAS raw
-            # 검증(2026-07-03). Foto id를 즉시 돌려줘 재탐색이 필요 없다.
+        target_id = parent_id
+        if target_id is None:
+            # 최상위 생성도 Foto API로 통일: FileStation 경유는 Photos가 재색인
+            # 할 때까지 폴더 목록(Foto 인덱스)에 안 나타나 "생성됐다는데 안
+            # 보임"이 됐다(2026-07-12 보고). 루트 폴더 id는 최상위 폴더들의
+            # parent — 실 NAS: 팀 1, 개인 2. 목록이 비면 FileStation 폴백.
+            kids = await self._list_children(space, 0)
+            if kids:
+                target_id = str(kids[0]["parent"])
+        if target_id is not None:
+            # 하위/최상위 폴더 생성: Browse.Folder create + target_id — 실 NAS
+            # raw 검증(2026-07-03·07-12). Foto id를 즉시 돌려줘 재탐색이 없다.
             data = await self._dsm.call(
                 _ns(space, "SYNO.Foto.Browse.Folder"),
                 "create",
                 version=1,
                 sid=self._sid,
-                extra={"target_id": int(parent_id), "name": json.dumps(name)},
+                extra={"target_id": int(target_id), "name": json.dumps(name)},
             )
             folder = data.get("folder") or {}
             invalidate_folder_cache(self._sid)
