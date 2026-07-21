@@ -79,6 +79,7 @@
 - [x] 다음/이전 이미지 프리페치
 - [x] 라이트박스 내 "폴더로 이동" 버튼 — 삭제·이동(FolderPickerDialog) 버튼 구현됨
 - [x] **정보 패널 상세화** (2026-07-02) — 기존엔 목록 필드만 표시(DSM 목록은 `folder=None` 하드코딩이라 폴더가 항상 "미지정", EXIF는 요청 자체 안 함). `GET /api/photos/item-detail`(Browse.Item `get` + additional exif/folder/address/gps, **패널 열릴 때만 온디맨드** 조회 — 목록 API는 가볍게 유지) 추가로 폴더 전체 경로 + 촬영 정보(카메라/렌즈/조리개/셔터/ISO/초점거리) + 위치(지오코딩 주소) 표시. **실 NAS 검증 완료(2026-07-02)**: 양 공간 폴더 경로·EXIF·주소 정상. **발견·수정**: DSM `additional.folder`는 dict가 아니라 경로 **문자열**로 옴(DSM 세션 raw 진단으로 확정) — dict/문자열 겸용 파싱 필요. 진단 부산물: DSM 웹 세션의 entry.cgi 호출은 SynoToken 없이는 success+빈 응답을 주므로 주의
+- [x] **로컬 저장 위치 선택** (2026-07-21, 사용자 요청) — "저장" 버튼이 지원 브라우저(Chrome/Edge 데스크톱)에선 `showSaveFilePicker`(File System Access API)로 저장 위치·파일명 선택 후 `res.body.pipeTo(writable)` **스트리밍 저장**(큰 동영상도 메모리 무부담) + 완료/실패 토스트, 취소(AbortError)는 무음. 미지원(모바일 Chrome/Safari/Firefox)은 기존 앵커 다운로드 폴백(버튼 title로 구분 안내; Android는 Chrome "다운로드 위치 확인" 설정으로 매번 선택 가능). 유틸 `lib/saveFile.ts` 분리. 주의: showSaveFilePicker는 transient activation(클릭 제스처 내 호출) 필수, lib.dom에 타입이 없어 Window 선언 보강
 
 ### B-6. Undo / 확인 / 진행률 (NN/g + Gmail)
 - [x] 가역 작업(이동/휴지통행 삭제)은 **확인 팝업 없이 Undo 토스트** ([NN/g Confirmation Dialogs](https://www.nngroup.com/articles/confirmation-dialog/)) — 이동/복사/삭제/폴더생성 전부 즉시 실행 + "되돌리기" 액션 토스트

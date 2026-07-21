@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, downloadUrl, thumbnailUrl, videoUrl } from "../api/client";
 import { useTimelineStore } from "../store/timeline";
+import { useToastStore } from "../store/toast";
 import { useFileOps } from "../hooks/useFileOps";
 import { formatBytes, formatDuration } from "../lib/dates";
+import { canPickSaveLocation, saveLocal } from "../lib/saveFile";
 import { FolderPickerDialog } from "./timeline/FolderPickerDialog";
 import { AlbumPickerDialog } from "./timeline/AlbumPickerDialog";
 
@@ -44,6 +46,7 @@ export function Lightbox() {
   const [showHelp, setShowHelp] = useState(false);
   const [showMove, setShowMove] = useState(false);
   const [showAlbum, setShowAlbum] = useState(false);
+  const [saving, setSaving] = useState(false);
   // 앨범 담기는 감상 중에도 허용(발견→담기 흐름). 1차 구역·타인 열람은 제외
   // (선택 액션바의 canAddToAlbum과 동일 조건).
   const canAddToAlbum = useTimelineStore(
@@ -59,6 +62,27 @@ export function Lightbox() {
     staleTime: 5 * 60_000,
   });
   const detail = detailQuery.data;
+
+  // 원본 로컬 저장 — 위치 선택 지원 브라우저는 다이얼로그, 그 외는 기본
+  // 다운로드 폴더. 저장 중에도 사진 넘김은 자유(클릭 시점 항목 기준).
+  const saveCurrent = async () => {
+    if (!item || saving) return;
+    const { filename } = item;
+    const url = downloadUrl(space, item.id, item.cache_key, filename);
+    setSaving(true);
+    try {
+      const outcome = await saveLocal(url, filename);
+      if (outcome === "saved")
+        useToastStore.getState().push(`${filename} 저장 완료`);
+    } catch (error) {
+      console.error("로컬 저장 실패:", error);
+      useToastStore
+        .getState()
+        .push("저장에 실패했습니다 — 네트워크 상태를 확인하고 다시 시도하세요.");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const deleteAndAdvance = () => {
     const s = useTimelineStore.getState();
@@ -265,19 +289,16 @@ export function Lightbox() {
           onClick={(e) => e.stopPropagation()}
         >
           <button
-            onClick={() => {
-              if (!item) return;
-              const a = document.createElement("a");
-              a.href = downloadUrl(space, item.id, item.cache_key, item.filename);
-              a.download = item.filename;
-              document.body.appendChild(a);
-              a.click();
-              a.remove();
-            }}
-            title="원본 파일 다운로드"
-            className="rounded-full bg-black/50 px-3 py-2 text-sm text-white/80 hover:bg-black/70 hover:text-white"
+            onClick={saveCurrent}
+            disabled={saving}
+            title={
+              canPickSaveLocation()
+                ? "원본 파일 저장 — 저장 위치 선택"
+                : "원본 파일 저장 — 브라우저 다운로드 폴더"
+            }
+            className="rounded-full bg-black/50 px-3 py-2 text-sm text-white/80 hover:bg-black/70 hover:text-white disabled:opacity-50"
           >
-            저장
+            {saving ? "저장 중…" : "저장"}
           </button>
           {canAddToAlbum && (
             <button
