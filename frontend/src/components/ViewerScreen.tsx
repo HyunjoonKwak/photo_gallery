@@ -44,10 +44,19 @@ function TimelineLens() {
         불러오는 중…
       </div>
     );
+  // 빈 상태에 다음 행동 안내(IA 4단계) — 앱이 스스로 개념을 설명한다.
   if (buckets.length === 0)
     return (
-      <div className="flex h-full items-center justify-center text-slate-400">
-        표시할 사진이 없습니다.
+      <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-slate-400">
+        <p className="text-3xl">🖼</p>
+        <p className="text-sm font-medium text-slate-500">
+          {space === "team" ? "가족 사진이 아직 없어요" : "아직 사진이 없어요"}
+        </p>
+        <p className="max-w-xs text-xs leading-relaxed">
+          {space === "team"
+            ? "정리 화면에서 사진을 골라 “가족에 복사”하면 온 가족이 여기서 함께 봐요."
+            : "휴대폰으로 백업한 사진은 왼쪽 위 라이브러리 메뉴의 “기기 백업”에서 골라 내 사진으로 옮겨요."}
+        </p>
       </div>
     );
   if (zoom === "year")

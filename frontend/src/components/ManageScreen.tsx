@@ -5,30 +5,43 @@ import { OrganizeView } from "./organize/OrganizeView";
 import { SearchView } from "./SearchView";
 import { FolderPanel } from "./FolderPanel";
 
-/** 폴더 분류(정리) 영역 — 우리 앱의 특색. 폴더 이동/복사/삭제 + 중복 정리 +
- * (헤더 검색으로 진입하는) 검색 결과. 공용/내사진/1차백업/타인 라이브러리를
- * 모두 여기서 다룬다. DnD·선택 액션바는 상위(TimelineScreen)가 소유. */
-const MANAGE_TABS: { tab: ManageTab; label: string; icon: string }[] = [
+/** 정리 영역 — 우리 앱의 특색. 폴더 이동/복사/삭제 + 정리 도우미(마법사) +
+ * 중복 정리 + (헤더 검색으로 진입하는) 검색 결과. 가족/내사진/기기백업/타인
+ * 라이브러리를 모두 여기서 다룬다. DnD·선택 액션바는 상위(TimelineScreen) 소유.
+ * 탭 순서 = 위계(IA 4단계): 도우미가 대표 정리 흐름, 중복 정리는 고급 도구. */
+const MANAGE_TABS: {
+  tab: ManageTab;
+  label: string;
+  icon: string;
+  hint?: string;
+}[] = [
   { tab: "folders", label: "폴더", icon: "📁" },
-  { tab: "dedup", label: "중복 정리", icon: "🔁" },
   { tab: "junk", label: "정리 도우미", icon: "✨" },
+  {
+    tab: "dedup",
+    label: "중복 정리",
+    icon: "🔁",
+    hint: "중복 사진만 따로 정리 — 정리 도우미 1단계와 같은 기능(가족 공간도 지원)",
+  },
 ];
 
 export function ManageScreen() {
   const manageTab = useTimelineStore((s) => s.manageTab);
   const setManageTab = useTimelineStore((s) => s.setManageTab);
   const space = useTimelineStore((s) => s.space);
+  const searchQuery = useTimelineStore((s) => s.searchQuery);
 
   return (
     <div className="flex h-full flex-col">
       <div
         data-no-boxselect
-        className="flex shrink-0 items-center gap-1 border-b border-slate-200 bg-white px-3 py-1.5 sm:px-4"
+        className="flex shrink-0 flex-wrap items-center gap-1 border-b border-slate-200 bg-white px-3 py-1.5 sm:px-4"
       >
         {MANAGE_TABS.map((t) => (
           <button
             key={t.tab}
             onClick={() => setManageTab(t.tab)}
+            title={t.hint}
             className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors sm:text-sm ${
               manageTab === t.tab
                 ? "bg-slate-800 text-white"
@@ -39,9 +52,18 @@ export function ManageScreen() {
             {t.label}
           </button>
         ))}
+        {/* 검색 결과 컨텍스트 칩(IA 4단계) — 어디서 왔는지 보여주고, ✕로
+         * 원래 화면 복귀(runSearch가 withNav라 history.back이 정확히 복귀). */}
         {manageTab === "search" && (
-          <span className="ml-1 rounded-lg bg-blue-50 px-2 py-1 text-xs text-blue-600">
-            🔍 검색 결과
+          <span className="ml-1 flex items-center gap-1.5 rounded-lg bg-blue-50 px-2 py-1 text-xs text-blue-600">
+            🔍 “{searchQuery}” 검색 결과
+            <button
+              onClick={() => history.back()}
+              title="검색을 닫고 이전 화면으로"
+              className="rounded-full px-1 font-bold text-blue-400 hover:bg-blue-100 hover:text-blue-600"
+            >
+              ✕
+            </button>
           </span>
         )}
       </div>

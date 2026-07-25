@@ -355,6 +355,62 @@ function ZoneBanner() {
   );
 }
 
+/** 첫 로그인 1회 안내(IA 4단계) — 2축 구조(무엇을 × 어떻게)와 되돌리기
+ * 안전망을 한 장으로. 확인하면 다시 안 뜬다(localStorage). */
+function FirstRunTip() {
+  const [seen, setSeen] = useState(() => {
+    try {
+      return localStorage.getItem("nasphoto.firstRunSeen") === "1";
+    } catch {
+      return true; // private mode 등 — 안내 없이 진행
+    }
+  });
+  if (seen) return null;
+  const dismiss = () => {
+    try {
+      localStorage.setItem("nasphoto.firstRunSeen", "1");
+    } catch {
+      // ignore
+    }
+    setSeen(true);
+  };
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={dismiss}
+    >
+      <div
+        className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="mb-3 text-base font-bold text-slate-800">
+          처음 오셨나요? 세 가지만 기억하세요
+        </h3>
+        <ul className="space-y-2.5 text-sm leading-relaxed text-slate-600">
+          <li>
+            📚 <b>왼쪽 위 메뉴</b>에서 <b>무엇을 볼지</b> 골라요 — 가족 사진 ·
+            내 사진 · 기기 백업(휴대폰 백업).
+          </li>
+          <li>
+            🖼 <b>탭</b>에서 <b>어떻게 볼지</b> 골라요 — 사진(감상) · 앨범 ·
+            정리(이동/삭제) · 더보기.
+          </li>
+          <li>
+            ↩️ 실수해도 괜찮아요 — 삭제·이동은 전부 <b>되돌리기</b>가 돼요
+            (더보기 → 휴지통·작업 기록).
+          </li>
+        </ul>
+        <button
+          onClick={dismiss}
+          className="mt-4 w-full rounded-xl bg-blue-600 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+        >
+          시작하기
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const { user, setUser } = useAuthStore();
 
@@ -414,6 +470,7 @@ export default function App() {
 
       <ImpersonationBanner />
       <ZoneBanner />
+      <FirstRunTip />
 
       {/* pb-14: 모바일 하단 탭 바 높이만큼 콘텐츠 영역 확보 */}
       <div className="min-h-0 flex-1 pb-14 md:pb-0">
