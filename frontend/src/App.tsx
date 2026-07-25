@@ -47,27 +47,34 @@ export const SECTIONS: { section: Section; label: string; icon: string }[] = [
   { section: "more", label: "더보기", icon: "⋯" },
 ];
 
-/** 주 메뉴: 4영역 전환. 모바일은 하단 탭 바가 대신하므로 md 이상에서만 표시. */
+/** 주 메뉴: 4영역 전환 — 헤더 2줄 구조(A안)의 아래 줄, 언더라인 탭.
+ * 위 줄의 라이브러리 셀렉터(무엇을)와 시각 언어를 분리해 "다섯 번째 탭"으로
+ * 오독되지 않게 한다. 모바일은 하단 탭 바가 대신하므로 md 이상에서만 표시. */
 function SectionToggle() {
   const section = useTimelineStore((s) => s.section);
   const setSection = useTimelineStore((s) => s.setSection);
   return (
-    <nav className="hidden shrink-0 gap-0.5 sm:gap-1 md:flex">
-      {SECTIONS.map((v) => (
-        <button
-          key={v.section}
-          onClick={() => setSection(v.section)}
-          title={v.label}
-          className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-2 py-1.5 text-sm font-medium transition-colors sm:px-3 ${
-            section === v.section
-              ? "bg-slate-800 text-white"
-              : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-          }`}
-        >
-          <span className="text-base leading-none">{v.icon}</span>
-          <span className="hidden md:inline">{v.label}</span>
-        </button>
-      ))}
+    <nav className="hidden gap-1 px-2 sm:px-4 md:flex">
+      {SECTIONS.map((v) => {
+        const active = section === v.section;
+        return (
+          <button
+            key={v.section}
+            onClick={() => setSection(v.section)}
+            className={`relative flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 pb-2 pt-1.5 text-sm transition-colors ${
+              active
+                ? "font-bold text-blue-700"
+                : "font-medium text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            <span className="text-base leading-none">{v.icon}</span>
+            {v.label}
+            {active && (
+              <span className="absolute inset-x-2.5 bottom-0 h-[3px] rounded-t-full bg-blue-700" />
+            )}
+          </button>
+        );
+      })}
     </nav>
   );
 }
@@ -186,7 +193,7 @@ function LibrarySelector({ account, isAdmin }: { account: string; isAdmin: boole
     return (
       <div
         title="앨범은 내 사진 전용입니다"
-        className="flex shrink-0 cursor-default items-center gap-1.5 whitespace-nowrap rounded-xl bg-slate-100 px-3 py-1.5 text-sm font-semibold text-slate-500"
+        className="flex shrink-0 cursor-default items-center gap-1.5 whitespace-nowrap px-2.5 py-1 text-base font-extrabold text-slate-400"
       >
         👤 내 사진
       </div>
@@ -195,14 +202,16 @@ function LibrarySelector({ account, isAdmin }: { account: string; isAdmin: boole
 
   return (
     <div className="relative shrink-0">
+      {/* A안: 기본 상태는 제목 스타일(배경 없음) — 탭과 다른 시각 언어.
+       * 기기 백업(인디고)/타인(주황)은 상태 신호가 우선이라 색 필 유지. */}
       <button
         onClick={() => setOpen((v) => !v)}
-        className={`relative flex items-center gap-1.5 whitespace-nowrap rounded-xl px-3 py-1.5 text-sm font-semibold transition-colors ${
+        className={`relative flex items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 py-1 text-base font-extrabold transition-colors ${
           activeZone
             ? "bg-indigo-600 text-white hover:bg-indigo-700"
             : viewedOwner
               ? "bg-amber-500 text-white hover:bg-amber-600"
-              : "bg-slate-100 text-slate-800 hover:bg-slate-200"
+              : "text-slate-900 hover:bg-slate-100"
         }`}
       >
         {label}
@@ -450,24 +459,25 @@ export default function App() {
         data-no-boxselect
         className="shrink-0 border-b border-slate-200 bg-white"
       >
-        {/* flex-wrap: 좁은 화면에서 두 줄로 자연 배치 (가로 스크롤 금지) */}
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-2 py-2 sm:px-4">
+        {/* 헤더 2줄 구조(A안): 1줄 = 무엇을 보는지(라이브러리 제목 + 검색),
+         * 2줄 = 무엇을 하는지(언더라인 탭, md 이상 — 모바일은 하단 탭 바).
+         * 계정·작업 기록·DSM 정보·빌드 진단·로그아웃은 전부 "더보기" 소관. */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-2 pt-2 pb-2 sm:px-4 md:pb-1">
           <h1 className="hidden text-sm font-bold text-slate-800 lg:block">
             NAS 사진 정리
           </h1>
           <div className="hidden h-6 w-px bg-slate-200 lg:block" aria-hidden />
           <LibrarySelector account={user.account} isAdmin={user.role === "admin"} />
-          <div className="hidden h-6 w-px bg-slate-200 sm:block" aria-hidden />
-          <SectionToggle />
-          <SearchBox />
-          {/* 계정·작업 기록·DSM 정보·빌드 진단·로그아웃은 전부 "더보기"로
-           * 이사(IA 개편 2단계 — 헤더 다이어트). MOCK만 안전 신호로 상주. */}
-          {user.mock_mode && (
-            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
-              MOCK
-            </span>
-          )}
+          <div className="ml-auto flex shrink-0 items-center gap-2">
+            <SearchBox />
+            {user.mock_mode && (
+              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
+                MOCK
+              </span>
+            )}
+          </div>
         </div>
+        <SectionToggle />
       </header>
 
       <ImpersonationBanner />
