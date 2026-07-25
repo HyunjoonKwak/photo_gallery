@@ -484,7 +484,10 @@ export default function App() {
          * 2줄 = 무엇을 하는지(언더라인 탭, md 이상 — 모바일은 하단 탭 바).
          * 계정·작업 기록·DSM 정보·빌드 진단·로그아웃은 전부 "더보기" 소관. */}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-2 pt-2 pb-2 sm:px-4 md:pb-1">
-          <h1 className="hidden text-sm font-bold text-slate-800 lg:block">
+          <h1 className="hidden items-center gap-2 text-lg font-extrabold tracking-tight text-slate-800 lg:flex">
+            <span aria-hidden className="text-xl leading-none">
+              📷
+            </span>
             우리집 사진관
           </h1>
           <div className="hidden h-6 w-px bg-slate-200 lg:block" aria-hidden />

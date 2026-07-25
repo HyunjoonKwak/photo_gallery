@@ -30,7 +30,9 @@ export function LoginForm() {
         className="w-full max-w-sm bg-white rounded-2xl shadow p-6 space-y-4"
       >
         <div>
-          <h1 className="text-xl font-semibold text-slate-800">📚 우리집 사진관</h1>
+          <h1 className="text-2xl font-extrabold tracking-tight text-slate-800">
+            📷 우리집 사진관
+          </h1>
           <p className="text-sm text-slate-500 mt-1">
             DSM 계정으로 로그인하세요.
           </p>
