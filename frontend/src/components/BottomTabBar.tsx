@@ -4,6 +4,7 @@ const TABS: { section: Section; label: string; icon: string }[] = [
   { section: "viewer", label: "사진", icon: "🖼" },
   { section: "albums", label: "앨범", icon: "📔" },
   { section: "manage", label: "정리", icon: "🗂" },
+  { section: "more", label: "더보기", icon: "⋯" },
 ];
 
 /** Mobile-only bottom tab bar (사진앱 표준): 3영역 전환을 엄지가 닿는 하단에.

@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import {
-  useMutation,
   useQuery,
   useQueryClient,
   type QueryClient,
@@ -8,7 +7,7 @@ import {
 import { api } from "./api/client";
 import type { Space } from "./api/types";
 import { useAuthStore } from "./store/auth";
-import { selectBackDepth, useTimelineStore, type Section } from "./store/timeline";
+import { useTimelineStore, type Section } from "./store/timeline";
 import { useBackTrap } from "./hooks/useBackTrap";
 import { LoginForm } from "./components/LoginForm";
 
@@ -29,9 +28,7 @@ function dropScopedQueries(qc: QueryClient) {
     predicate: (q) => !SCOPE_FREE_KEYS.has(String(q.queryKey[0])),
   });
 }
-import { ApiInfoPanel } from "./components/ApiInfoPanel";
 import { TimelineScreen } from "./components/TimelineScreen";
-import { OperationsPanel } from "./components/OperationsPanel";
 import { BottomTabBar } from "./components/BottomTabBar";
 import { BulkProgress } from "./components/BulkProgress";
 import { Toasts } from "./components/Toasts";
@@ -39,16 +36,17 @@ import { PwaUpdater } from "./components/PwaUpdater";
 import { NavControls } from "./components/NavControls";
 import { ConflictDialogHost } from "./components/ConflictDialog";
 import { AskDialogHost } from "./components/Dialog";
-import { ZoneManager } from "./components/ZoneManager";
 
-// 상위 3영역 — 주 메뉴. 감상(사진/앨범)과 정리(폴더 분류)를 가른다.
+// 주 메뉴 4영역 — 감상(사진/앨범)·정리·더보기(관리 허브). 데스크톱 토글과
+// 모바일 하단 탭이 같은 목록을 쓴다(IA 개편 2단계).
 export const SECTIONS: { section: Section; label: string; icon: string }[] = [
   { section: "viewer", label: "사진", icon: "🖼" },
   { section: "albums", label: "앨범", icon: "📔" },
   { section: "manage", label: "정리", icon: "🗂" },
+  { section: "more", label: "더보기", icon: "⋯" },
 ];
 
-/** 주 메뉴: 3영역 전환. 모바일은 하단 탭 바가 대신하므로 md 이상에서만 표시. */
+/** 주 메뉴: 4영역 전환. 모바일은 하단 탭 바가 대신하므로 md 이상에서만 표시. */
 function SectionToggle() {
   const section = useTimelineStore((s) => s.section);
   const setSection = useTimelineStore((s) => s.setSection);
@@ -114,12 +112,11 @@ function LibrarySelector({ account, isAdmin }: { account: string; isAdmin: boole
   const space = useTimelineStore((s) => s.space);
   const viewedOwner = useTimelineStore((s) => s.viewedOwner);
   const activeZone = useTimelineStore((s) => s.activeZone);
-  // 타인/1차 구역은 폴더 분류(정리)에서만 — 감상 영역엔 공용/내사진만.
+  // 타인/기기 백업은 정리에서만 — 감상 영역엔 가족/내사진만.
   const section = useTimelineStore((s) => s.section);
   const selectLibrary = useTimelineStore((s) => s.selectLibrary);
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [manageOpen, setManageOpen] = useState(false);
   const membersQuery = useQuery({
     queryKey: ["members"],
     queryFn: api.members,
@@ -235,7 +232,7 @@ function LibrarySelector({ account, isAdmin }: { account: string; isAdmin: boole
                 ))}
               </>
             )}
-            {section === "manage" && (
+            {section === "manage" && zones.length > 0 && (
               <>
                 <p className="px-3 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
                   기기 백업
@@ -260,21 +257,11 @@ function LibrarySelector({ account, isAdmin }: { account: string; isAdmin: boole
                     )}
                   </button>
                 ))}
-                <button
-                  onClick={() => {
-                    setOpen(false);
-                    setManageOpen(true);
-                  }}
-                  className="mt-0.5 flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-xs text-indigo-600 hover:bg-indigo-50"
-                >
-                  ⚙️ 구역 관리…
-                </button>
               </>
             )}
           </div>
         </>
       )}
-      {manageOpen && <ZoneManager onClose={() => setManageOpen(false)} />}
     </div>
   );
 }
@@ -334,76 +321,8 @@ function ZoneBanner() {
   );
 }
 
-/** 빌드 표식 + 뒤로가기 트랩 진단. 탭하면 현재 history 길이·센티넬 유무·
- * 스토어 뒤로가기 상태를 보여줘, 실기기에서 트랩이 왜 안 걸리는지 파악한다. */
-function BuildBadge() {
-  const [diag, setDiag] = useState<string | null>(null);
-  const read = () => {
-    const s = useTimelineStore.getState();
-    const sentinel = Boolean(
-      (history.state as { __nav?: boolean } | null)?.__nav,
-    );
-    let log: string[] = [];
-    try {
-      log = JSON.parse(localStorage.getItem("nav.dbg") || "[]") as string[];
-    } catch {
-      // ignore
-    }
-    setDiag(
-      `build ${__BUILD_ID__}\n` +
-        `history.length=${history.length}\n` +
-        `sentinel=${sentinel}\n` +
-        `backDepth=${selectBackDepth(s)}\n` +
-        `navHistory=${s._navHistory.length} screen=${s.screenBackDepth}\n` +
-        `standalone=${window.matchMedia("(display-mode: standalone)").matches}\n` +
-        `── 이벤트 로그 ──\n` +
-        (log.slice(-12).join("\n") || "(없음)"),
-    );
-  };
-  return (
-    <>
-      <button
-        onClick={() => (diag ? setDiag(null) : read())}
-        title="빌드 버전 · 탭하면 뒤로가기 진단"
-        className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-400"
-      >
-        {__BUILD_ID__}
-      </button>
-      {diag && (
-        <div className="fixed inset-x-3 bottom-24 z-[60] mx-auto max-w-xs rounded-xl bg-slate-900/95 px-4 py-3 font-mono text-xs text-slate-100 shadow-xl">
-          <div className="whitespace-pre-wrap text-left">{diag}</div>
-          <div className="mt-2 flex justify-center gap-2">
-            <button
-              onClick={() => {
-                try {
-                  localStorage.removeItem("nav.dbg");
-                } catch {
-                  // ignore
-                }
-                setDiag(null);
-              }}
-              className="rounded bg-slate-700 px-2 py-1 text-[11px] text-slate-200"
-            >
-              로그 지우기
-            </button>
-            <button
-              onClick={() => setDiag(null)}
-              className="rounded bg-slate-700 px-2 py-1 text-[11px] text-slate-200"
-            >
-              닫기
-            </button>
-          </div>
-        </div>
-      )}
-    </>
-  );
-}
-
 export default function App() {
   const { user, setUser } = useAuthStore();
-  const queryClient = useQueryClient();
-  const [showApiInfo, setShowApiInfo] = useState(false);
-  const [showOps, setShowOps] = useState(false);
 
   // 뒤로가기 트랩 — 로그인/세션 확인 게이팅보다 먼저(조기 반환 위) 걸어야
   // 앱을 열자마자 누른 첫 뒤로가기도 종료 확인이 동작한다.
@@ -420,14 +339,6 @@ export default function App() {
     if (meQuery.isSuccess) setUser(meQuery.data);
     if (meQuery.isError) setUser(null);
   }, [meQuery.isSuccess, meQuery.isError, meQuery.data, setUser]);
-
-  const logout = useMutation({
-    mutationFn: api.logout,
-    onSettled: () => {
-      setUser(null);
-      queryClient.clear();
-    },
-  });
 
   if (meQuery.isPending) {
     return (
@@ -457,55 +368,14 @@ export default function App() {
           <div className="hidden h-6 w-px bg-slate-200 sm:block" aria-hidden />
           <SectionToggle />
           <SearchBox />
+          {/* 계정·작업 기록·DSM 정보·빌드 진단·로그아웃은 전부 "더보기"로
+           * 이사(IA 개편 2단계 — 헤더 다이어트). MOCK만 안전 신호로 상주. */}
           {user.mock_mode && (
             <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
               MOCK
             </span>
           )}
-          {/* 빌드 표식 — 기기가 최신 코드를 받았는지 즉시 확인(캐시 진단).
-           * 탭하면 뒤로가기 트랩 진단(히스토리/센티넬 상태)을 보여준다. */}
-          <BuildBadge />
-          <div className="ml-auto flex shrink-0 items-center gap-2 text-sm sm:gap-3">
-            <button
-              onClick={() => setShowOps((v) => !v)}
-              className={`whitespace-nowrap rounded-lg px-2 py-1 text-xs ${
-                showOps
-                  ? "bg-slate-200 text-slate-700"
-                  : "text-slate-500 hover:text-slate-700"
-              }`}
-            >
-              작업 기록
-            </button>
-            <button
-              onClick={() => setShowApiInfo((v) => !v)}
-              title="DSM API 연결 정보"
-              className={`hidden whitespace-nowrap rounded-lg px-2 py-1 text-xs lg:block ${
-                showApiInfo
-                  ? "bg-slate-200 text-slate-700"
-                  : "text-slate-400 hover:text-slate-600"
-              }`}
-            >
-              DSM 정보
-            </button>
-            <span className="hidden text-slate-600 md:inline">
-              {user.account}
-              <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">
-                {user.role === "admin" ? "관리자" : "일반"}
-              </span>
-            </span>
-            <button
-              onClick={() => logout.mutate()}
-              className="whitespace-nowrap rounded-lg border border-slate-300 bg-white px-2 py-1 text-slate-700 hover:bg-slate-50 sm:px-3"
-            >
-              로그아웃
-            </button>
-          </div>
         </div>
-        {showApiInfo && (
-          <div className="max-h-72 overflow-auto border-t border-slate-100 px-4 py-3">
-            <ApiInfoPanel />
-          </div>
-        )}
       </header>
 
       <ImpersonationBanner />
@@ -516,7 +386,6 @@ export default function App() {
         <TimelineScreen />
       </div>
       <BottomTabBar />
-      {showOps && <OperationsPanel onClose={() => setShowOps(false)} />}
       <BulkProgress />
       <Toasts />
       <ConflictDialogHost />

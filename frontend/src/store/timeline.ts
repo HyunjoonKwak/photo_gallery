@@ -23,7 +23,7 @@ function rangeIds(orderedIds: string[], a: string, b: string): string[] {
 }
 
 /** 상위 3영역: 사진 뷰어(감상·모든 렌즈) / 앨범(사용자 큐레이션) / 폴더 분류(정리). */
-export type Section = "viewer" | "albums" | "manage";
+export type Section = "viewer" | "albums" | "manage" | "more";
 /** 사진 뷰어 렌즈(감상 축) — 타임라인/폴더/사람/장소/비디오. AI 자동 그룹
  * (사람·장소·비디오)은 "앨범"이 아니라 감상 렌즈라 뷰어 아래로 편입한다.
  * "앨범"은 사용자가 만드는 큐레이션 전용. */
@@ -278,8 +278,9 @@ export const useTimelineStore = create<TimelineState>()((set, get) => ({
     set((s) => (s.space === space ? {} : withNav(s, { space, ...resetView() }))),
 
   section: "viewer",
-  // 타인/1차 구역은 폴더 분류에서만 표현 가능 → 다른 영역으로 갈 땐 자기
-  // 라이브러리로 스냅백(공용/개인)하고 감상 상태를 초기화한다.
+  // 타인/기기 백업은 정리에서만 표현 가능 → 감상 영역으로 갈 땐 자기
+  // 라이브러리로 스냅백(가족/개인)하고 감상 상태를 초기화한다.
+  // 더보기는 사진 화면이 아니라 스냅백 없이 통과(휴지통 확인 후 복귀 가능).
   setSection: (section) =>
     set((s) =>
       section === s.section
@@ -291,7 +292,9 @@ export const useTimelineStore = create<TimelineState>()((set, get) => ({
             zoom: "year",
             groupId: null,
             groupLabel: null,
-            ...(section !== "manage" && (s.viewedOwner || s.activeZone)
+            ...(section !== "manage" &&
+            section !== "more" &&
+            (s.viewedOwner || s.activeZone)
               ? { viewedOwner: null, activeZone: null }
               : {}),
             ...resetView(),

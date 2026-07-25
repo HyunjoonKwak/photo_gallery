@@ -16,6 +16,7 @@ import { useFileOps } from "../hooks/useFileOps";
 import { ViewerScreen } from "./ViewerScreen";
 import { AlbumsScreen } from "./AlbumsScreen";
 import { ManageScreen } from "./ManageScreen";
+import { MoreScreen } from "./MoreScreen";
 import { Lightbox } from "./Lightbox";
 import { DragOverlayContent } from "./timeline/DragOverlayContent";
 import { SelectionActionBar } from "./timeline/SelectionActionBar";
@@ -119,10 +120,11 @@ export function TimelineScreen() {
           setOverFolder(false);
         }}
       >
-        {/* 사진·앨범 = 순수 뷰어, 폴더 분류 = 정리(DnD/액션바). */}
+        {/* 사진·앨범 = 순수 뷰어, 정리 = 파일 작업(DnD/액션바), 더보기 = 허브. */}
         {section === "viewer" && <ViewerScreen key={space} />}
         {section === "albums" && <AlbumsScreen key={space} />}
         {section === "manage" && <ManageScreen />}
+        {section === "more" && <MoreScreen />}
         <DragOverlay dropAnimation={null}>
           {dragIds && (
             <DragOverlayContent

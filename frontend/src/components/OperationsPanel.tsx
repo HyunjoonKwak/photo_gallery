@@ -76,12 +76,19 @@ function EmptyTrashConfirm({
  * This is the safety net after the undo toast disappears (IMPROVEMENTS B-6).
  * Also hosts 휴지통 비우기 (admin-only — it kills everyone's delete undos).
  */
-export function OperationsPanel({ onClose }: { onClose: () => void }) {
+export function OperationsPanel({
+  onClose,
+  initialTrashOpen = false,
+}: {
+  onClose: () => void;
+  /** true면 휴지통 브라우저가 펼쳐진 채 열린다 — 더보기의 "휴지통" 진입용. */
+  initialTrashOpen?: boolean;
+}) {
   const ops = useFileOps();
   const user = useAuthStore((s) => s.user);
   const queryClient = useQueryClient();
   const [confirming, setConfirming] = useState(false);
-  const [trashOpen, setTrashOpen] = useState(false);
+  const [trashOpen, setTrashOpen] = useState(initialTrashOpen);
 
   const query = useQuery({ queryKey: ["ops"], queryFn: api.listOps });
   const entries = query.data?.operations ?? [];
