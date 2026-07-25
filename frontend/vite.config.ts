@@ -25,8 +25,8 @@ export default defineConfig({
       injectRegister: false, // 등록은 앱(PwaUpdater)에서 직접
       includeAssets: ["favicon-64.png", "apple-touch-icon.png"],
       manifest: {
-        name: "NAS 사진 정리",
-        short_name: "NAS 사진",
+        name: "우리집 사진관",
+        short_name: "사진관",
         description: "Synology NAS 가족 사진 감상·정리 앱",
         lang: "ko",
         theme_color: "#2563eb",

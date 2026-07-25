@@ -364,6 +364,27 @@ function ZoneBanner() {
   );
 }
 
+/** 로그인 계정 칩 — 한 기기를 가족이 돌려 쓰므로 "지금 누구로 로그인했는지"를
+ * 헤더에 상시 표시. 누르면 계정·로그아웃이 있는 더보기로 간다. */
+function AccountChip({ account, role }: { account: string; role: string }) {
+  const setSection = useTimelineStore((s) => s.setSection);
+  return (
+    <button
+      onClick={() => setSection("more")}
+      title={`${account} · ${role === "admin" ? "관리자" : "일반 구성원"} — 계정·로그아웃은 더보기에서`}
+      className="flex max-w-36 items-center gap-1 whitespace-nowrap rounded-lg px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+    >
+      <span aria-hidden>👤</span>
+      <span className="truncate">{account}</span>
+      {role === "admin" && (
+        <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">
+          관리자
+        </span>
+      )}
+    </button>
+  );
+}
+
 /** 첫 로그인 1회 안내(IA 4단계) — 2축 구조(무엇을 × 어떻게)와 되돌리기
  * 안전망을 한 장으로. 확인하면 다시 안 뜬다(localStorage, 계정별 —
  * 가족이 한 기기를 돌려 써도 각자 한 번씩 본다). */
@@ -464,12 +485,13 @@ export default function App() {
          * 계정·작업 기록·DSM 정보·빌드 진단·로그아웃은 전부 "더보기" 소관. */}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-2 pt-2 pb-2 sm:px-4 md:pb-1">
           <h1 className="hidden text-sm font-bold text-slate-800 lg:block">
-            NAS 사진 정리
+            우리집 사진관
           </h1>
           <div className="hidden h-6 w-px bg-slate-200 lg:block" aria-hidden />
           <LibrarySelector account={user.account} isAdmin={user.role === "admin"} />
-          <div className="ml-auto flex shrink-0 items-center gap-2">
+          <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
             <SearchBox />
+            <AccountChip account={user.account} role={user.role} />
             {user.mock_mode && (
               <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
                 MOCK
