@@ -333,26 +333,37 @@ async def execute_remove_folder(
     )
 
 
-def trash_stats(sqlite_path: str) -> tuple[int, int]:
-    """(delete-op count, item count) currently sitting in the app trash."""
+def trash_stats(sqlite_path: str, viewer: str | None = None) -> tuple[int, int]:
+    """(delete-op count, item count) currently sitting in the app trash.
+
+    viewer가 주어지면 그 계정이 실행한 삭제만 센다 — 작업 기록/휴지통은
+    계정별이 원칙(관리자만 viewer=None으로 전체 열람)."""
     with connect(sqlite_path) as conn:
         rows = conn.execute(
             "SELECT payload_json FROM operation "
             "WHERE type = 'delete' AND status = 'done'"
+            + (" AND user = ?" if viewer else ""),
+            (viewer,) if viewer else (),
         ).fetchall()
     items = sum(len(json.loads(r["payload_json"]).get("deleted", [])) for r in rows)
     return len(rows), items
 
 
-def list_trash_items(sqlite_path: str, limit: int = 500) -> list[dict]:
+def list_trash_items(
+    sqlite_path: str, limit: int = 500, viewer: str | None = None
+) -> list[dict]:
     """휴지통 내용(대기 중 delete 작업들의 사진 단위 항목) — 개별 복원용.
 
     파일 시스템을 다시 훑지 않고 작업로그의 placements를 그대로 펼친다(원경로
-    포함). 폴더째 삭제(trash_folder)는 폴더 단위 undo가 이미 있으므로 제외."""
+    포함). 폴더째 삭제(trash_folder)는 폴더 단위 undo가 이미 있으므로 제외.
+    viewer가 주어지면 그 계정의 삭제만(계정별 휴지통, 관리자는 전체)."""
     with connect(sqlite_path) as conn:
         rows = conn.execute(
             "SELECT id, created_at, user, payload_json FROM operation "
-            "WHERE type = 'delete' AND status = 'done' ORDER BY id DESC"
+            "WHERE type = 'delete' AND status = 'done'"
+            + (" AND user = ?" if viewer else "")
+            + " ORDER BY id DESC",
+            (viewer,) if viewer else (),
         ).fetchall()
     out: list[dict] = []
     for r in rows:
@@ -381,6 +392,7 @@ async def execute_restore_items(
     *,
     user: str,
     entries: list[tuple[int, str]],  # (op_id, item_id)
+    viewer: str | None = None,
     on_progress: ProgressFn | None = None,
 ) -> OperationResponse:
     """휴지통에서 선택한 사진만 원위치로 복원(작업 단위 undo의 부분집합).
@@ -395,11 +407,17 @@ async def execute_restore_items(
     with connect(sqlite_path) as conn:
         for op_id, ids in wanted.items():
             row = conn.execute(
-                "SELECT payload_json, status FROM operation WHERE id = ?",
+                "SELECT payload_json, status, user FROM operation WHERE id = ?",
                 (op_id,),
             ).fetchone()
             if row is None or row["status"] != "done":
                 continue
+            # 계정별 휴지통: 남의 삭제 작업 복원 금지(관리자는 viewer=None).
+            if viewer is not None and row["user"] != viewer:
+                raise HTTPException(
+                    status.HTTP_403_FORBIDDEN,
+                    "본인이 삭제한 사진만 복원할 수 있습니다.",
+                )
             payload = json.loads(row["payload_json"])
             keep, take = [], []
             for p in payload.get("deleted", []):
@@ -470,16 +488,22 @@ async def undo_operation(
     source: PhotoSource,
     sqlite_path: str,
     op_id: int,
+    viewer: str | None = None,
     on_progress: ProgressFn | None = None,
 ) -> OperationResponse:
     with connect(sqlite_path) as conn:
         row = conn.execute(
-            "SELECT id, type, status, payload_json, undo_deadline "
+            "SELECT id, type, status, payload_json, undo_deadline, user "
             "FROM operation WHERE id = ?",
             (op_id,),
         ).fetchone()
     if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "작업을 찾을 수 없습니다.")
+    # 계정별 작업 기록: 일반 사용자는 본인 작업만 되돌릴 수 있다(관리자 전체).
+    if viewer is not None and row["user"] != viewer:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "본인 작업만 되돌릴 수 있습니다."
+        )
     if row["status"] != "done":
         raise HTTPException(status.HTTP_409_CONFLICT, "이미 되돌렸거나 되돌릴 수 없는 작업입니다.")
     if row["undo_deadline"] and datetime.fromisoformat(row["undo_deadline"]) <= _now():
@@ -529,13 +553,19 @@ async def undo_operation(
     )
 
 
-def list_operations(sqlite_path: str, limit: int = 30) -> list[OperationEntry]:
+def list_operations(
+    sqlite_path: str, limit: int = 30, viewer: str | None = None
+) -> list[OperationEntry]:
+    """viewer가 주어지면 그 계정이 실행한 작업만 — 작업 기록은 계정별이
+    원칙(다른 가족의 개인 공간 파일명이 새는 것 방지). 관리자는 전체."""
     with connect(sqlite_path) as conn:
         rows = conn.execute(
             "SELECT id, type, status, payload_json, created_at, undo_deadline, "
             "       target_user "
-            "FROM operation ORDER BY id DESC LIMIT ?",
-            (limit,),
+            "FROM operation "
+            + ("WHERE user = ? " if viewer else "")
+            + "ORDER BY id DESC LIMIT ?",
+            (viewer, limit) if viewer else (limit,),
         ).fetchall()
     now = _now()
     out: list[OperationEntry] = []

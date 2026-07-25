@@ -796,3 +796,34 @@ def test_progress_endpoint_reports_and_clears(client):
         json={"item_ids": [items[0]["id"]], "progress_key": "k1"},
     )
     assert client.get("/api/ops/progress?key=k1").json()["active"] is False
+
+
+def test_ops_and_trash_are_per_account(client):
+    """작업 기록·휴지통은 계정별 — 일반 사용자는 남의 작업이 안 보이고
+    되돌리기/복원도 403, 관리자는 전체가 보인다."""
+    _, items = _first_day_items(client)
+    ids = [items[0]["id"], items[1]["id"]]
+    op = client.post("/api/photos/ops/delete", json={"item_ids": ids}).json()
+
+    # 다른 일반 계정으로 로그인 — tester의 작업/휴지통이 보이지 않는다.
+    client.post("/api/auth/login", json={"account": "other", "passwd": "x"})
+    assert client.get("/api/ops").json()["operations"] == []
+    assert client.get("/api/ops/trash").json() == {"operations": 0, "items": 0}
+    assert client.get("/api/ops/trash-items").json()["items"] == []
+
+    # 남의 작업 되돌리기/복원은 403.
+    assert client.post(f"/api/ops/{op['operation_id']}/undo").status_code == 403
+    resp = client.post(
+        "/api/ops/trash-restore",
+        json={"entries": [{"op_id": op["operation_id"], "item_id": ids[0]}]},
+    )
+    assert resp.status_code == 403
+
+    # 관리자는 전체를 보고 되돌릴 수도 있다.
+    client.post("/api/auth/login", json={"account": "admin", "passwd": "x"})
+    assert any(
+        o["id"] == op["operation_id"]
+        for o in client.get("/api/ops").json()["operations"]
+    )
+    assert client.get("/api/ops/trash").json()["items"] == 2
+    assert client.post(f"/api/ops/{op['operation_id']}/undo").status_code == 200
