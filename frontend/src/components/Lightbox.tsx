@@ -374,7 +374,7 @@ export function Lightbox() {
             {item.type === "video" && item.duration_ms != null && (
               <InfoRow label="길이" value={formatDuration(item.duration_ms)} />
             )}
-            <InfoRow label="공간" value={space === "team" ? "공용" : "개인"} />
+            <InfoRow label="공간" value={space === "team" ? "가족" : "개인"} />
             <InfoRow
               label="폴더"
               value={

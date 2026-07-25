@@ -45,7 +45,7 @@ import { ZoneManager } from "./components/ZoneManager";
 export const SECTIONS: { section: Section; label: string; icon: string }[] = [
   { section: "viewer", label: "사진", icon: "🖼" },
   { section: "albums", label: "앨범", icon: "📔" },
-  { section: "manage", label: "폴더 분류", icon: "🗂" },
+  { section: "manage", label: "정리", icon: "🗂" },
 ];
 
 /** 주 메뉴: 3영역 전환. 모바일은 하단 탭 바가 대신하므로 md 이상에서만 표시. */
@@ -136,7 +136,7 @@ function LibrarySelector({ account, isAdmin }: { account: string; isAdmin: boole
     : viewedOwner
       ? `👥 ${viewedOwner}의 사진`
       : space === "team"
-        ? "📚 공용 사진"
+        ? "📚 가족 사진"
         : "👤 내 사진";
 
   const pick = (lib: {
@@ -161,6 +161,19 @@ function LibrarySelector({ account, isAdmin }: { account: string; isAdmin: boole
       active ? "bg-slate-100 font-semibold text-slate-800" : "text-slate-600 hover:bg-slate-50"
     }`;
 
+  // 앨범은 개인 공간 전용(DSM NormalAlbum) — 라이브러리 전환이 무의미하므로
+  // 셀렉터를 고정 표시로 바꿔 죽은 컨트롤을 없앤다.
+  if (section === "albums") {
+    return (
+      <div
+        title="앨범은 내 사진 전용입니다"
+        className="flex shrink-0 cursor-default items-center gap-1.5 whitespace-nowrap rounded-xl bg-slate-100 px-3 py-1.5 text-sm font-semibold text-slate-500"
+      >
+        👤 내 사진
+      </div>
+    );
+  }
+
   return (
     <div className="relative shrink-0">
       <button
@@ -177,7 +190,7 @@ function LibrarySelector({ account, isAdmin }: { account: string; isAdmin: boole
         <span className="text-xs opacity-60">▾</span>
         {zones.some((z) => (z.new_count ?? 0) > 0 && activeZone?.id !== z.id) && (
           <span
-            title="1차 구역에 새로 백업된 사진이 있습니다"
+            title="기기 백업에 새로 들어온 사진이 있습니다"
             className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-amber-500"
           />
         )}
@@ -191,8 +204,8 @@ function LibrarySelector({ account, isAdmin }: { account: string; isAdmin: boole
               onClick={() => pick({ space: "team", owner: null })}
               className={itemCls(!viewedOwner && !activeZone && space === "team")}
             >
-              📚 공용 사진
-              <span className="ml-auto text-[10px] text-slate-400">가족 공유</span>
+              📚 가족 사진
+              <span className="ml-auto text-[10px] text-slate-400">공유 공간</span>
             </button>
             <button
               onClick={() => pick({ space: "personal", owner: null })}
@@ -225,7 +238,7 @@ function LibrarySelector({ account, isAdmin }: { account: string; isAdmin: boole
             {section === "manage" && (
               <>
                 <p className="px-3 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                  1차 구역 · 기기 백업
+                  기기 백업
                 </p>
                 {zones.map((z) => (
                   <button
@@ -278,7 +291,7 @@ function ImpersonationBanner() {
   return (
     <div className="flex items-center justify-center gap-3 bg-amber-500 px-4 py-1.5 text-sm font-medium text-white">
       <span>
-        보는 중: {viewedOwner}의 개인 폴더 (폴더 보기에서 지원 · 타임라인/분류/
+        보는 중: {viewedOwner}의 개인 폴더 (폴더 화면에서만 지원 · 타임라인/
         검색 제외) — 모든 작업이 기록됩니다
       </span>
       <button
@@ -305,8 +318,8 @@ function ZoneBanner() {
   return (
     <div className="flex items-center justify-center gap-3 bg-indigo-600 px-4 py-1.5 text-sm font-medium text-white">
       <span>
-        1차 구역: {activeZone.label} · 타임라인에 안 나오는 백업 폴더입니다 —
-        고른 사진을 <b>내 타임라인(2차)으로 이동/복사</b>하세요
+        기기 백업: {activeZone.label} · 타임라인에 나오지 않는 백업 폴더입니다 —
+        고른 사진을 <b>내 사진으로 이동/복사</b>하세요
       </span>
       <button
         onClick={() => {

@@ -111,7 +111,7 @@ function DualActions({
         title={
           destId
             ? `${destName}(으)로 ${folderMode ? "폴더째 " : ""}이동`
-            : "반대쪽 페인에서 폴더를 열거나 개인/공용을 선택하세요"
+            : "반대쪽 페인에서 폴더를 열거나 개인/가족을 선택하세요"
         }
         className={`${btn} text-slate-600 enabled:hover:bg-blue-100 enabled:hover:text-blue-700`}
       >
@@ -124,7 +124,7 @@ function DualActions({
         title={
           destId
             ? `${destName}(으)로 ${folderMode ? "폴더째 " : ""}복사`
-            : "반대쪽 페인에서 폴더를 열거나 개인/공용을 선택하세요"
+            : "반대쪽 페인에서 폴더를 열거나 개인/가족을 선택하세요"
         }
         className={`${btn} text-slate-600 enabled:hover:bg-blue-100 enabled:hover:text-blue-700`}
       >
@@ -359,7 +359,7 @@ export function FolderView() {
                   activeZone
                     ? activeZone.label
                     : sp === "team"
-                      ? "공용"
+                      ? "가족"
                       : viewedOwner
                         ? `${viewedOwner}의 개인`
                         : "개인"

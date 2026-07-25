@@ -35,7 +35,7 @@ export function PaneAreaSelector({
   const members = (membersQ.data?.members ?? []).filter((m) => m.has_photos);
 
   const options: { area: AreaScope; label: string }[] = [
-    { area: { space: "team" }, label: "📚 공용 사진" },
+    { area: { space: "team" }, label: "📚 가족 사진" },
     { area: { space: "personal" }, label: "👤 내 사진" },
     ...zones.map((z) => ({
       area: { space: "personal", zone: z.id } as AreaScope,

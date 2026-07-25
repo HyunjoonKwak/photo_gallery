@@ -95,7 +95,7 @@ export function FolderNameAuditDialog({
             <p className="p-6 text-center text-sm text-slate-400">스캔 중…</p>
           ) : q.isError ? (
             <p className="p-6 text-center text-sm text-slate-400">
-              스캔에 실패했습니다. (1차 구역 폴더 뷰에서 사용하세요)
+              스캔에 실패했습니다. (기기 백업 폴더 뷰에서 사용하세요)
             </p>
           ) : done !== null ? (
             <p className="p-6 text-center text-sm text-slate-600">

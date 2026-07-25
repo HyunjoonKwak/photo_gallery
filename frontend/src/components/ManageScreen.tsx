@@ -11,7 +11,7 @@ import { FolderPanel } from "./FolderPanel";
 const MANAGE_TABS: { tab: ManageTab; label: string; icon: string }[] = [
   { tab: "folders", label: "폴더", icon: "📁" },
   { tab: "dedup", label: "중복 정리", icon: "🔁" },
-  { tab: "junk", label: "정리", icon: "✨" },
+  { tab: "junk", label: "정리 도우미", icon: "✨" },
 ];
 
 export function ManageScreen() {

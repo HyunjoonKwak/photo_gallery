@@ -54,7 +54,7 @@ export function SelectionActionBar() {
             disabled={ops.isBusy}
             onClick={() => setPicker("toPersonal")}
           >
-            2차로 보내기
+            내 사진으로 보내기
           </button>
         ) : (
           <>
@@ -68,10 +68,10 @@ export function SelectionActionBar() {
               <button
                 className={btn}
                 disabled={ops.isBusy}
-                title="개인 사진을 공용(공유) 공간으로 복사합니다. 원본은 개인에 그대로 남습니다(창에서 '이동'으로 바꿀 수 있음)."
+                title="개인 사진을 가족(공유) 공간으로 복사합니다. 원본은 개인에 그대로 남습니다(창에서 '이동'으로 바꿀 수 있음)."
                 onClick={() => setPicker("toTeam")}
               >
-                공용에 복사
+                가족에 복사
               </button>
             )}
           </>

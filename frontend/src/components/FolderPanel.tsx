@@ -20,7 +20,7 @@ export function FolderPanel() {
   const sections = [
     {
       space: "team" as const,
-      label: "공용 폴더",
+      label: "가족 폴더",
       open: !personalOpen,
     },
     {

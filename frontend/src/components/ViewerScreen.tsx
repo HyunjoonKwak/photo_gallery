@@ -108,7 +108,7 @@ export function ViewerScreen() {
 
 const LENSES: { lens: ViewerLens; label: string; icon: string }[] = [
   { lens: "timeline", label: "타임라인", icon: "🕑" },
-  { lens: "folder", label: "폴더", icon: "🗂" },
+  { lens: "folder", label: "폴더별 보기", icon: "📂" },
   { lens: "people", label: "사람", icon: "👤" },
   { lens: "places", label: "장소", icon: "📍" },
   { lens: "videos", label: "비디오", icon: "🎬" },

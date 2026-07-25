@@ -8,7 +8,7 @@ import { EventStep } from "./EventStep";
 const STEPS = [
   { n: 1, label: "중복 정리" },
   { n: 2, label: "잡동사니" },
-  { n: 3, label: "이벤트 → 공용" },
+  { n: 3, label: "이벤트 → 가족" },
   { n: 4, label: "요약" },
 ];
 
@@ -131,11 +131,11 @@ export function OrganizeView() {
           <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
             <p className="text-3xl">🎉</p>
             <p className="text-sm text-slate-700">
-              이번 정리에서 공용 앨범 <b>{stats.albums ?? 0}개</b> ·{" "}
+              이번 정리에서 가족 앨범 <b>{stats.albums ?? 0}개</b> ·{" "}
               <b>{(stats.copied ?? 0).toLocaleString()}장</b>을 복사했습니다.
             </p>
             <p className="text-xs text-slate-400">
-              새 백업이 들어오면 언제든 다시 실행하세요 — 1차 구역 뱃지가
+              새 백업이 들어오면 언제든 다시 실행하세요 — 기기 백업 뱃지가
               알려줍니다.
             </p>
             <button

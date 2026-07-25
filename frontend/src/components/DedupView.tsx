@@ -119,7 +119,7 @@ export function DedupView({ forceSpace }: { forceSpace?: "personal" | "team" } =
           <div>
             <h2 className="text-sm font-bold text-slate-800">중복 사진 정리</h2>
             <p className="mt-0.5 text-xs text-slate-500">
-              {space === "team" ? "공용" : "개인"} 공간 · 썸네일 기반
+              {space === "team" ? "가족" : "개인"} 공간 · 썸네일 기반
               SHA-256(정확) + pHash(유사)
             </p>
           </div>

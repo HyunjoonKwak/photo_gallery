@@ -66,7 +66,7 @@ export function EventStep({
       });
       sub = (await listIn()).find((f) => f.name.split("/").pop() === name);
     }
-    if (!sub) throw new Error(`공용에 '${name}' 폴더를 만들지 못했습니다.`);
+    if (!sub) throw new Error(`가족 공간에 '${name}' 폴더를 만들지 못했습니다.`);
     return sub.id;
   };
 
@@ -84,7 +84,7 @@ export function EventStep({
       setDoneKeys((prev) => new Set(prev).add(key));
       void api.recordCopied(ids); // '이미 복사됨' 제외용 기록(best-effort)
       onCreated?.(1, ids.length);
-      pushToast(`'${name}' — ${ids.length}장을 공용으로 복사합니다.`);
+      pushToast(`'${name}' — ${ids.length}장을 가족 공간으로 복사합니다.`);
       qc.invalidateQueries({ queryKey: ["folders"] });
     } catch (err) {
       pushToast((err as Error).message);
@@ -211,7 +211,7 @@ export function EventStep({
                   disabled={done || pickCount === 0 || ops.isBusy}
                   className="rounded-lg bg-blue-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-40"
                 >
-                  {done ? "복사됨 ✓" : `공용에 앨범 만들기 (${pickCount}장)`}
+                  {done ? "복사됨 ✓" : `가족에 앨범 만들기 (${pickCount}장)`}
                 </button>
               </span>
             </div>
@@ -277,7 +277,7 @@ function OpenGrid({
         })}
       </div>
       <p className="mt-1 text-xs text-slate-400">
-        대표 {ev.preview.length}장 표시 — 세부 선별은 복사 후 공용 폴더에서
+        대표 {ev.preview.length}장 표시 — 세부 선별은 복사 후 가족 폴더에서
         지워도 됩니다(휴지통·되돌리기 지원).
       </p>
     </div>

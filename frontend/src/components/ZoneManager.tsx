@@ -54,7 +54,7 @@ export function ZoneManager({ onClose }: { onClose: () => void }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-2 flex items-center justify-between">
-          <h3 className="text-sm font-bold text-slate-800">1차 구역(기기 백업) 관리</h3>
+          <h3 className="text-sm font-bold text-slate-800">기기 백업 관리</h3>
           <button
             onClick={onClose}
             className="flex h-7 w-7 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100"
@@ -63,8 +63,8 @@ export function ZoneManager({ onClose }: { onClose: () => void }) {
           </button>
         </div>
         <p className="mb-3 text-xs leading-relaxed text-slate-500">
-          Synology Photos 밖(타임라인에 안 나오는) 폴더를 1차 구역으로 등록하면,
-          여기서 사진을 골라 내 타임라인(2차)으로 옮길 수 있습니다.
+          Synology Photos 밖(타임라인에 안 나오는) 폴더를 기기 백업으로 등록하면,
+          여기서 사진을 골라 내 사진(타임라인)으로 옮길 수 있습니다.
         </p>
 
         {/* 등록된 구역 */}

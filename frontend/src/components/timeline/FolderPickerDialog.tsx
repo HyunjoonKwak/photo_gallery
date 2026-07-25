@@ -35,9 +35,9 @@ export function FolderPickerDialog({
 
   const title =
     mode === "toTeam"
-      ? `${count}장 공용에 복사`
+      ? `${count}장 가족에 복사`
       : mode === "toPersonal"
-        ? `${count}장 내 사진(2차)으로`
+        ? `${count}장 내 사진으로`
         : mode === "copy"
           ? `${count}장 복사`
           : `${count}장 이동`;
@@ -77,7 +77,7 @@ export function FolderPickerDialog({
                 >
                   📁 {folderBasename(f.name)}
                   <span className="ml-1 text-[10px] text-slate-400">
-                    {f.space === "team" ? "공용" : "개인"}
+                    {f.space === "team" ? "가족" : "개인"}
                   </span>
                 </button>
               ))}
@@ -86,7 +86,7 @@ export function FolderPickerDialog({
         )}
         <div className="mt-1 max-h-72 overflow-y-auto">
           <h4 className="px-1 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
-            공용 폴더
+            가족 폴더
           </h4>
           <FolderTree
             space="team"
@@ -118,7 +118,7 @@ export function FolderPickerDialog({
             />
             {mode === "toTeam"
               ? "원본을 개인 폴더에 남기기 (복사)"
-              : "원본을 1차 구역에 남기기 (복사)"}
+              : "원본을 기기 백업에 남기기 (복사)"}
           </label>
         )}
 
