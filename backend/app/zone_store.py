@@ -48,7 +48,7 @@ def validate_zone_root(account: str, root_path: str) -> str:
     if norm == "/photo" or norm.startswith("/photo/"):
         return norm
     raise ZonePathError(
-        "내 홈 폴더(/homes/…) 또는 공용(/photo) 아래 경로만 1차 구역으로 등록할 수 있습니다."
+        "내 홈 폴더(/homes/…) 또는 가족(/photo) 아래 경로만 기기 백업으로 등록할 수 있습니다."
     )
 
 

@@ -757,7 +757,7 @@ def _gate_home_path(session: Session, path: str) -> None:
     if not path.startswith(f"/homes/{session.account}/"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="본인 홈(1차 구역·내 사진)의 사진만 촬영일 교정이 가능합니다.",
+            detail="본인 홈(기기 백업·내 사진)의 사진만 촬영일 교정이 가능합니다.",
         )
 
 

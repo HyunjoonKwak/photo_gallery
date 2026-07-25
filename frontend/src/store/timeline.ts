@@ -419,10 +419,14 @@ export const useTimelineStore = create<TimelineState>()((set, get) => ({
         space,
         viewedOwner: owner,
         activeZone: zone ?? null,
-        // 타인·1차 구역은 폴더 분류 전용 → 그리로 강제; 그 외엔 현재 영역 유지
+        // 타인·기기 백업은 정리 전용 → 그리로 강제. 더보기(허브)는 라이브러리
+        // 콘텐츠를 렌더하지 않으므로 일반 라이브러리 선택 시 사진으로 이동
+        // (no-op 데드엔드 방지). 그 외엔 현재 영역 유지.
         ...(owner || zone
           ? { section: "manage" as Section, manageTab: "folders" as ManageTab }
-          : {}),
+          : s.section === "more"
+            ? { section: "viewer" as Section }
+            : {}),
         ...resetView(),
       }),
     ),

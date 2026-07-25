@@ -1369,7 +1369,7 @@ class MockZonePhotoSource(MockPhotoSource):
     ) -> MoveOutcome:
         # zone→2차: 대상(개인 Photos 폴더)에 실제로 심지 않고, 이동한 zone 사진을
         # 숨겨(사라짐) undo로 되돌린다. moved에 원본 경로를 기록해 undo가 복원.
-        outcome = MoveOutcome(dest_space="personal", dest_name="내 사진(2차)")
+        outcome = MoveOutcome(dest_space="personal", dest_name="내 사진")
         for iid in item_ids:
             outcome.moved.append(
                 PlacedItem(

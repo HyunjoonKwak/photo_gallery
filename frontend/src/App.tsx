@@ -356,11 +356,13 @@ function ZoneBanner() {
 }
 
 /** 첫 로그인 1회 안내(IA 4단계) — 2축 구조(무엇을 × 어떻게)와 되돌리기
- * 안전망을 한 장으로. 확인하면 다시 안 뜬다(localStorage). */
-function FirstRunTip() {
+ * 안전망을 한 장으로. 확인하면 다시 안 뜬다(localStorage, 계정별 —
+ * 가족이 한 기기를 돌려 써도 각자 한 번씩 본다). */
+function FirstRunTip({ account }: { account: string }) {
+  const storageKey = `nasphoto.firstRunSeen.${account}`;
   const [seen, setSeen] = useState(() => {
     try {
-      return localStorage.getItem("nasphoto.firstRunSeen") === "1";
+      return localStorage.getItem(storageKey) === "1";
     } catch {
       return true; // private mode 등 — 안내 없이 진행
     }
@@ -368,7 +370,7 @@ function FirstRunTip() {
   if (seen) return null;
   const dismiss = () => {
     try {
-      localStorage.setItem("nasphoto.firstRunSeen", "1");
+      localStorage.setItem(storageKey, "1");
     } catch {
       // ignore
     }
@@ -470,7 +472,8 @@ export default function App() {
 
       <ImpersonationBanner />
       <ZoneBanner />
-      <FirstRunTip />
+      {/* key=account: 로그아웃→다른 계정 로그인 시 안내 상태 재평가 */}
+      <FirstRunTip key={user.account} account={user.account} />
 
       {/* pb-14: 모바일 하단 탭 바 높이만큼 콘텐츠 영역 확보 */}
       <div className="min-h-0 flex-1 pb-14 md:pb-0">

@@ -53,11 +53,21 @@ export async function saveLocal(
     // 사용자가 다이얼로그를 닫음 — 실패가 아니라 취소.
     if (error instanceof DOMException && error.name === "AbortError")
       return "cancelled";
-    throw error;
+    // 피커 자체 실패(파일명 금지문자 등) — 저장을 포기하지 말고 앵커 폴백.
+    console.error("저장 다이얼로그 실패, 기본 다운로드로 폴백:", error);
+    saveViaAnchor(url, filename);
+    return "fallback";
   }
 
   const res = await fetch(url);
   if (!res.ok || !res.body) {
+    // 피커가 저장 위치 확정 시 이미 만든 빈 파일을 best-effort 제거
+    // (remove()는 일부 브라우저만 지원 — 실패해도 무해).
+    try {
+      await (handle as { remove?: () => Promise<void> }).remove?.();
+    } catch {
+      // ignore
+    }
     throw new Error(`다운로드 실패 (HTTP ${res.status})`);
   }
   // pipeTo는 소스 에러 시 대상 스트림을 자동 abort — 부분 파일이 남지 않는다.
