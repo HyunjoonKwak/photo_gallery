@@ -11,6 +11,7 @@
 
 import { create } from "zustand";
 import type { PhotoFolder, PhotoItem, Space } from "../api/types";
+import { useToastStore } from "./toast";
 
 const EMPTY_SET: ReadonlySet<string> = new Set<string>();
 
@@ -281,25 +282,36 @@ export const useTimelineStore = create<TimelineState>()((set, get) => ({
   // 타인/기기 백업은 정리에서만 표현 가능 → 감상 영역으로 갈 땐 자기
   // 라이브러리로 스냅백(가족/개인)하고 감상 상태를 초기화한다.
   // 더보기는 사진 화면이 아니라 스냅백 없이 통과(휴지통 확인 후 복귀 가능).
-  setSection: (section) =>
-    set((s) =>
-      section === s.section
-        ? {}
-        : withNav(s, {
-            section,
-            // 영역 전환은 항상 그 영역의 기본 화면으로(뷰어=타임라인·연 뷰).
-            viewerLens: "timeline",
-            zoom: "year",
-            groupId: null,
-            groupLabel: null,
-            ...(section !== "manage" &&
-            section !== "more" &&
-            (s.viewedOwner || s.activeZone)
-              ? { viewedOwner: null, activeZone: null }
-              : {}),
-            ...resetView(),
-          }),
-    ),
+  setSection: (section) => {
+    const s = get();
+    if (section === s.section) return;
+    const snapback =
+      section !== "manage" &&
+      section !== "more" &&
+      (s.viewedOwner != null || s.activeZone != null);
+    // 조용히 풀리면 "보던 게 사라졌다"가 되므로 복귀를 알린다(IA 3단계).
+    if (snapback) {
+      useToastStore
+        .getState()
+        .push(
+          s.activeZone
+            ? "기기 백업에서 나와 내 사진으로 돌아왔어요."
+            : "구성원 사진에서 나와 내 사진으로 돌아왔어요.",
+        );
+    }
+    set(
+      withNav(s, {
+        section,
+        // 영역 전환은 항상 그 영역의 기본 화면으로(뷰어=타임라인·연 뷰).
+        viewerLens: "timeline",
+        zoom: "year",
+        groupId: null,
+        groupLabel: null,
+        ...(snapback ? { viewedOwner: null, activeZone: null } : {}),
+        ...resetView(),
+      }),
+    );
+  },
 
   viewerLens: "timeline",
   // 렌즈 전환은 뒤로가기 히스토리에 쌓아(이전 렌즈로 복귀), 줌·그룹은 초기화.

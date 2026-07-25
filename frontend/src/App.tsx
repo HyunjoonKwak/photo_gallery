@@ -7,6 +7,7 @@ import {
 import { api } from "./api/client";
 import type { Space } from "./api/types";
 import { useAuthStore } from "./store/auth";
+import { useToastStore } from "./store/toast";
 import { useTimelineStore, type Section } from "./store/timeline";
 import { useBackTrap } from "./hooks/useBackTrap";
 import { LoginForm } from "./components/LoginForm";
@@ -71,22 +72,31 @@ function SectionToggle() {
   );
 }
 
-/** 사진 검색창: 파일명·폴더명·태그 키워드 — Enter로 검색 뷰 진입. */
+/** 사진 검색창: 파일명·폴더명·태그 키워드 — Enter로 검색 뷰 진입.
+ * 기기 백업(FileStation)·타인 라이브러리는 DSM 검색 인덱스 밖이라 빈 결과만
+ * 나온다 → 숨기는 대신 비활성 + 이유 표시(IA 개편 3단계: 컨트롤이 사라지면
+ * 고장으로 오인). */
 function SearchBox() {
   const runSearch = useTimelineStore((s) => s.runSearch);
   const activeZone = useTimelineStore((s) => s.activeZone);
-  const [value, setValue] = useState("");
-  // 1차 구역은 Photos 검색 인덱스 밖이라 검색이 무의미 — 숨김.
   const viewedOwner = useTimelineStore((s) => s.viewedOwner);
-  // 1차 구역(FileStation)과 타인 라이브러리는 DSM 검색 인덱스 대상이 아니어서
-  // 빈 결과만 나온다(오해 소지) → 검색창 자체를 숨긴다.
-  if (activeZone || viewedOwner) return null;
+  const [value, setValue] = useState("");
+  const disabledReason = activeZone
+    ? "기기 백업 폴더는 검색 대상이 아니에요 (Photos 색인 밖)"
+    : viewedOwner
+      ? "구성원 사진 열람 중에는 검색할 수 없어요"
+      : null;
   const submit = () => {
     const q = value.trim();
     if (q) runSearch(q);
   };
   return (
-    <div className="flex items-center gap-1 rounded-xl bg-slate-100 px-2 py-1">
+    <div
+      title={disabledReason ?? undefined}
+      className={`flex items-center gap-1 rounded-xl bg-slate-100 px-2 py-1 ${
+        disabledReason ? "opacity-50" : ""
+      }`}
+    >
       <span aria-hidden className="text-sm text-slate-400">
         🔍
       </span>
@@ -96,8 +106,9 @@ function SearchBox() {
         onKeyDown={(e) => {
           if (e.key === "Enter") submit();
         }}
-        placeholder="사진 검색"
-        className="w-24 bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:w-40 sm:w-32 sm:focus:w-48 transition-[width]"
+        disabled={disabledReason != null}
+        placeholder={disabledReason ? "검색 불가" : "사진 검색"}
+        className="w-24 bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:w-40 sm:w-32 sm:focus:w-48 transition-[width] disabled:cursor-not-allowed"
       />
     </div>
   );
@@ -142,6 +153,17 @@ function LibrarySelector({ account, isAdmin }: { account: string; isAdmin: boole
     zone?: { id: string; label: string } | null;
   }) => {
     setOpen(false);
+    // 기기 백업/구성원은 정리 전용 → 감상 영역에서 고르면 자동 이동을 예고
+    // (3단계: 암묵적 화면 전환을 명시로).
+    if ((lib.zone || lib.owner) && section !== "manage") {
+      useToastStore
+        .getState()
+        .push(
+          lib.zone
+            ? "기기 백업은 정리 화면에서 열려요."
+            : "구성원 사진은 정리 화면에서 열려요.",
+        );
+    }
     selectLibrary(lib);
     if (lib.zone) {
       // 구역을 열었으니 신규 유입 뱃지 리셋(백업 앱 유입분 확인 처리).
@@ -210,11 +232,18 @@ function LibrarySelector({ account, isAdmin }: { account: string; isAdmin: boole
             >
               👤 내 사진
             </button>
-            {/* 타인/1차 구역/구역 관리는 폴더 분류에서만 (정리 전용 축) */}
-            {section === "manage" && isAdmin && members.length > 0 && (
+            {/* 기기 백업/구성원은 정리 전용이지만 목록엔 항상 노출(3단계:
+             * 같은 버튼은 항상 같은 목록). 감상 중 선택 시 pick이 예고 토스트
+             * 후 정리로 이동시킨다. */}
+            {isAdmin && members.length > 0 && (
               <>
                 <p className="px-3 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
                   관리자 · 구성원 사진
+                  {section !== "manage" && (
+                    <span className="ml-1 font-normal normal-case text-slate-300">
+                      · 정리에서 열림
+                    </span>
+                  )}
                 </p>
                 {members.map((m) => (
                   <button
@@ -232,10 +261,15 @@ function LibrarySelector({ account, isAdmin }: { account: string; isAdmin: boole
                 ))}
               </>
             )}
-            {section === "manage" && zones.length > 0 && (
+            {zones.length > 0 && (
               <>
                 <p className="px-3 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
                   기기 백업
+                  {section !== "manage" && (
+                    <span className="ml-1 font-normal normal-case text-slate-300">
+                      · 정리에서 열림
+                    </span>
+                  )}
                 </p>
                 {zones.map((z) => (
                   <button
