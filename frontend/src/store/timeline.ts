@@ -191,6 +191,12 @@ interface TimelineState {
   scrubberMounted: () => void;
   scrubberUnmounted: () => void;
 
+  // --- 처음 안내 다시 보기 (더보기 → FirstRunTip 재표시) ---
+  // 실수로 닫으면(배경 탭 포함) 계정당 1회라 다시 볼 수 없던 문제의 해소.
+  // 틱 증가 = 1회 재표시 요청(영구 재활성화 아님 — localStorage는 유지).
+  firstRunTipTick: number;
+  showFirstRunTip: () => void;
+
   // --- 뒤로가기 네비게이션 ---
   // 영역/탭/라이브러리 전환은 여기에 직전 화면 스냅샷을 쌓아, 뒤로가기가
   // 방문 순서를 그대로 역추적한다(사진→앨범→폴더분류 뒤로 시 앨범 경유).
@@ -507,6 +513,10 @@ export const useTimelineStore = create<TimelineState>()((set, get) => ({
     set((s) => ({ scrubberCount: s.scrubberCount + 1 })),
   scrubberUnmounted: () =>
     set((s) => ({ scrubberCount: Math.max(0, s.scrubberCount - 1) })),
+
+  firstRunTipTick: 0,
+  showFirstRunTip: () =>
+    set((s) => ({ firstRunTipTick: s.firstRunTipTick + 1 })),
 
   _navHistory: [],
   _backHandlers: [],

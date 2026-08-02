@@ -193,6 +193,12 @@ export function MoreScreen() {
 
         <GroupLabel>정보</GroupLabel>
         <Row
+          icon="💡"
+          label="처음 안내 다시 보기"
+          desc="무엇을·어떻게 볼지, 되돌리기 안내 한 장"
+          onClick={() => useTimelineStore.getState().showFirstRunTip()}
+        />
+        <Row
           icon="🖥"
           label="DSM 연결 정보"
           desc="NAS API 경로·버전 (문제 진단용)"

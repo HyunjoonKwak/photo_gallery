@@ -387,7 +387,8 @@ function AccountChip({ account, role }: { account: string; role: string }) {
 
 /** 첫 로그인 1회 안내(IA 4단계) — 2축 구조(무엇을 × 어떻게)와 되돌리기
  * 안전망을 한 장으로. 확인하면 다시 안 뜬다(localStorage, 계정별 —
- * 가족이 한 기기를 돌려 써도 각자 한 번씩 본다). */
+ * 가족이 한 기기를 돌려 써도 각자 한 번씩 본다). 더보기의 "처음 안내
+ * 다시 보기"(firstRunTipTick)로 1회 재표시할 수 있다. */
 function FirstRunTip({ account }: { account: string }) {
   const storageKey = `nasphoto.firstRunSeen.${account}`;
   const [seen, setSeen] = useState(() => {
@@ -397,6 +398,16 @@ function FirstRunTip({ account }: { account: string }) {
       return true; // private mode 등 — 안내 없이 진행
     }
   });
+  // 첫 불릿의 라이브러리 목록은 이 계정이 실제 보는 메뉴와 일치시킨다 —
+  // 기기 백업은 계정별 등록제라 처음 로그인한 구성원 메뉴엔 없는 경우가
+  // 대부분(안내가 없는 항목을 가리키면 "내 화면이 잘못됐나" 혼란).
+  const zonesQuery = useQuery({ queryKey: ["zones"], queryFn: api.listZones });
+  const hasBackup = (zonesQuery.data?.zones.length ?? 0) > 0;
+  // 더보기 → 처음 안내 다시 보기: 틱이 오르면 이번 1회만 다시 연다.
+  const tick = useTimelineStore((s) => s.firstRunTipTick);
+  useEffect(() => {
+    if (tick > 0) setSeen(false);
+  }, [tick]);
   if (seen) return null;
   const dismiss = () => {
     try {
@@ -412,20 +423,28 @@ function FirstRunTip({ account }: { account: string }) {
       onClick={dismiss}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="first-run-tip-title"
         className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="mb-3 text-base font-bold text-slate-800">
+        <h3
+          id="first-run-tip-title"
+          className="mb-3 text-base font-bold text-slate-800"
+        >
           처음 오셨나요? 세 가지만 기억하세요
         </h3>
         <ul className="space-y-2.5 text-sm leading-relaxed text-slate-600">
           <li>
             📚 <b>왼쪽 위 메뉴</b>에서 <b>무엇을 볼지</b> 골라요 — 가족 사진 ·
-            내 사진 · 기기 백업(휴대폰 백업).
+            내 사진{hasBackup && " · 기기 백업(휴대폰 백업)"}.
           </li>
           <li>
-            🖼 <b>탭</b>에서 <b>어떻게 볼지</b> 골라요 — 사진(감상) · 앨범 ·
-            정리(이동/삭제) · 더보기.
+            🖼 화면 <b><span className="md:hidden">아래</span>
+            <span className="hidden md:inline">위</span> 탭</b>에서{" "}
+            <b>어떻게 볼지</b> 골라요 — 사진(감상) · 앨범 · 정리(이동/삭제) ·
+            더보기.
           </li>
           <li>
             ↩️ 실수해도 괜찮아요 — 삭제·이동은 전부 <b>되돌리기</b>가 돼요
