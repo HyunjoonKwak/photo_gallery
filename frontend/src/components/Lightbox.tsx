@@ -138,6 +138,21 @@ export function Lightbox() {
   // 쓸어내리기 = 닫기, 핀치/더블탭 = 확대(확대 중 한 손가락 = 이동).
   // 비디오 컨트롤 위 터치는 건드리지 않는다.
   const [zoom, setZoom] = useState({ scale: 1, tx: 0, ty: 0 });
+
+  // xl 썸네일 로딩 상태 — src 기준 파생(사진이 바뀌면 같은 렌더에서 즉시
+  // "로딩 중"으로 뒤집혀 이전 사진 잔상·리셋 이펙트 경합이 없다.
+  // IMPROVEMENTS B-2 3단계 로딩의 마지막 단계: 그리드에서 이미 캐시된 sm을
+  // 즉시 깔고, xl은 디코딩 완료 후에만 페이드인(모바일 흰 화면 방지).
+  const [xlState, setXlState] = useState<{ src: string; ok: boolean } | null>(
+    null,
+  );
+  const xlSrc =
+    item && item.type !== "video"
+      ? thumbnailUrl(space, item.id, item.cache_key, "xl")
+      : null;
+  const xlReady = xlState != null && xlState.src === xlSrc && xlState.ok;
+  const xlFailed = xlState != null && xlState.src === xlSrc && !xlState.ok;
+
   const touchStart = useRef<{ x: number; y: number } | null>(null);
   const pinchStart = useRef<{ dist: number; scale: number } | null>(null);
   const panStart = useRef<{ x: number; y: number; tx: number; ty: number } | null>(
@@ -251,16 +266,65 @@ export function Lightbox() {
             className="max-h-[90vh] max-w-[94%]"
           />
         ) : (
-          <img
-            src={thumbnailUrl(space, item.id, item.cache_key, "xl")}
-            alt={item.filename}
-            onClick={(e) => e.stopPropagation()}
-            className="max-h-[90vh] max-w-[94%] object-contain"
-            style={{
-              transform: `translate(${zoom.tx}px, ${zoom.ty}px) scale(${zoom.scale})`,
-              transition: zoom.scale === 1 ? "transform 150ms" : undefined,
-            }}
-          />
+          <>
+            {/* 그리드에서 브라우저 캐시에 이미 있는 sm을 밑에 깔아 즉시 표시.
+             * xl이 페이드인하면 그대로 뒤에 가려진다(끊김 없는 크로스페이드). */}
+            {item.cache_key && !xlFailed && (
+              <img
+                src={thumbnailUrl(space, item.id, item.cache_key, "sm")}
+                alt=""
+                aria-hidden
+                draggable={false}
+                className="pointer-events-none absolute inset-0 m-auto max-h-[90vh] max-w-[94%] object-contain"
+                style={{
+                  transform: `translate(${zoom.tx}px, ${zoom.ty}px) scale(${zoom.scale})`,
+                }}
+              />
+            )}
+            <img
+              src={xlSrc ?? undefined}
+              alt={item.filename}
+              decoding="async"
+              // 그리드 sm 수십 장과 같은 큐에서 경쟁하지 않게 최우선 페치.
+              // React 18은 camelCase(fetchPriority) 미지원 — 소문자 속성은
+              // 그대로 DOM에 전달된다.
+              {...({ fetchpriority: "high" } as Record<string, string>)}
+              onClick={(e) => e.stopPropagation()}
+              onLoad={(e) =>
+                setXlState({
+                  src: e.currentTarget.getAttribute("src") ?? "",
+                  ok: true,
+                })
+              }
+              onError={(e) =>
+                setXlState({
+                  src: e.currentTarget.getAttribute("src") ?? "",
+                  ok: false,
+                })
+              }
+              className={`max-h-[90vh] max-w-[94%] object-contain ${
+                xlReady ? "opacity-100" : "opacity-0"
+              }`}
+              style={{
+                transform: `translate(${zoom.tx}px, ${zoom.ty}px) scale(${zoom.scale})`,
+                transition:
+                  zoom.scale === 1
+                    ? "transform 150ms, opacity 150ms"
+                    : "opacity 150ms",
+              }}
+            />
+            {!xlReady && !xlFailed && (
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                <div className="h-9 w-9 animate-spin rounded-full border-2 border-white/25 border-t-white/90" />
+              </div>
+            )}
+            {xlFailed && (
+              <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 text-white/40">
+                <span className="text-5xl">🖼</span>
+                <span className="text-xs">미리보기를 불러오지 못했습니다</span>
+              </div>
+            )}
+          </>
         )}
         <button
           aria-label="이전 사진"

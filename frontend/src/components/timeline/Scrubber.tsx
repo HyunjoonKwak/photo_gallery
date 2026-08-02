@@ -1,5 +1,6 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { formatMonth } from "../../lib/dates";
+import { useTimelineStore } from "../../store/timeline";
 
 export interface ScrubberMarker {
   /** YYYY-MM */
@@ -27,7 +28,18 @@ export function Scrubber({
   const railRef = useRef<HTMLDivElement>(null);
   const [dragMonth, setDragMonth] = useState<string | null>(null);
 
-  if (totalHeight <= viewportHeight || viewportHeight === 0) return null;
+  // 스크러버가 실제로 그려질 때만 store에 보고 — NavControls가 레일 자리를
+  // 피해 왼쪽으로 이동한다(연/월 라벨·버튼 겹침 방지).
+  const visible = viewportHeight > 0 && totalHeight > viewportHeight;
+  const scrubberMounted = useTimelineStore((s) => s.scrubberMounted);
+  const scrubberUnmounted = useTimelineStore((s) => s.scrubberUnmounted);
+  useEffect(() => {
+    if (!visible) return;
+    scrubberMounted();
+    return () => scrubberUnmounted();
+  }, [visible, scrubberMounted, scrubberUnmounted]);
+
+  if (!visible) return null;
 
   const railH = viewportHeight;
   const thumbY = (scrollTop / totalHeight) * railH;
@@ -86,7 +98,7 @@ export function Scrubber({
     <div
       ref={railRef}
       data-no-boxselect
-      className="absolute right-0 top-0 z-10 h-full w-10 cursor-row-resize select-none"
+      className="absolute right-0 top-0 z-30 h-full w-10 cursor-row-resize select-none"
       onPointerDown={(e) => {
         (e.target as HTMLElement).setPointerCapture(e.pointerId);
         handlePointer(e);

@@ -184,6 +184,13 @@ interface TimelineState {
   closeLightbox: () => void;
   stepLightbox: (dir: 1 | -1) => void;
 
+  // --- 우측 날짜 스크러버 표시 여부 ---
+  // 스크러버(연/월 라벨 레일)가 화면에 있으면 NavControls 플로팅 버튼이
+  // 레일 왼쪽으로 비켜난다(겹침 방지). 전환 중 이중 마운트 대비 카운터.
+  scrubberCount: number;
+  scrubberMounted: () => void;
+  scrubberUnmounted: () => void;
+
   // --- 뒤로가기 네비게이션 ---
   // 영역/탭/라이브러리 전환은 여기에 직전 화면 스냅샷을 쌓아, 뒤로가기가
   // 방문 순서를 그대로 역추적한다(사진→앨범→폴더분류 뒤로 시 앨범 경유).
@@ -494,6 +501,12 @@ export const useTimelineStore = create<TimelineState>()((set, get) => ({
     const next = s.orderedIds[idx + dir];
     if (next) set({ lightboxId: next });
   },
+
+  scrubberCount: 0,
+  scrubberMounted: () =>
+    set((s) => ({ scrubberCount: s.scrubberCount + 1 })),
+  scrubberUnmounted: () =>
+    set((s) => ({ scrubberCount: Math.max(0, s.scrubberCount - 1) })),
 
   _navHistory: [],
   _backHandlers: [],

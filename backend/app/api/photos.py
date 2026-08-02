@@ -32,6 +32,7 @@ from ..operations import (
 )
 from ..photos.source import PhotoSource
 from ..photos.thumb_cache import THUMB_MEDIA_TYPE, ThumbCache
+from ..photos.transcode import encode_webp, media_type_of
 from .. import progress
 from ..photos import capture_fix
 from ..photos.capture_date import parse_from_filename
@@ -989,44 +990,85 @@ async def get_thumbnail(
     settings: Settings = Depends(get_settings),
     session: Session = Depends(get_current_session),
 ) -> Response:
+    # xl만 WebP 협상(실전송 30-45% 절감) — sm/m은 파일이 작아 인코딩 CPU가
+    # 이득을 상쇄하고, 그리드 콜드 로드를 오히려 늦출 수 있어 제외.
+    wants_webp = (
+        size == "xl"
+        and not settings.mock_mode
+        and "image/webp" in request.headers.get("accept", "")
+    )
     # URL에 cache_key(내용 버전)가 들어 있어 내용이 바뀌면 URL이 바뀐다 → 사실상
     # 불변. 1년 immutable + ETag로 재방문 시 재다운로드/재검증을 없앤다.
     # ETag는 latin-1 안전해야 한다 — zone 아이템 id는 한글 경로라 원문을 그대로
     # 쓰면 헤더 인코딩에서 500(2026-07-12 실장애: 1차 구역 한글 폴더 아래 모든
-    # 썸네일 500). 해시로 축약.
-    etag = '"' + hashlib.md5(f"{id}-{cache_key}-{size}".encode()).hexdigest() + '"'
+    # 썸네일 500). 해시로 축약. 포맷 협상 결과는 ETag에 포함(Vary와 짝).
+    fmt = "webp" if wants_webp else "jpeg"
+    etag = (
+        '"' + hashlib.md5(f"{id}-{cache_key}-{size}-{fmt}".encode()).hexdigest() + '"'
+    )
     headers = {
         "Cache-Control": "private, max-age=31536000, immutable",
         "ETag": etag,
     }
+    if size == "xl":
+        headers["Vary"] = "Accept"
     if request.headers.get("if-none-match") == etag:
         return Response(status_code=304, headers=headers)
     # 서버측 디스크 캐시(mock 제외) — DSM 왕복을 줄인다(특히 느린 1차 구역
     # FileStation 썸네일·콜드 브라우저 캐시). 키에 계정을 넣어 접근 제어 보존.
+    # WebP 변형은 별도 키에 저장(협상 결과 그대로 — 인코딩 이득이 없던 이미지는
+    # 원본이 들어가며, 서빙 타입은 시그니처로 판별).
     cache: ThumbCache | None = None
-    key: str | None = None
+    orig_key: str | None = None
+    webp_key: str | None = None
+    content: bytes | None = None
     if not settings.mock_mode:
         cache = ThumbCache(
             os.path.join(os.path.dirname(settings.sqlite_path), "thumb-cache")
         )
-        key = ThumbCache.key(session.account, space, id, cache_key, size)
-        hit = cache.get(key)
-        if hit is not None:
-            return Response(content=hit, media_type=THUMB_MEDIA_TYPE, headers=headers)
-    try:
-        content, media_type = await source.thumbnail(space, id, cache_key, size)
-    except DsmError as exc:
-        # Session problems still need a 401 so the client re-auths; a genuinely
-        # missing thumbnail (DSM 404 — Synology never generated a poster for
-        # this item, common for videos) is a clean 404, not a 502. The frontend
-        # <img> onError then shows its fallback tile without noisy errors.
-        if exc.code in SESSION_INVALID_CODES:
+        orig_key = ThumbCache.key(session.account, space, id, cache_key, size)
+        if wants_webp:
+            webp_key = ThumbCache.key(
+                session.account, space, id, cache_key, f"{size}.webp"
+            )
+            variant = cache.get(webp_key)
+            if variant is not None:
+                return Response(
+                    content=variant,
+                    media_type=media_type_of(variant),
+                    headers=headers,
+                )
+        content = cache.get(orig_key)
+    # 디스크 캐시 히트는 항상 DSM JPEG; 라이브 페치는 소스가 알려주는 타입
+    # 그대로(mock은 SVG를 준다 — image/jpeg로 덮으면 mock 그리드가 깨진다).
+    media_type = THUMB_MEDIA_TYPE
+    if content is None:
+        try:
+            content, media_type = await source.thumbnail(space, id, cache_key, size)
+        except DsmError as exc:
+            # Session problems still need a 401 so the client re-auths; a
+            # genuinely missing thumbnail (DSM 404 — Synology never generated
+            # a poster for this item, common for videos) is a clean 404, not a
+            # 502. The frontend <img> onError then shows its fallback tile
+            # without noisy errors.
+            if exc.code in SESSION_INVALID_CODES:
+                raise
+            if exc.http_status == 404:
+                raise HTTPException(
+                    status.HTTP_404_NOT_FOUND, "썸네일이 없습니다."
+                ) from exc
             raise
-        if exc.http_status == 404:
-            raise HTTPException(status.HTTP_404_NOT_FOUND, "썸네일이 없습니다.") from exc
-        raise
-    if cache is not None and key is not None:
-        cache.put(key, content)
+        if cache is not None and orig_key is not None:
+            cache.put(orig_key, content)
+    if wants_webp and cache is not None and webp_key is not None:
+        # 인코딩은 스레드로(이벤트 루프 보호). 실패/무이득이면 원본을 변형
+        # 키에 저장해 같은 이미지의 재인코딩 시도를 막는다.
+        webp = await asyncio.to_thread(encode_webp, content)
+        served = webp if webp is not None else content
+        cache.put(webp_key, served)
+        return Response(
+            content=served, media_type=media_type_of(served), headers=headers
+        )
     return Response(
         content=content,
         media_type=media_type,

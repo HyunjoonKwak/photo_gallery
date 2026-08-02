@@ -49,6 +49,7 @@
 ### B-1. 타임라인
 - [x] 월/일 버킷 **count-first** 방식: 개수 메타데이터만 먼저 받아 섹션 높이 사전 할당 → 스크롤바가 전체 아카이브를 대표 ([Building the Google Photos Web UI](https://medium.com/google-design/building-the-google-photos-web-ui-45b714dfbed1), [Immich Timeline](https://deepwiki.com/immich-app/immich/3.5-timeline-and-asset-display)) — `GET /api/photos/buckets` + `lib/rowModel.ts` 플레이스홀더 행
 - [x] 우측 **날짜 스크러버**(드래그 시 연/월 라벨)로 임의 시점 점프 — `Scrubber.tsx`
+- [x] **스크러버 ↔ 플로팅 버튼 겹침 해소** (2026-08-02, 사용자 제보: 모바일에서 연도 라벨·홈·화살표 버튼 겹침) — Scrubber가 실제 표시될 때 store `scrubberCount`에 보고하고, NavControls(↑/‹/🏠 스택)가 이를 구독해 레일 폭만큼 왼쪽으로 이동(`right-3`→`right-12`, transition). 스크러버 z를 30으로 올려 드래그 월 버블이 버튼 위에 그려지게 함(버튼은 레일 밖이라 포인터 충돌 없음). MOCK+Playwright 모바일 뷰포트(390px) 연/월 줌에서 검증
 - [x] **justified layout**(행 높이 균등, 원본 비율 유지·크롭 없음) — square grid 비권고(가족 사진은 세로/가로 혼재)
 - [x] ⚠️ 큰 버킷의 geometry **동기 일괄 계산 금지** — **일 단위 버킷 + 버킷별 지연 계산·메모이제이션**으로 구조적으로 회피 ([Immich #28861](https://github.com/immich-app/immich/issues/28861) 프리즈 사례)
 - [x] 공용 공간도 **모든 구성원에게 타임라인 제공** — 공용/개인 동일한 타임라인 UI(권한은 DSM이 enforce)
@@ -56,6 +57,8 @@
 ### B-2. 썸네일 로딩
 - [x] **3단계 로딩: thumbhash(즉시 블러) → 소형 → 대형** (2026-07-03) — ThumbHash 인코더 자체 구현(`hashing.thumbhash_bytes`, evanw 레퍼런스 포팅, Pillow-only·numpy 없음; 입력 32px 축소로 ~10ms/장). dedup 스캔이 (sha, phash, **thumbhash**)를 photo_cache에 저장(기존 행은 thumbhash 없으면 재해시), items/folder/person/place 목록 응답에 배치 주입(`fill_thumbhashes`). 프론트는 공식 `thumbhash` npm(3KB)으로 base64→blur dataURL 디코드(메모이즈), PhotoCell 배경에 표시(스캔 안 된 항목은 기존 단색 fallback). e2e: 인코더↔공식 디코더 호환 확인(유효 PNG·종횡비·자연색). **주의: 블러가 보이려면 배포 후 중복 스캔 1회 재실행 필요**(기존 photo_cache 행 채움)
 - [x] 1단계에서는 Synology Photos 썸네일(`SYNO.Foto.Thumbnail`) 재활용이 우선 — `dsm_source.thumbnail()` 프록시로 구현(실 NAS 미검증)
+- [x] **xl 실전송 절감: WebP 협상 + fetchpriority** (2026-08-02, 사용자 요청 "전송 자체가 빨라지는 방법") — ① 백엔드: `Accept: image/webp`면 xl을 WebP q80으로 1회 재인코딩(`transcode.py`, 스레드 실행) 후 ThumbCache 변형 키에 저장 — 바이트 30-45% 절감, 이득 없는 이미지는 원본을 변형 키에 넣어 재시도 CPU 차단(서빙 타입은 시그니처 판별). ETag에 포맷 포함 + `Vary: Accept`. sm/m은 제외(작은 파일이라 인코딩 CPU가 콜드 그리드를 늦춤). "저장" 원본 다운로드는 무영향. ② 프론트: 라이트박스 xl `<img>`에 `fetchpriority=high`(소문자 — React 18) — 그리드 sm 수십 장과의 요청 큐 경쟁에서 우선. pytest 7건(협상·변형 캐시·ETag 분리·304·sm 비변환)
+- [x] **라이트박스 xl 로딩 중 흰 화면 해소** (2026-08-02, 사용자 제보: 모바일 확대 시 흰 화면 장시간 노출) — 원인: xl `<img>`를 바로 그려 부분 디코딩 영역이 흰색으로 노출. 수정: 그리드에서 브라우저 캐시에 이미 있는 **sm을 밑에 즉시 깔고** xl은 `onLoad` 후 페이드인(150ms 크로스페이드) + 로딩 스피너 + 실패 시 폴백 아이콘. 로딩 상태는 리셋 이펙트가 아니라 **src 파생 상태**(`xlState.src === xlSrc`)로 관리 — 사진 전환 시 이전 사진 잔상·경합 프레임 원천 차단. 핀치/팬 transform은 sm 레이어에도 동일 적용. Playwright로 xl 지연 시 sm(opacity 1)+xl(opacity 0)+스피너 상태 확인
 
 ### B-3. 다중 선택 (Google Photos 패턴)
 - [x] 호버 시 좌상단 **체크 서클** — 별도 "선택 모드 버튼" 불필요
