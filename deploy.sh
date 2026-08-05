@@ -57,7 +57,10 @@ deploy() {
     chown -R "${APP_UID}:${APP_GID}" data 2>/dev/null || chmod -R 777 data 2>/dev/null || true
     # .env 파일이 있으면 자동 로드(docker compose 기본 동작). 없으면 compose 기본값 사용.
     [ -f .env ] || print_warning ".env 없음 — compose 기본값 사용 (DSM_BASE_URL 등 확인)"
-    echo -e "${YELLOW}기존 컨테이너 중지...${NC}"; compose down || true
+    # NOTE: 의도적으로 `down`을 쓰지 않는다 — `up -d`가 변경분만 재생성한다.
+    #  1) pull 실패 시에도 기존 컨테이너가 계속 서비스된다 (무중단).
+    #  2) down의 네트워크 삭제/재생성이 Synology에서 간헐적으로 무관한
+    #     컨테이너들의 광역 재시작을 유발한 사례가 있다 (2026-08-05, car_radio).
     echo -e "${YELLOW}컨테이너 시작...${NC}";   compose up -d
     print_success "배포 완료"
     echo ""; status
