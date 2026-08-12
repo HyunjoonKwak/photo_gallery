@@ -1058,17 +1058,56 @@ class _DsmBrowseOps:
         raise last if last else DsmError(100, "폴더 이름 변경 실패")
 
     async def folder_count(self, folder_id: str) -> int:
-        # Browse.Item "count" takes the same filters as "list" — one cheap call
-        # instead of paging every item just to count it.
+        """하위 전체(재귀) 아이템 수 — 폴더 배지.
+
+        Browse.Item "count"의 folder_id 필터는 **직속만** 세서, 자식이 폴더뿐인
+        중간 폴더(연도 폴더 등) 배지가 0장이 되던 문제(2026-08-13)를 서브트리
+        합산으로 해결. ① 마운트가 설정돼 있으면 디스크에서 직접 재귀 카운트
+        (DSM 왕복 0회) ② 없으면 서브트리 폴더를 훑어 폴더별 count를 상한 병렬로
+        합산(레벨 병렬, _TRASH_CONCURRENCY 상한 — 세마포어 독점 방지)."""
         space = self._folder_space(folder_id)
-        data = await self._dsm.call(
-            _ns(space, "SYNO.Foto.Browse.Item"),
-            "count",
-            version=1,
-            sid=self._sid,
-            extra={"folder_id": int(folder_id)},
-        )
-        return int(data.get("count", 0))
+        n = await self._folder_count_disk(space, folder_id)
+        if n is not None:
+            return n
+        ids = await self._descendant_folder_ids(space, int(folder_id))
+
+        async def one(fid: int) -> int:
+            data = await self._dsm.call(
+                _ns(space, "SYNO.Foto.Browse.Item"),
+                "count",
+                version=1,
+                sid=self._sid,
+                extra={"folder_id": fid},
+            )
+            return int(data.get("count", 0))
+
+        counts = await _bounded_gather([one(fid) for fid in ids], _TRASH_CONCURRENCY)
+        return sum(counts)
+
+    async def _folder_count_disk(self, space: str, folder_id: str) -> int | None:
+        """마운트(THUMB_MOUNT_TEAM/HOMES)에서 서브트리 사진·동영상 수를 직접
+        센다. 폴더 메타의 Photos 경로(name)를 실제 공유 경로로 환산 — 공용은
+        /photo+name, 개인은 /homes/<계정>/Photos+name. 마운트 미설정·경로 부재
+        (인덱스 지연/rename 직후)면 None → API 폴백."""
+        meta = _FOLDER_META.get(self._sid, {}).get(folder_id)
+        if meta is None:
+            return None
+        name = meta[1]
+        if space == "team":
+            fs_id = f"/photo{name}"
+        else:
+            account = _SID_ACCOUNT.get(self._sid)
+            if not account:
+                return None
+            fs_id = f"/homes/{account}/Photos{name}"
+        from .capture_fix import disk_path  # 지연 임포트 (모듈 순환 방지)
+
+        disk = disk_path(fs_id)
+        if not disk:
+            return None
+        from .homes_source import _count_media_on_disk
+
+        return await asyncio.to_thread(_count_media_on_disk, disk)
 
     async def members(self) -> list[MemberInfo]:
         # 관리자 전용: /homes 하위 폴더명 = 구성원 계정 (user home 서비스 전제).

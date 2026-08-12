@@ -130,6 +130,18 @@ def test_folders_listed(logged_in):
     assert any(f["space"] == "personal" for f in folders)
 
 
+def test_folder_counts_include_subfolder_photos(logged_in):
+    # f-demo-1은 직계 자식이 폴더(f-demo-1-a/b)뿐 — 배지가 0장으로 나오던
+    # 회귀(2026-08-13) 방지: 하위 폴더 사진까지 합산돼야 한다.
+    resp = logged_in.get(
+        "/api/photos/folder-counts?ids=f-demo-1,f-demo-1-a,f-demo-1-b"
+    )
+    assert resp.status_code == 200
+    counts = resp.json()["counts"]
+    assert counts["f-demo-1-a"] > 0 and counts["f-demo-1-b"] > 0
+    assert counts["f-demo-1"] == counts["f-demo-1-a"] + counts["f-demo-1-b"]
+
+
 def test_system_info_mocked(logged_in):
     resp = logged_in.get("/api/system/info")
     assert resp.status_code == 200

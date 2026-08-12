@@ -99,6 +99,22 @@ def test_zone_folders_and_items(client):
     assert all(i["id"].startswith(leaf) for i in items)
 
 
+def test_zone_folder_counts_include_subfolders(client):
+    # zone 루트(MobileBackup)는 직계 자식이 월 폴더뿐 — 카운트가 리프 사진의
+    # 합이어야 한다(0장 배지 회귀 방지, 2026-08-13).
+    zone_id = _register_backup(client).json()["id"]
+    root = "/homes/tester/MobileBackup"
+    leaves = [f"{root}/2024-01", f"{root}/2024-02", f"{root}/2024-03"]
+    resp = client.get(
+        f"/api/photos/folder-counts?zone={zone_id}&ids={','.join([root, *leaves])}"
+    )
+    assert resp.status_code == 200
+    counts = resp.json()["counts"]
+    leaf_sum = sum(counts[leaf] for leaf in leaves)
+    assert leaf_sum > 0
+    assert counts[root] == leaf_sum
+
+
 def test_zone_and_target_user_conflict(client):
     zone_id = _register_backup(client).json()["id"]
     resp = client.get(

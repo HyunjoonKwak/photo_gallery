@@ -156,7 +156,8 @@ async def get_folder_counts(
     ids: str,
     source: PhotoSource = Depends(get_photo_source),
 ) -> FolderCountsResponse:
-    """Direct item counts for a set of folders (folder view badges).
+    """Subtree item counts for a set of folders (folder view badges) —
+    하위 폴더 포함 재귀 합산(자식이 폴더뿐인 폴더도 0장이 아니게).
 
     Comma-separated ids, counted in parallel; a folder whose count fails is
     omitted (the UI simply hides that badge) so one bad id can't 500 the batch.

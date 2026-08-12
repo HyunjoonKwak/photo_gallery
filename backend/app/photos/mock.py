@@ -925,11 +925,22 @@ class MockPhotoSource:
         self._deleted.clear()
 
     async def folder_count(self, folder_id: str) -> int:
+        # 하위 전체(재귀) 합산 — 자식이 폴더뿐인 부모(f-demo-1)도 실제 사진 수를
+        # 보여야 한다(실서버 동작과 동일, 2026-08-13).
         self._folder_by_id(folder_id)  # 404 for unknown folders
+        folders = [*_DEFAULT_FOLDERS, *self._custom_folders]
+        subtree = {folder_id}
+        grew = True
+        while grew:  # parent_id 체인으로 서브트리 수집 (mock 트리는 얕고 작다)
+            grew = False
+            for f in folders:
+                if f.parent_id in subtree and f.id not in subtree:
+                    subtree.add(f.id)
+                    grew = True
         return sum(
             1
             for item_id, (_, fid) in self._loc.items()
-            if fid == folder_id and item_id not in self._deleted
+            if fid in subtree and item_id not in self._deleted
         )
 
     async def capture_items(self, space: str, folder_id: str) -> list[PhotoItem]:
@@ -1347,7 +1358,21 @@ class MockZonePhotoSource(MockPhotoSource):
         return out[:limit] if limit is not None else out
 
     async def folder_count(self, folder_id: str) -> int:
-        return len(await self.folder_items(folder_id))
+        # 하위 전체(재귀) 합산 — 중간 폴더(MobileBackup 등)도 리프 사진 수의
+        # 합을 보여야 한다(실서버 마운트 재귀 카운트와 동일, 2026-08-13).
+        rel = _zone_rel(folder_id)
+        parts = folder_id.strip("/").split("/")  # [homes, account, ...]
+        home = "/" + "/".join(parts[:2])
+        total = 0
+        for leaf in _ZONE_LEAVES:
+            if rel and leaf != rel and not leaf.startswith(rel + "/"):
+                continue
+            total += sum(
+                1
+                for p in _zone_leaf_files(f"{home}/{leaf}")
+                if p not in self._zone_moved
+            )
+        return total
 
     async def thumbnail(
         self, space: str, item_id: str, cache_key: str, size: str

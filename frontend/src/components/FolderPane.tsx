@@ -378,8 +378,8 @@ export function FolderPane({
     [baseFolders, folderSort],
   );
 
-  // Direct photo counts for the visible sub-folders (badge). One batched
-  // request per level; failures just hide the badge.
+  // Subtree photo counts for the visible sub-folders (badge, 하위 폴더 포함
+  // 재귀 합산). One batched request per level; failures just hide the badge.
   const countIds = useMemo(() => baseFolders.map((f) => f.id), [baseFolders]);
   // 청크(20개)별 쿼리 — 예전엔 전체 id join이 키라 폴더 1개만 바뀌어도 전부
   // 재요청됐다. 정렬 후 청크 단위 키로 나누면 변화 지점 이후 청크만 다시 온다.

@@ -81,7 +81,8 @@ class PhotoSource(Protocol):
         ...
 
     async def folder_count(self, folder_id: str) -> int:
-        """Number of items directly in a folder (folder view badges)."""
+        """Total items in a folder's subtree, subfolders included (folder view
+        badges) — a folder holding only subfolders must not read as 0장."""
         ...
 
     async def capture_items(self, space: str, folder_id: str) -> list[PhotoItem]:

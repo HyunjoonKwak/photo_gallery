@@ -121,17 +121,24 @@ async def _resized_original(item_id: str, size: str) -> bytes | None:
 
 
 def _count_media_on_disk(disk_dir: str) -> int | None:
-    """디렉터리의 사진·동영상 파일 수(마운트 직접 나열). 폴더 배지 카운트용 —
-    수백 폴더를 DSM FileStation.List로 동시에 세면 지연·실패하지만, 소유자 uid로
-    도는 컨테이너는 마운트에서 즉시 셀 수 있다. 접근 불가면 None → API 폴백."""
+    """디렉터리 **하위 전체(재귀)** 사진·동영상 파일 수(마운트 직접 순회).
+
+    폴더 배지 카운트용 — 수백 폴더를 DSM FileStation.List로 동시에 세면
+    지연·실패하지만, 마운트에서는 즉시 셀 수 있다. 직속만 세면 자식이 폴더뿐인
+    중간 폴더(연도 폴더 등) 배지가 0장이 되므로 서브트리를 합산한다(2026-08-13).
+    @/# 시스템 폴더(@eaDir 썸네일, #recycle)는 제외. 루트 접근 불가면
+    None → API 폴백(0과 구분 — os.walk는 오류를 삼켜 빈 순회가 된다)."""
     try:
-        return sum(
-            1
-            for f in os.listdir(disk_dir)
-            if f.lower().endswith(_PHOTO_EXT)
-        )
+        os.listdir(disk_dir)  # 루트 접근 검증 (실패는 0이 아니라 None이어야 함)
     except OSError:
         return None
+    total = 0
+    for _dirpath, dirnames, files in os.walk(disk_dir):
+        dirnames[:] = [
+            d for d in dirnames if not (d.startswith("@") or d.startswith("#"))
+        ]
+        total += sum(1 for f in files if f.lower().endswith(_PHOTO_EXT))
+    return total
 
 
 def _scan_name_violations(disk_root: str) -> list[tuple[str, str, str]]:
@@ -255,9 +262,10 @@ class _FsRootMixin:
     async def folder_count(self, folder_id: str) -> int:
         if not _is_path_id(folder_id):
             return await super().folder_count(folder_id)
-        # 마운트에서 직접 카운트(빠르고 안정적) — 하위폴더가 수백 개인 폴더에서
-        # DSM FileStation.List를 폴더마다 동시 호출하면 지연·실패해 배지가 빈칸이
-        # 되던 문제 해결. 마운트 없으면 API(folder_items)로 폴백.
+        # 마운트에서 직접 재귀 카운트(하위 전체 합산, 빠르고 안정적) — 하위폴더가
+        # 수백 개인 폴더에서 DSM FileStation.List를 폴더마다 동시 호출하면
+        # 지연·실패해 배지가 빈칸이 되던 문제 해결. 마운트 없으면 API로 폴백
+        # (직속만 — FileStation 재귀는 왕복 폭주라 미지원, 운영은 항상 마운트).
         disk = _mount_path(folder_id)
         if disk:
             n = await asyncio.to_thread(_count_media_on_disk, disk)
