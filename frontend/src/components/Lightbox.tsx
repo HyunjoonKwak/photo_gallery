@@ -8,6 +8,7 @@ import { formatBytes, formatDuration } from "../lib/dates";
 import { canPickSaveLocation, saveLocal } from "../lib/saveFile";
 import { FolderPickerDialog } from "./timeline/FolderPickerDialog";
 import { AlbumPickerDialog } from "./timeline/AlbumPickerDialog";
+import { LightboxFilmstrip } from "./timeline/LightboxFilmstrip";
 
 /** EXIF field order + Korean labels for the info panel. */
 const EXIF_LABELS: [string, string][] = [
@@ -24,6 +25,7 @@ const SHORTCUTS: [string, string][] = [
   ["i", "정보 패널 열기/닫기"],
   ["Delete", "휴지통으로 이동 (다음 사진으로 진행)"],
   ["ESC", "닫기"],
+  ["f", "필름스트립 열기/닫기"],
   ["Shift + ?", "단축키 도움말"],
 ];
 
@@ -43,6 +45,9 @@ export function Lightbox() {
   const readonly = useTimelineStore((s) => s.section !== "manage");
   const ops = useFileOps();
   const [showInfo, setShowInfo] = useState(false);
+  // 필름스트립은 넓은 화면에서만 기본으로 편다 — 폰에서는 사진이 차지할
+  // 자리를 스트립이 뺏고, 좌우 넘기기가 이미 스와이프로 자연스럽다.
+  const [showStrip, setShowStrip] = useState(true);
   const [showHelp, setShowHelp] = useState(false);
   const [showMove, setShowMove] = useState(false);
   const [showAlbum, setShowAlbum] = useState(false);
@@ -108,6 +113,7 @@ export function Lightbox() {
       else if (e.key === "i" || e.key === "I") setShowInfo((v) => !v);
       else if ((e.key === "Delete" || e.key === "Backspace") && !readonly)
         deleteAndAdvance();
+      else if (e.key === "f" || e.key === "F") setShowStrip((v) => !v);
       else if (e.key === "?") setShowHelp((v) => !v);
     };
     window.addEventListener("keydown", onKey);
@@ -263,7 +269,7 @@ export function Lightbox() {
             autoPlay
             playsInline
             onClick={(e) => e.stopPropagation()}
-            className="max-h-[90vh] max-w-[94%]"
+            className={`max-h-[90vh] max-w-[94%] ${showStrip ? "sm:max-h-[calc(90vh-76px)]" : ""}`}
           />
         ) : (
           <>
@@ -275,7 +281,7 @@ export function Lightbox() {
                 alt=""
                 aria-hidden
                 draggable={false}
-                className="pointer-events-none absolute inset-0 m-auto max-h-[90vh] max-w-[94%] object-contain"
+                className={`pointer-events-none absolute inset-0 m-auto max-h-[90vh] max-w-[94%] object-contain ${showStrip ? "sm:max-h-[calc(90vh-76px)]" : ""}`}
                 style={{
                   transform: `translate(${zoom.tx}px, ${zoom.ty}px) scale(${zoom.scale})`,
                 }}
@@ -304,7 +310,7 @@ export function Lightbox() {
               }
               className={`max-h-[90vh] max-w-[94%] object-contain ${
                 xlReady ? "opacity-100" : "opacity-0"
-              }`}
+              } ${showStrip ? "sm:max-h-[calc(90vh-76px)]" : ""}`}
               style={{
                 transform: `translate(${zoom.tx}px, ${zoom.ty}px) scale(${zoom.scale})`,
                 transition:
@@ -413,18 +419,25 @@ export function Lightbox() {
         </div>
 
         <div
-          className="absolute bottom-0 left-0 right-0 flex justify-center gap-4 bg-gradient-to-t from-black/80 to-transparent px-4 py-3 text-xs text-slate-300"
+          className="absolute bottom-0 left-0 right-0"
           onClick={(e) => e.stopPropagation()}
         >
-          <span className="font-medium text-white">{item.filename}</span>
-          <span className="text-slate-400">Shift+? 단축키</span>
+          <div className="flex justify-center gap-4 bg-gradient-to-t from-black/80 to-transparent px-4 py-3 text-xs text-slate-300">
+            <span className="font-medium text-white">{item.filename}</span>
+            <span className="text-slate-400">f 필름스트립 · Shift+? 단축키</span>
+          </div>
+          {showStrip && (
+            <div className="hidden sm:block">
+              <LightboxFilmstrip />
+            </div>
+          )}
         </div>
       </div>
 
       {/* EXIF/info side panel — slides in from the right, persists across steps */}
       {showInfo && (
         <aside
-          className="w-72 shrink-0 overflow-y-auto bg-slate-900 px-5 py-6 text-sm text-slate-300"
+          className="scroll-thin w-72 shrink-0 overflow-y-auto bg-slate-900 px-5 py-6 text-sm text-slate-300"
           onClick={(e) => e.stopPropagation()}
         >
           <h3 className="mb-4 text-base font-semibold text-white">정보</h3>
