@@ -33,7 +33,12 @@ from ..operations import (
 )
 from ..photos.source import PhotoSource
 from ..photos.thumb_cache import THUMB_MEDIA_TYPE, ThumbCache
-from ..photos.transcode import encode_webp, media_type_of
+from ..photos.transcode import (
+    WEBP_GRID_METHOD,
+    WEBP_VIEWER_METHOD,
+    encode_webp,
+    media_type_of,
+)
 from .. import progress
 from ..photos import capture_fix
 from ..photos.capture_date import parse_from_filename
@@ -103,6 +108,13 @@ def _write_thumb_cache_entries(
         cache.put(key, content)
 
 
+async def _fill_thumbhashes_off_loop(
+    sqlite_path: str, items: list[PhotoItem]
+) -> list[PhotoItem]:
+    """Keep synchronous SQLite reads out of FastAPI's event loop."""
+    return await asyncio.to_thread(fill_thumbhashes, sqlite_path, items)
+
+
 def _check_target_user(session: Session, target_user: str | None) -> None:
     """Only admins may act on another member's behalf (audit-logged)."""
     if target_user and target_user != session.account and session.role != "admin":
@@ -135,7 +147,9 @@ async def list_bucket_items(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="day 형식은 YYYY-MM-DD 입니다.",
         ) from exc
-    items = fill_thumbhashes(settings.sqlite_path, await source.items(space, day))
+    items = await _fill_thumbhashes_off_loop(
+        settings.sqlite_path, await source.items(space, day)
+    )
     return BucketItemsResponse(space=space, day=day, items=items)
 
 
@@ -157,7 +171,7 @@ async def list_folder_items(
 ) -> BucketItemsResponse:
     """Items assigned to one folder (folder view). Space rides on the folder.
     ``limit`` (미리보기 카드) caps to a cheap single page."""
-    items = fill_thumbhashes(
+    items = await _fill_thumbhashes_off_loop(
         settings.sqlite_path, await source.folder_items(folder_id, limit)
     )
     folders = {f.id: f for f in await source.folders()}
@@ -211,7 +225,7 @@ async def search_photos(
     settings: Settings = Depends(get_settings),
 ) -> BucketItemsResponse:
     """Keyword search over DSM's own index (filename/folder/tag)."""
-    items = fill_thumbhashes(
+    items = await _fill_thumbhashes_off_loop(
         settings.sqlite_path, await source.search_items(space, q)
     )
     return BucketItemsResponse(space=space, day="", items=items)
@@ -273,7 +287,7 @@ async def list_person_items(
     source: PhotoSource = Depends(get_photo_source),
     settings: Settings = Depends(get_settings),
 ) -> BucketItemsResponse:
-    items = fill_thumbhashes(
+    items = await _fill_thumbhashes_off_loop(
         settings.sqlite_path, await source.person_items(space, id)
     )
     return BucketItemsResponse(space=space, day="", items=items)
@@ -296,7 +310,7 @@ async def list_place_items(
     settings: Settings = Depends(get_settings),
 ) -> BucketItemsResponse:
     """``limit`` (미리보기 카드) caps to a cheap single page."""
-    items = fill_thumbhashes(
+    items = await _fill_thumbhashes_off_loop(
         settings.sqlite_path, await source.place_items(space, id, limit)
     )
     return BucketItemsResponse(space=space, day="", items=items)
@@ -309,7 +323,9 @@ async def list_videos(
     settings: Settings = Depends(get_settings),
 ) -> BucketItemsResponse:
     """앨범 · 비디오 — 라이브러리 전체의 영상만(최신순)."""
-    items = fill_thumbhashes(settings.sqlite_path, await source.videos(space))
+    items = await _fill_thumbhashes_off_loop(
+        settings.sqlite_path, await source.videos(space)
+    )
     return BucketItemsResponse(space=space, day="", items=items)
 
 
@@ -332,7 +348,7 @@ async def list_album_items(
     source: PhotoSource = Depends(get_photo_source),
     settings: Settings = Depends(get_settings),
 ) -> BucketItemsResponse:
-    items = fill_thumbhashes(
+    items = await _fill_thumbhashes_off_loop(
         settings.sqlite_path, await source.album_items(_ALBUM_SPACE, id)
     )
     return BucketItemsResponse(space=_ALBUM_SPACE, day="", items=items)
@@ -1013,10 +1029,10 @@ async def get_thumbnail(
     # new service worker refuses to store such responses.
     if u and not secrets.compare_digest(u, thumbnail_cache_scope(session.token)):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "캐시 범위가 올바르지 않습니다.")
-    # xl만 WebP 협상(실전송 30-45% 절감) — sm/m은 파일이 작아 인코딩 CPU가
-    # 이득을 상쇄하고, 그리드 콜드 로드를 오히려 늦출 수 있어 제외.
+    # sm/xl WebP 협상. 운영 ThumbCache 실측상 sm은 method2로도 약 44% 절감되고
+    # 인코딩 p50이 약 6ms라 전송 절감이 유리하다. m은 오류 폴백용이라 제외.
     wants_webp = (
-        size == "xl"
+        size in ("sm", "xl")
         and not settings.mock_mode
         and "image/webp" in request.headers.get("accept", "")
     )
@@ -1033,7 +1049,7 @@ async def get_thumbnail(
         "Cache-Control": "private, max-age=31536000, immutable",
         "ETag": etag,
     }
-    if size == "xl":
+    if size in ("sm", "xl"):
         headers["Vary"] = "Accept"
     if request.headers.get("if-none-match") == etag:
         return Response(status_code=304, headers=headers)
@@ -1087,7 +1103,8 @@ async def get_thumbnail(
     if wants_webp and cache is not None and webp_key is not None:
         # 인코딩은 스레드로(이벤트 루프 보호). 실패/무이득이면 원본을 변형
         # 키에 저장해 같은 이미지의 재인코딩 시도를 막는다.
-        webp = await asyncio.to_thread(encode_webp, content)
+        method = WEBP_GRID_METHOD if size == "sm" else WEBP_VIEWER_METHOD
+        webp = await asyncio.to_thread(encode_webp, content, method=method)
         served = webp if webp is not None else content
         cache_writes.append((webp_key, served))
         return Response(

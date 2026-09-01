@@ -462,7 +462,7 @@ export function downloadUrl(
 
 // 썸네일 획득 로직(백엔드)이 바뀌면 올린다 — URL이 달라져 브라우저/서비스워커의
 // 옛 캐시(같은 URL로 붙잡고 있던 저화질)를 무효화하고 재요청하게 한다.
-const THUMB_URL_VERSION = "6";
+const THUMB_URL_VERSION = "7";
 
 export function thumbnailUrl(
   space: Space,

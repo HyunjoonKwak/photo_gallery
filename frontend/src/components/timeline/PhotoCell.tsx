@@ -92,6 +92,7 @@ export const PhotoCell = memo(function PhotoCell({ cell }: { cell: CellLayout })
           src={thumbnailUrl(space, item.id, item.cache_key, "sm")}
           alt={item.filename}
           loading="lazy"
+          decoding="async"
           draggable={false}
           onLoad={() => setLoaded(true)}
           onError={() => setFailed(true)}

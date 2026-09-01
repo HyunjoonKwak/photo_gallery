@@ -1,9 +1,32 @@
 """API tests for the photo routes, exercised end-to-end in mock mode."""
 
+import asyncio
+import threading
+
 import pytest
 from fastapi.testclient import TestClient
 
 from app.config import get_settings
+
+
+def test_fill_thumbhashes_runs_off_event_loop(monkeypatch):
+    from app.api import photos as photos_api
+
+    caller_thread = threading.get_ident()
+    worker_threads: list[int] = []
+    items = []
+
+    def fake_fill(_sqlite_path, source_items):
+        worker_threads.append(threading.get_ident())
+        return source_items
+
+    monkeypatch.setattr(photos_api, "fill_thumbhashes", fake_fill)
+
+    result = asyncio.run(photos_api._fill_thumbhashes_off_loop("unused.db", items))
+
+    assert result is items
+    assert worker_threads
+    assert worker_threads[0] != caller_thread
 
 
 @pytest.fixture()

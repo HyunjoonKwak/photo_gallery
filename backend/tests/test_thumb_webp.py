@@ -1,4 +1,4 @@
-"""WebP negotiation for xl thumbnails (실전송 절감) — unit + endpoint tests."""
+"""WebP negotiation for grid/viewer thumbnails — unit + endpoint tests."""
 
 import io
 
@@ -7,7 +7,12 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from app.config import get_settings
-from app.photos.transcode import encode_webp, media_type_of
+from app.photos.transcode import (
+    WEBP_GRID_METHOD,
+    WEBP_VIEWER_METHOD,
+    encode_webp,
+    media_type_of,
+)
 
 
 def _jpeg() -> bytes:
@@ -85,7 +90,16 @@ def _get(client, size, accept):
     )
 
 
-def test_xl_negotiates_webp_and_caches_variant(webp_client):
+def test_xl_negotiates_webp_and_caches_variant(webp_client, monkeypatch):
+    from app.api import photos as photos_api
+
+    methods: list[int] = []
+
+    def tracked_encode(data: bytes, *, method: int) -> bytes | None:
+        methods.append(method)
+        return encode_webp(data, method=method)
+
+    monkeypatch.setattr(photos_api, "encode_webp", tracked_encode)
     client, stub = webp_client
     resp = _get(client, "xl", "image/webp,image/jpeg,*/*")
     assert resp.status_code == 200
@@ -93,11 +107,13 @@ def test_xl_negotiates_webp_and_caches_variant(webp_client):
     assert resp.headers["vary"] == "Accept"
     assert resp.content[:4] == b"RIFF"
     assert stub.calls == 1
+    assert methods == [WEBP_VIEWER_METHOD]
 
     # Repeat: served from the on-disk variant cache — no DSM call, no re-encode.
     resp2 = _get(client, "xl", "image/webp,image/jpeg,*/*")
     assert resp2.headers["content-type"] == "image/webp"
     assert stub.calls == 1
+    assert methods == [WEBP_VIEWER_METHOD]
 
 
 def test_xl_without_webp_accept_stays_jpeg(webp_client):
@@ -113,9 +129,36 @@ def test_xl_without_webp_accept_stays_jpeg(webp_client):
     assert resp.headers["etag"] != resp2.headers["etag"]
 
 
-def test_sm_is_never_transcoded(webp_client):
-    client, _ = webp_client
+def test_sm_negotiates_webp_with_fast_method_and_caches_variant(
+    webp_client, monkeypatch
+):
+    from app.api import photos as photos_api
+
+    methods: list[int] = []
+
+    def tracked_encode(data: bytes, *, method: int) -> bytes | None:
+        methods.append(method)
+        return encode_webp(data, method=method)
+
+    monkeypatch.setattr(photos_api, "encode_webp", tracked_encode)
+    client, stub = webp_client
     resp = _get(client, "sm", "image/webp,*/*")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "image/webp"
+    assert resp.headers["vary"] == "Accept"
+    assert resp.content[:4] == b"RIFF"
+    assert stub.calls == 1
+    assert methods == [WEBP_GRID_METHOD]
+
+    resp2 = _get(client, "sm", "image/webp,*/*")
+    assert resp2.headers["content-type"] == "image/webp"
+    assert stub.calls == 1
+    assert methods == [WEBP_GRID_METHOD]
+
+
+def test_m_stays_jpeg(webp_client):
+    client, _ = webp_client
+    resp = _get(client, "m", "image/webp,*/*")
     assert resp.status_code == 200
     assert resp.headers["content-type"] == "image/jpeg"
     assert "vary" not in resp.headers

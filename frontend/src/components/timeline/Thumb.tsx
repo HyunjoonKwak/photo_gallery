@@ -89,6 +89,7 @@ export function Thumb({
           src={thumbnailUrl(sp, item.id, item.cache_key, "sm")}
           alt={item.filename}
           loading="lazy"
+          decoding="async"
           draggable={false}
           onLoad={() => setLoaded(true)}
           onError={() => setFailed(true)}
