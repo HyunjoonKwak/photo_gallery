@@ -11,6 +11,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { api } from "../../api/client";
 import type { PhotoBucket, PhotoItem, Space } from "../../api/types";
 import { useTimelineStore } from "../../store/timeline";
+import { layoutBucket, type CellLayout } from "../../lib/rowModel";
 import { Thumb } from "./Thumb";
 import { Scrubber, type ScrubberMarker } from "./Scrubber";
 
@@ -20,7 +21,16 @@ const DEFAULT_MIN_TILE = 116;
 
 type Row =
   | { kind: "header"; key: string; groupKey: string; label: string }
-  | { kind: "photos"; key: string; groupKey: string; items: PhotoItem[] }
+  | {
+      kind: "photos";
+      key: string;
+      groupKey: string;
+      items: PhotoItem[];
+      /** 비율 보기일 때의 배치. 없으면 정사각 바둑판. */
+      cells?: CellLayout[];
+      /** 비율 보기 행의 실제 높이(px). 없으면 tile + GAP. */
+      height?: number;
+    }
   | { kind: "placeholder"; key: string; groupKey: string; day: string; cols: number }
   | { kind: "more"; key: string; groupKey: string; hidden: number };
 
@@ -57,6 +67,11 @@ export function GroupedPhotoGrid({
   onTopGroupChange?: (label: string | null) => void;
 }) {
   const setOrdered = useTimelineStore((s) => s.setOrdered);
+  // 「비율」 보기 — 정사각 크롭 대신 원본 비율을 지킨다. 타임라인은 그룹별
+  // 지연 로드 + 행 가상화라 열 기반 메이슨리를 넣을 수 없다(배치가 그룹이
+  // 채워질 때마다 통째로 흔들린다). 대신 justified 로 **행 구조를 지키면서**
+  // 크롭만 없앤다 — 세로 사진이 잘리지 않는다는 목적은 같다.
+  const fit = useTimelineStore((s) => s.photoLayout);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
@@ -171,18 +186,44 @@ export function GroupedPhotoGrid({
           const its = loaded.get(d);
           if (its) items.push(...its);
         }
-        const shown =
-          maxRows === Infinity ? items : items.slice(0, maxRows * cols);
-        ordered.push(...shown);
-        for (let i = 0; i < Math.ceil(shown.length / cols); i++) {
-          rows.push({
-            kind: "photos",
-            key: `p-${g.key}-${i}`,
-            groupKey: g.key,
-            items: shown.slice(i * cols, i * cols + cols),
-          });
+        let shownCount: number;
+        if (fit === "masonry" && width > 0) {
+          // 배치를 먼저 하고 «행 수»로 자른다 — 행마다 담기는 장수가 달라
+          // 미리 장수로 자르면 미리보기 줄 수가 들쭉날쭉해진다.
+          const jrows = layoutBucket(g.key, items, width, tile).filter(
+            (r) => r.kind === "photos",
+          );
+          const use = maxRows === Infinity ? jrows : jrows.slice(0, maxRows);
+          shownCount = 0;
+          for (const [i, r] of use.entries()) {
+            if (r.kind !== "photos") continue;
+            const rowItems = r.cells.map((c) => c.item);
+            ordered.push(...rowItems);
+            shownCount += rowItems.length;
+            rows.push({
+              kind: "photos",
+              key: `p-${g.key}-${i}`,
+              groupKey: g.key,
+              items: rowItems,
+              cells: r.cells,
+              height: r.height,
+            });
+          }
+        } else {
+          const shown =
+            maxRows === Infinity ? items : items.slice(0, maxRows * cols);
+          ordered.push(...shown);
+          shownCount = shown.length;
+          for (let i = 0; i < Math.ceil(shown.length / cols); i++) {
+            rows.push({
+              kind: "photos",
+              key: `p-${g.key}-${i}`,
+              groupKey: g.key,
+              items: shown.slice(i * cols, i * cols + cols),
+            });
+          }
         }
-        const hidden = g.total - shown.length;
+        const hidden = g.total - shownCount;
         if (maxRows !== Infinity && hidden > 0) {
           rows.push({ kind: "more", key: `m-${g.key}`, groupKey: g.key, hidden });
         }
@@ -204,7 +245,7 @@ export function GroupedPhotoGrid({
       }
     }
     return { rows, ordered };
-  }, [groups, previewDaysOf, loaded, cols, maxRows, bucketCount]);
+  }, [groups, previewDaysOf, loaded, cols, maxRows, bucketCount, fit, width, tile]);
 
   useEffect(() => {
     setOrdered(ordered);
@@ -229,6 +270,7 @@ export function GroupedPhotoGrid({
       const r = rows[i];
       if (r?.kind === "header") return HEADER_H;
       if (r?.kind === "more") return 28;
+      if (r?.kind === "photos" && r.height != null) return r.height;
       return tile + GAP;
     },
     overscan: 8,
@@ -414,21 +456,42 @@ export function GroupedPhotoGrid({
                   {row.label}
                 </div>
               )}
-              {row.kind === "photos" && (
-                <div style={{ display: "flex", gap: GAP }}>
-                  {row.items.map((it) => (
-                    <button
-                      key={it.id}
-                      data-photo-id={it.id}
-                      onClick={() => onPhotoClick(it)}
-                      style={{ width: tile, height: tile }}
-                      className="overflow-hidden rounded-sm outline-none"
-                    >
-                      <Thumb item={it} space={space} />
-                    </button>
-                  ))}
-                </div>
-              )}
+              {row.kind === "photos" &&
+                (row.cells ? (
+                  <div style={{ position: "relative", height: row.height }}>
+                    {row.cells.map((c) => (
+                      <button
+                        key={c.item.id}
+                        data-photo-id={c.item.id}
+                        onClick={() => onPhotoClick(c.item)}
+                        style={{
+                          position: "absolute",
+                          left: c.left,
+                          top: 0,
+                          width: c.width,
+                          height: c.height,
+                        }}
+                        className="overflow-hidden rounded-sm outline-none"
+                      >
+                        <Thumb item={c.item} space={space} />
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", gap: GAP }}>
+                    {row.items.map((it) => (
+                      <button
+                        key={it.id}
+                        data-photo-id={it.id}
+                        onClick={() => onPhotoClick(it)}
+                        style={{ width: tile, height: tile }}
+                        className="overflow-hidden rounded-sm outline-none"
+                      >
+                        <Thumb item={it} space={space} />
+                      </button>
+                    ))}
+                  </div>
+                ))}
               {row.kind === "more" && (
                 <div className="px-2 pb-1 text-xs text-slate-400">
                   이 그룹에 {row.hidden.toLocaleString()}장 더 —

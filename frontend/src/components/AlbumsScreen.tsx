@@ -6,6 +6,7 @@ import type { AlbumInfo } from "../api/types";
 import { useTimelineStore } from "../store/timeline";
 import { useToastStore } from "../store/toast";
 import { PhotoGrid } from "./timeline/PhotoGrid";
+import { PhotoLayoutToggle } from "./timeline/PhotoLayoutToggle";
 import { Thumb } from "./timeline/Thumb";
 
 /** 앨범(큐레이션 전용) — 사용자가 직접 만드는 Synology 네이티브 앨범(개인 공간).
@@ -247,16 +248,19 @@ function AlbumDetail({
           <span className="text-xs text-slate-400">({items.length})</span>
         )}
         {items.length > 0 && (
-          <button
-            onClick={() => setRemoveMode((v) => !v)}
-            className={`ml-auto rounded-lg px-2 py-1 text-xs ${
-              removeMode
-                ? "bg-red-600 text-white"
-                : "border border-slate-200 text-slate-500 hover:bg-slate-100"
-            }`}
-          >
-            {removeMode ? "빼기 완료" : "사진 빼기"}
-          </button>
+          <>
+            <PhotoLayoutToggle className="ml-auto" />
+            <button
+              onClick={() => setRemoveMode((v) => !v)}
+              className={`rounded-lg px-2 py-1 text-xs ${
+                removeMode
+                  ? "bg-red-600 text-white"
+                  : "border border-slate-200 text-slate-500 hover:bg-slate-100"
+              }`}
+            >
+              {removeMode ? "빼기 완료" : "사진 빼기"}
+            </button>
+          </>
         )}
       </div>
       {removeMode && (

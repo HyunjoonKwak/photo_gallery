@@ -28,6 +28,9 @@ export function layoutBucket(
   day: string,
   items: PhotoItem[],
   containerWidth: number,
+  /** 목표 행 높이. 타임라인의 연 줌처럼 타일이 작은 화면은 이 값을 낮춰
+   * 정사각 보기와 비슷한 밀도를 유지한다. */
+  targetRowHeight: number = TARGET_ROW_H,
 ): TimelineRowModel[] {
   const geometry = justifiedLayout(
     items.map((i) => ({ width: i.width || 4, height: i.height || 3 })),
@@ -35,7 +38,7 @@ export function layoutBucket(
       containerWidth,
       containerPadding: 0,
       boxSpacing: GAP,
-      targetRowHeight: TARGET_ROW_H,
+      targetRowHeight,
     },
   );
 

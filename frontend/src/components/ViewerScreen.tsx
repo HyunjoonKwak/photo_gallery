@@ -7,6 +7,7 @@ import { useTimelineStore, type ViewerLens, type ViewerZoom } from "../store/tim
 import { GroupedPhotoGrid } from "./timeline/GroupedPhotoGrid";
 import { FolderViewerGrid } from "./FolderViewerGrid";
 import { TagLensBody } from "./TagLenses";
+import { PhotoLayoutToggle } from "./timeline/PhotoLayoutToggle";
 
 /** 사진 뷰어 (감상 전용) — 모든 감상 렌즈의 집. 렌즈: 타임라인(연/월/일 줌)·
  * 폴더·사람·장소·비디오. 사람/장소/비디오는 Synology 내장 AI 그룹으로, "앨범"이
@@ -208,6 +209,11 @@ function LensBar() {
           </span>
         </>
       )}
+
+      {/* 배치 전환은 늘 오른쪽 끝 — 렌즈를 옮겨도, 줌을 바꿔도 자리가
+       * 변하지 않는다. 사진 격자가 없는 화면(장소 지도·인물 목록)에서도
+       * 그대로 둔다: 사라지는 컨트롤은 고장으로 읽힌다(IA 3단계 결정). */}
+      <PhotoLayoutToggle className="ml-auto" />
     </div>
   );
 }
