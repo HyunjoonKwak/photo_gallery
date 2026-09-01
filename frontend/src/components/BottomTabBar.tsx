@@ -1,11 +1,12 @@
-import { useTimelineStore, type Section } from "../store/timeline";
+import { SHOW_MANAGE, useTimelineStore, type Section } from "../store/timeline";
 
-const TABS: { section: Section; label: string; icon: string }[] = [
+const ALL_TABS: { section: Section; label: string; icon: string }[] = [
   { section: "viewer", label: "사진", icon: "🖼" },
   { section: "albums", label: "앨범", icon: "📔" },
   { section: "manage", label: "정리", icon: "🗂" },
   { section: "more", label: "더보기", icon: "⋯" },
 ];
+const TABS = ALL_TABS.filter((t) => SHOW_MANAGE || t.section !== "manage");
 
 /** Mobile-only bottom tab bar (사진앱 표준): 3영역 전환을 엄지가 닿는 하단에.
  * 데스크톱은 헤더의 SectionToggle을 그대로 사용한다. safe-area 패딩으로

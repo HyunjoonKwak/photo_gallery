@@ -8,7 +8,7 @@ import { api } from "./api/client";
 import type { Space } from "./api/types";
 import { useAuthStore } from "./store/auth";
 import { useToastStore } from "./store/toast";
-import { useTimelineStore, type Section } from "./store/timeline";
+import { SHOW_MANAGE, useTimelineStore, type Section } from "./store/timeline";
 import { useBackTrap } from "./hooks/useBackTrap";
 import { LoginForm } from "./components/LoginForm";
 
@@ -40,12 +40,13 @@ import { AskDialogHost } from "./components/Dialog";
 
 // 주 메뉴 4영역 — 감상(사진/앨범)·정리·더보기(관리 허브). 데스크톱 토글과
 // 모바일 하단 탭이 같은 목록을 쓴다(IA 개편 2단계).
-export const SECTIONS: { section: Section; label: string; icon: string }[] = [
+export const ALL_SECTIONS: { section: Section; label: string; icon: string }[] = [
   { section: "viewer", label: "사진", icon: "🖼" },
   { section: "albums", label: "앨범", icon: "📔" },
   { section: "manage", label: "정리", icon: "🗂" },
   { section: "more", label: "더보기", icon: "⋯" },
 ];
+export const SECTIONS = ALL_SECTIONS.filter((t) => SHOW_MANAGE || t.section !== "manage");
 
 /** 주 메뉴: 4영역 전환 — 헤더 2줄 구조(A안)의 아래 줄, 언더라인 탭.
  * 위 줄의 라이브러리 셀렉터(무엇을)와 시각 언어를 분리해 "다섯 번째 탭"으로
