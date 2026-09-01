@@ -1,4 +1,9 @@
-import { SHOW_MANAGE, useTimelineStore, type Section } from "../store/timeline";
+import {
+  activeSection,
+  SHOW_MANAGE,
+  useTimelineStore,
+  type Section,
+} from "../store/timeline";
 
 const ALL_TABS: { section: Section; label: string; icon: string }[] = [
   { section: "viewer", label: "사진", icon: "🖼" },
@@ -15,6 +20,8 @@ const TABS = ALL_TABS.filter((t) => SHOW_MANAGE || t.section !== "manage");
 export function BottomTabBar() {
   const section = useTimelineStore((s) => s.section);
   const setSection = useTimelineStore((s) => s.setSection);
+  // 목록에 없는 영역(감춘 「정리」)에 들어가 있어도 불은 남긴다.
+  const current = activeSection(section);
   return (
     <nav
       data-no-boxselect
@@ -26,7 +33,7 @@ export function BottomTabBar() {
           key={t.section}
           onClick={() => setSection(t.section)}
           className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] font-medium ${
-            section === t.section ? "text-blue-600" : "text-slate-400"
+            current === t.section ? "text-blue-600" : "text-slate-400"
           }`}
         >
           <span className="text-lg leading-none">{t.icon}</span>

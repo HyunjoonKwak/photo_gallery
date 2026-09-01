@@ -8,7 +8,12 @@ import { api } from "./api/client";
 import type { Space } from "./api/types";
 import { useAuthStore } from "./store/auth";
 import { useToastStore } from "./store/toast";
-import { SHOW_MANAGE, useTimelineStore, type Section } from "./store/timeline";
+import {
+  activeSection,
+  SHOW_MANAGE,
+  useTimelineStore,
+  type Section,
+} from "./store/timeline";
 import { useBackTrap } from "./hooks/useBackTrap";
 import { LoginForm } from "./components/LoginForm";
 
@@ -54,10 +59,12 @@ export const SECTIONS = ALL_SECTIONS.filter((t) => SHOW_MANAGE || t.section !== 
 function SectionToggle() {
   const section = useTimelineStore((s) => s.section);
   const setSection = useTimelineStore((s) => s.setSection);
+  // 목록에 없는 영역(감춘 「정리」)에 들어가 있어도 불은 남긴다.
+  const current = activeSection(section);
   return (
     <nav className="hidden gap-1 px-2 sm:px-4 md:flex">
       {SECTIONS.map((v) => {
-        const active = section === v.section;
+        const active = current === v.section;
         return (
           <button
             key={v.section}
@@ -251,7 +258,7 @@ function LibrarySelector({ account, isAdmin }: { account: string; isAdmin: boole
                   관리자 · 구성원 사진
                   {section !== "manage" && (
                     <span className="ml-1 font-normal normal-case text-slate-300">
-                      · 정리에서 열림
+                      · {SHOW_MANAGE ? "정리에서 열림" : "폴더 보기로 열림"}
                     </span>
                   )}
                 </p>
@@ -277,7 +284,7 @@ function LibrarySelector({ account, isAdmin }: { account: string; isAdmin: boole
                   기기 백업
                   {section !== "manage" && (
                     <span className="ml-1 font-normal normal-case text-slate-300">
-                      · 정리에서 열림
+                      · {SHOW_MANAGE ? "정리에서 열림" : "폴더 보기로 열림"}
                     </span>
                   )}
                 </p>

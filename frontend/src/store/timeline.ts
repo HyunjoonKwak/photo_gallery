@@ -37,6 +37,18 @@ export type Section = "viewer" | "albums" | "manage" | "more";
  * 생기면 이 값을 true 로 되돌리면 그대로 살아난다.
  */
 export const SHOW_MANAGE = false;
+
+/**
+ * 탭바에 불을 켤 영역.
+ *
+ * 「정리」를 감추면(SHOW_MANAGE=false) 그 항목이 탭 목록에서 빠지는데,
+ * 검색·기기 백업·구성원 사진은 여전히 그 화면으로 들어간다. 그대로 두면
+ * 활성 탭이 하나도 없어 "내가 어디 있는지" 알 수 없다. 들어온 길이 감상이므로
+ * 「사진」에 불을 남긴다.
+ */
+export function activeSection(section: Section): Section {
+  return !SHOW_MANAGE && section === "manage" ? "viewer" : section;
+}
 /** 사진 뷰어 렌즈(감상 축) — 타임라인/폴더/사람/장소/비디오. AI 자동 그룹
  * (사람·장소·비디오)은 "앨범"이 아니라 감상 렌즈라 뷰어 아래로 편입한다.
  * "앨범"은 사용자가 만드는 큐레이션 전용. */
