@@ -5,7 +5,7 @@ import { api, thumbnailUrl } from "../api/client";
 import type { AlbumInfo } from "../api/types";
 import { useTimelineStore } from "../store/timeline";
 import { useToastStore } from "../store/toast";
-import { UniformPhotoGrid } from "./timeline/UniformPhotoGrid";
+import { PhotoGrid } from "./timeline/PhotoGrid";
 import { Thumb } from "./timeline/Thumb";
 
 /** 앨범(큐레이션 전용) — 사용자가 직접 만드는 Synology 네이티브 앨범(개인 공간).
@@ -292,7 +292,7 @@ function AlbumDetail({
             ))}
           </div>
         ) : (
-          <UniformPhotoGrid items={items} space="personal" />
+          <PhotoGrid items={items} space="personal" />
         )}
       </div>
     </div>

@@ -88,7 +88,7 @@ export function FolderViewerGrid() {
         ))}
       </div>
 
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
+      <div ref={scrollRef} className="scroll-thin min-h-0 flex-1 overflow-y-auto">
         {subQuery.isPending && (
           <p className="p-6 text-center text-sm text-slate-400">
             폴더 불러오는 중…

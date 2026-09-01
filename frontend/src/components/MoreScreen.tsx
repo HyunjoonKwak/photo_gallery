@@ -145,7 +145,7 @@ export function MoreScreen() {
   if (!user) return null;
 
   return (
-    <div className="h-full overflow-y-auto">
+    <div className="scroll-thin h-full overflow-y-auto">
       <div className="mx-auto max-w-lg px-3 py-5 sm:px-4">
         {/* 계정 카드 */}
         <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3.5 shadow-sm">
@@ -206,7 +206,7 @@ export function MoreScreen() {
           active={apiOpen}
         />
         {apiOpen && (
-          <div className="mx-1 mb-2 max-h-72 overflow-auto rounded-xl border border-slate-200 bg-white px-4 py-3">
+          <div className="scroll-thin mx-1 mb-2 max-h-72 overflow-auto rounded-xl border border-slate-200 bg-white px-4 py-3">
             <ApiInfoPanel />
           </div>
         )}

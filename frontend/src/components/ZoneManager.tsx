@@ -105,7 +105,7 @@ export function ZoneManager({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* 새 구역 추가 — 폴더 탐색 */}
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="scroll-thin min-h-0 flex-1 overflow-y-auto">
           <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
             새 구역 추가 — 폴더 선택
           </h4>
@@ -127,7 +127,7 @@ export function ZoneManager({ onClose }: { onClose: () => void }) {
             ) : (browseQuery.data?.dirs.length ?? 0) === 0 ? (
               <p className="px-3 py-3 text-xs text-slate-400">하위 폴더가 없습니다.</p>
             ) : (
-              <ul className="max-h-40 overflow-y-auto">
+              <ul className="scroll-thin max-h-40 overflow-y-auto">
                 {browseQuery.data?.dirs.map((d) => (
                   <li key={d.path} className="flex items-center">
                     <button

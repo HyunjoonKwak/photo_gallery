@@ -35,7 +35,7 @@ export function FolderPanel() {
       <aside
         data-no-boxselect
         style={{ width: aside.width }}
-        className="hidden shrink-0 overflow-y-auto border-r border-slate-200 bg-white px-2 py-2 md:block"
+        className="scroll-thin hidden shrink-0 overflow-y-auto border-r border-slate-200 bg-white px-2 py-2 md:block"
       >
         <p className="px-2 pt-1 text-[11px] leading-snug text-slate-400">
           클릭하면 폴더 보기로 열기 · 사진을 끌어다 놓으면 이동 (⌥ 누르면 복사)

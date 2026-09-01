@@ -4,7 +4,7 @@ import { api } from "../api/client";
 import type { PhotoItem, PlaceInfo, Space } from "../api/types";
 import { useTimelineStore } from "../store/timeline";
 import { Thumb } from "./timeline/Thumb";
-import { UniformPhotoGrid } from "./timeline/UniformPhotoGrid";
+import { PhotoGrid } from "./timeline/PhotoGrid";
 import { PlacesMapView } from "./PlacesMapView";
 
 /** 장소(지역별) 뷰어 — Synology Photos의 GPS 지오코딩 그룹(`places`)을 국가별
@@ -182,7 +182,7 @@ export function PlacesRegionView({ space }: { space: Space }) {
         ) : mode === "map" ? (
           <PlacesMapView space={space} regions={allRegions} onOpen={setRegion} />
         ) : (
-          <div className="h-full space-y-6 overflow-y-auto p-4">
+          <div className="scroll-thin h-full space-y-6 overflow-y-auto p-4">
             {countries.map((c) => (
               <section key={c.name}>
                 <h3 className="mb-2 flex items-baseline gap-2">
@@ -296,5 +296,5 @@ function RegionPhotos({ space, region }: { space: Space; region: RegionGroup }) 
     return <p className="p-6 text-sm text-slate-400">불러오는 중…</p>;
   if (items.length === 0)
     return <p className="p-6 text-sm text-slate-400">사진이 없습니다.</p>;
-  return <UniformPhotoGrid items={items} space={space} />;
+  return <PhotoGrid items={items} space={space} />;
 }

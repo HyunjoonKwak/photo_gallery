@@ -4,7 +4,7 @@ import { api, thumbnailUrl } from "../api/client";
 import type { PersonInfo, Space } from "../api/types";
 import { useTimelineStore } from "../store/timeline";
 import { useToastStore } from "../store/toast";
-import { UniformPhotoGrid } from "./timeline/UniformPhotoGrid";
+import { PhotoGrid } from "./timeline/PhotoGrid";
 import { DateGroupedGrid } from "./timeline/DateGroupedGrid";
 import { PlacesRegionView } from "./PlacesRegionView";
 
@@ -27,7 +27,11 @@ export function TagLensBody({ lens }: { lens: "people" | "places" | "videos" }) 
   const openGroup = useTimelineStore((s) => s.openGroup);
 
   return (
-    <div className="min-h-0 flex-1">
+    // h-full 이어야 한다 — 부모(ViewerScreen 의 렌즈 본문 칸)는 flex 상자가
+    // 아니라서 flex-1 이 무시되고 높이가 콘텐츠만큼 늘어난다. 그러면 그리드의
+    // 스크롤 상자도 함께 늘어나 «보이는 높이»가 전체 높이가 되고, 행 가상화가
+    // 통째로 무력화된다(사람/장소/비디오 렌즈에서 전 항목이 마운트됐다).
+    <div className="h-full">
       {lens === "people" &&
         (groupId ? (
           <GroupGrid space={PEOPLE_SPACE} kind="person" id={groupId} />
@@ -91,7 +95,7 @@ function PeopleGrid({
       </p>
     );
   return (
-    <div className="h-full overflow-y-auto p-4">
+    <div className="scroll-thin h-full overflow-y-auto p-4">
       {hasDuplicates && (
         <div className="mb-3 flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
           <span>같은 이름의 인물이 여럿 있습니다.</span>
@@ -273,7 +277,7 @@ function GroupGrid({
     return <p className="p-6 text-sm text-slate-400">불러오는 중…</p>;
   if (items.length === 0)
     return <p className="p-6 text-sm text-slate-400">사진이 없습니다.</p>;
-  return <UniformPhotoGrid items={items} space={space} />;
+  return <PhotoGrid items={items} space={space} />;
 }
 
 function VideosGrid({ space }: { space: Space }) {

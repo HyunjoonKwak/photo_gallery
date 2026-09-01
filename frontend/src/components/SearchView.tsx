@@ -56,7 +56,7 @@ export function SearchView() {
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   return (
-    <div ref={scrollRef} className="h-full overflow-y-auto">
+    <div ref={scrollRef} className="scroll-thin h-full overflow-y-auto">
       <div
         data-no-boxselect
         className="sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b border-slate-100 bg-white/90 px-4 py-2 text-sm backdrop-blur"

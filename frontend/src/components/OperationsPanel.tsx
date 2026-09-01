@@ -162,7 +162,7 @@ export function OperationsPanel({
       )}
       {trashOpen && <TrashBrowser onDone={() => setTrashOpen(false)} />}
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
+      <div className="scroll-thin min-h-0 flex-1 overflow-y-auto px-3 py-2">
         {query.isPending && (
           <p className="px-1 py-4 text-sm text-slate-400">불러오는 중…</p>
         )}
@@ -258,7 +258,7 @@ function TrashBrowser({ onDone }: { onDone: () => void }) {
       return next;
     });
   return (
-    <div className="max-h-64 overflow-y-auto border-b border-slate-100">
+    <div className="scroll-thin max-h-64 overflow-y-auto border-b border-slate-100">
       {q.isPending && (
         <p className="px-4 py-3 text-xs text-slate-400">불러오는 중…</p>
       )}

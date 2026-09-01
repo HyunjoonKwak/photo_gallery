@@ -59,6 +59,9 @@ export type ViewerZoom = "year" | "month" | "day";
 export type ManageTab = "folders" | "dedup" | "junk" | "search";
 export type FolderDisplay = "grid" | "list";
 
+/** 사진 그리드 배치 — 정사각(잘라 채움) | 메이슨리(비율 그대로). */
+export type PhotoLayout = "square" | "masonry";
+
 /** Folder view ordering (persisted). key: 이름 | 날짜(생성일); dir: 오름/내림차순. */
 export type FolderSortKey = "name" | "date";
 export type FolderSortDir = "asc" | "desc";
@@ -103,6 +106,17 @@ const NAV_HISTORY_MAX = 50;
 
 const FOLDER_DISPLAY_KEY = "nasphoto.folderDisplay";
 const FOLDER_SORT_KEY = "nasphoto.folderSort";
+const PHOTO_LAYOUT_KEY = "nasphoto.photoLayout";
+
+function initialPhotoLayout(): PhotoLayout {
+  try {
+    return localStorage.getItem(PHOTO_LAYOUT_KEY) === "masonry"
+      ? "masonry"
+      : "square";
+  } catch {
+    return "square";
+  }
+}
 
 function initialFolderDisplay(): FolderDisplay {
   try {
@@ -164,6 +178,8 @@ interface TimelineState {
   openFolderView: (path: PhotoFolder[]) => void;
   consumePendingFolderPath: () => void;
   /** Folder view: show sub-folders as icon cards or a list (persisted). */
+  photoLayout: PhotoLayout;
+  setPhotoLayout: (layout: PhotoLayout) => void;
   folderDisplay: FolderDisplay;
   setFolderDisplay: (d: FolderDisplay) => void;
   /** Folder view: sub-folder ordering — 이름/날짜 × 오름/내림 (persisted). */
@@ -417,6 +433,15 @@ export const useTimelineStore = create<TimelineState>()((set, get) => ({
         ...resetView(),
       }),
     ),
+  photoLayout: initialPhotoLayout(),
+  setPhotoLayout: (photoLayout) => {
+    try {
+      localStorage.setItem(PHOTO_LAYOUT_KEY, photoLayout);
+    } catch {
+      // private mode etc. — preference just won't persist
+    }
+    set({ photoLayout });
+  },
   folderDisplay: initialFolderDisplay(),
   setFolderDisplay: (folderDisplay) => {
     try {
