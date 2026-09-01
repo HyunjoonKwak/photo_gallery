@@ -34,6 +34,11 @@ from .source import Affected, DeleteOutcome, MoveOutcome
 
 logger = logging.getLogger(__name__)
 
+# A normal day fits in one 5,000-item DSM page. Exceptionally large import days
+# continue in a small parallel wave so they do not pay one NAS RTT per page or
+# monopolize the app-wide DSM semaphore.
+_DAY_PAGE_CONCURRENCY = 4
+
 from .dsm_cache import (
     _BUCKET_CACHE,
     _SID_ACCOUNT,
@@ -193,11 +198,10 @@ class _DsmBrowseOps:
         end = int((datetime(d.year, d.month, d.day) + timedelta(days=1)).timestamp())
         trash_ids = await self._trash_item_ids(space)
         tomb = _tombstoned_items(self._sid)
-        # Page through the whole day — a single mobile-backup day can hold
-        # thousands of photos, so a fixed limit would silently truncate it.
-        out: list[PhotoItem] = []
-        offset = 0
-        while True:
+        # Page through the whole day — a single mobile-backup/import day can
+        # exceed DSM's page limit. The common case stays one request; only a
+        # full first page fans the remaining offsets out in bounded waves.
+        async def fetch(offset: int) -> list[dict]:
             data = await self._dsm.call(
                 _ns(space, "SYNO.Foto.Browse.Item"),
                 "list",
@@ -213,16 +217,26 @@ class _DsmBrowseOps:
                     "additional": json.dumps(["thumbnail", "resolution", "video_meta"]),
                 },
             )
-            page = data.get("list", [])
+            return data.get("list", [])
+
+        pages = [await fetch(0)]
+        offset = _PAGE
+        while len(pages[-1]) == _PAGE:
+            offsets = [offset + i * _PAGE for i in range(_DAY_PAGE_CONCURRENCY)]
+            wave = await asyncio.gather(*(fetch(o) for o in offsets))
+            pages.extend(wave)
+            if any(len(page) < _PAGE for page in wave):
+                break
+            offset += _DAY_PAGE_CONCURRENCY * _PAGE
+
+        out: list[PhotoItem] = []
+        for page in pages:
             out.extend(
                 self._to_item(it)
                 for it in page
                 if str(it.get("id")) not in trash_ids
                 and str(it.get("id")) not in tomb
             )
-            if len(page) < _PAGE:
-                break
-            offset += _PAGE
         return out
 
     async def _trash_item_ids(self, space: str = "team") -> frozenset[str]:
@@ -1206,4 +1220,3 @@ class _DsmBrowseOps:
         # 홈 alias, = /homes/<user>/Photos). 관리자가 타인 개인 공간을 조작하는
         # 경우의 /homes/<other>/Photos 프리픽스는 관리자 기능 단계에서 별도 처리.
         return "/photo" if space == "team" else "/home/Photos"
-

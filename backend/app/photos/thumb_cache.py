@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import threading
 import time
 
 # Synology 썸네일(SYNO.Foto.Thumbnail / SYNO.FileStation.Thumb)은 항상 JPEG.
@@ -65,7 +66,9 @@ class ThumbCache:
         try:
             os.makedirs(os.path.dirname(path), exist_ok=True)
             # 원자적 교체 — 동시 요청이 반쪽 파일을 읽지 않게.
-            tmp = f"{path}.{os.getpid()}.tmp"
+            # BackgroundTask writes may run concurrently in multiple worker
+            # threads; pid alone would make them race on the same temp file.
+            tmp = f"{path}.{os.getpid()}.{threading.get_ident()}.tmp"
             with open(tmp, "wb") as f:
                 f.write(data)
             os.replace(tmp, path)

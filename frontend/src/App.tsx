@@ -4,7 +4,7 @@ import {
   useQueryClient,
   type QueryClient,
 } from "@tanstack/react-query";
-import { api } from "./api/client";
+import { api, AUTH_EXPIRED_EVENT } from "./api/client";
 import type { Space } from "./api/types";
 import { useAuthStore } from "./store/auth";
 import { useToastStore } from "./store/toast";
@@ -16,6 +16,11 @@ import {
 } from "./store/timeline";
 import { useBackTrap } from "./hooks/useBackTrap";
 import { LoginForm } from "./components/LoginForm";
+import {
+  clearLegacyThumbnailCaches,
+  clearThumbnailCaches,
+  setThumbnailCacheOwner,
+} from "./lib/thumbnailCache";
 
 // 라이브러리(공용/내사진/1차구역/타인) 전환 시: 스코프가 붙는 데이터 캐시만 버리고
 // 세션·메타(me/system-info/zones/members/ops/trash)는 유지 — clear() 전체 초기화는
@@ -472,10 +477,27 @@ function FirstRunTip({ account }: { account: string }) {
 
 export default function App() {
   const { user, setUser } = useAuthStore();
+  const queryClient = useQueryClient();
 
   // 뒤로가기 트랩 — 로그인/세션 확인 게이팅보다 먼저(조기 반환 위) 걸어야
   // 앱을 열자마자 누른 첫 뒤로가기도 종료 확인이 동작한다.
   useBackTrap();
+
+  // A DSM/session 401 can happen long after the initial /me bootstrap. Drop
+  // decoded photo data and CacheStorage immediately instead of leaving the
+  // prior account's gallery visible behind a stale authenticated UI.
+  useEffect(() => {
+    const expire = () => {
+      setThumbnailCacheOwner(null);
+      setUser(null);
+      queryClient.removeQueries({
+        predicate: (query) => query.queryKey[0] !== "me",
+      });
+      void clearThumbnailCaches();
+    };
+    window.addEventListener(AUTH_EXPIRED_EVENT, expire);
+    return () => window.removeEventListener(AUTH_EXPIRED_EVENT, expire);
+  }, [queryClient, setUser]);
 
   // Restore session on load (cookie may still be valid after a refresh).
   const meQuery = useQuery({
@@ -485,8 +507,18 @@ export default function App() {
   });
 
   useEffect(() => {
-    if (meQuery.isSuccess) setUser(meQuery.data);
-    if (meQuery.isError) setUser(null);
+    if (meQuery.isSuccess) {
+      setThumbnailCacheOwner(meQuery.data.thumbnail_cache_scope);
+      // Old builds used one unpartitioned runtime cache. Remove it once while
+      // retaining the new account-keyed cache across ordinary reloads.
+      void clearLegacyThumbnailCaches();
+      setUser(meQuery.data);
+    }
+    if (meQuery.isError) {
+      setThumbnailCacheOwner(null);
+      void clearThumbnailCaches();
+      setUser(null);
+    }
   }, [meQuery.isSuccess, meQuery.isError, meQuery.data, setUser]);
 
   if (meQuery.isPending) {

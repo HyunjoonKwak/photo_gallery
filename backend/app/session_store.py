@@ -7,6 +7,7 @@ HttpOnly cookie and keep the sid <-> token mapping in SQLite.
 
 from __future__ import annotations
 
+import hashlib
 import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -17,6 +18,11 @@ from .db import connect
 # 왕복(이벤트 루프 블로킹)을 만들었다. 30초 캐시로 흡수하고 삭제 시 즉시 비운다.
 _SESSION_TTL = 30.0
 _session_cache: dict[str, tuple[float, "Session"]] = {}
+
+
+def thumbnail_cache_scope(token: str) -> str:
+    """Opaque, session-bound browser cache partition (not authorization)."""
+    return hashlib.sha256(f"thumb-cache-v1\x00{token}".encode()).hexdigest()[:24]
 
 
 @dataclass(frozen=True)

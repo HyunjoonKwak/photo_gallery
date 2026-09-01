@@ -62,10 +62,12 @@ export default defineConfig({
         // 오프라인에서도 최근 본 썸네일이 보인다. 상한·쿼터 보호로 폭주 방지.
         runtimeCaching: [
           {
-            urlPattern: /\/api\/photos\/thumbnail\?/,
+            // `u` is an anonymized account partition and is always the first
+            // query parameter after auth. Unscoped requests are never stored.
+            urlPattern: /\/api\/photos\/thumbnail\?u=/,
             handler: "CacheFirst" as const,
             options: {
-              cacheName: "thumbs",
+              cacheName: "thumbs-v2",
               expiration: {
                 maxEntries: 3000,
                 maxAgeSeconds: 60 * 60 * 24 * 30,

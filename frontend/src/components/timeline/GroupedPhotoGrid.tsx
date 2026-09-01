@@ -25,6 +25,7 @@ type Row =
       kind: "photos";
       key: string;
       groupKey: string;
+      day: string;
       items: PhotoItem[];
       /** 비율 보기일 때의 배치. 없으면 정사각 바둑판. */
       cells?: CellLayout[];
@@ -167,7 +168,11 @@ export function GroupedPhotoGrid({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadedSig, space]);
 
-  // 그룹별 미리보기 사진(로드된 것) + 행 모델.
+  // 그룹별 행 모델. 아직 읽지 않은 날짜도 bucket count만큼 자리를 미리
+  // 잡는다. 예전에는 월 전체를 한 줄로만 잡아 overscan 안에 여러 달이 들어와
+  // 수백 개 날짜 요청이 동시에 시작됐고, 첫 날짜가 오면 높이가 다시 무너졌다.
+  // 날짜별 placeholder는 스크롤 높이를 안정시키고 실제 보이는 날짜만 요청하게
+  // 한다(B-1 count-first 레이아웃의 의도).
   const { rows, ordered } = useMemo(() => {
     const rows: Row[] = [];
     const ordered: PhotoItem[] = [];
@@ -179,68 +184,77 @@ export function GroupedPhotoGrid({
         label: g.label,
       });
       const pdays = previewDaysOf(g);
-      const anyLoaded = pdays.some((d) => loaded.has(d));
-      if (anyLoaded) {
-        const items: PhotoItem[] = [];
-        for (const d of pdays) {
-          const its = loaded.get(d);
-          if (its) items.push(...its);
-        }
-        let shownCount: number;
-        if (fit === "masonry" && width > 0) {
-          // 배치를 먼저 하고 «행 수»로 자른다 — 행마다 담기는 장수가 달라
-          // 미리 장수로 자르면 미리보기 줄 수가 들쭉날쭉해진다.
-          const jrows = layoutBucket(g.key, items, width, tile).filter(
-            (r) => r.kind === "photos",
-          );
-          const use = maxRows === Infinity ? jrows : jrows.slice(0, maxRows);
-          shownCount = 0;
-          for (const [i, r] of use.entries()) {
-            if (r.kind !== "photos") continue;
-            const rowItems = r.cells.map((c) => c.item);
-            ordered.push(...rowItems);
-            shownCount += rowItems.length;
-            rows.push({
-              kind: "photos",
-              key: `p-${g.key}-${i}`,
-              groupKey: g.key,
-              items: rowItems,
-              cells: r.cells,
-              height: r.height,
-            });
+      let rowBudget = maxRows;
+      let represented = 0;
+      for (const day of pdays) {
+        if (rowBudget <= 0) break;
+        const items = loaded.get(day);
+        if (items) {
+          if (fit === "masonry" && width > 0) {
+            // 날짜 단위로 배치해야 아직 안 읽은 다음 날짜의 placeholder가
+            // 독립적으로 남고, 뷰포트 접근 시점에만 그 날짜 요청이 시작된다.
+            const laidOut = layoutBucket(`${g.key}-${day}`, items, width, tile).filter(
+              (r) => r.kind === "photos",
+            );
+            const use =
+              rowBudget === Infinity ? laidOut : laidOut.slice(0, rowBudget);
+            for (const [i, r] of use.entries()) {
+              if (r.kind !== "photos") continue;
+              const rowItems = r.cells.map((c) => c.item);
+              ordered.push(...rowItems);
+              represented += rowItems.length;
+              rows.push({
+                kind: "photos",
+                key: `p-${g.key}-${day}-${i}`,
+                groupKey: g.key,
+                day,
+                items: rowItems,
+                cells: r.cells,
+                height: r.height,
+              });
+            }
+            if (rowBudget !== Infinity) rowBudget -= use.length;
+          } else {
+            const cap = rowBudget === Infinity ? items.length : rowBudget * cols;
+            const shown = items.slice(0, cap);
+            const dayRows = Math.ceil(shown.length / cols);
+            ordered.push(...shown);
+            represented += shown.length;
+            for (let i = 0; i < dayRows; i++) {
+              rows.push({
+                kind: "photos",
+                key: `p-${g.key}-${day}-${i}`,
+                groupKey: g.key,
+                day,
+                items: shown.slice(i * cols, i * cols + cols),
+              });
+            }
+            if (rowBudget !== Infinity) rowBudget -= dayRows;
           }
-        } else {
-          const shown =
-            maxRows === Infinity ? items : items.slice(0, maxRows * cols);
-          ordered.push(...shown);
-          shownCount = shown.length;
-          for (let i = 0; i < Math.ceil(shown.length / cols); i++) {
-            rows.push({
-              kind: "photos",
-              key: `p-${g.key}-${i}`,
-              groupKey: g.key,
-              items: shown.slice(i * cols, i * cols + cols),
-            });
-          }
+          continue;
         }
-        const hidden = g.total - shownCount;
-        if (maxRows !== Infinity && hidden > 0) {
-          rows.push({ kind: "more", key: `m-${g.key}`, groupKey: g.key, hidden });
-        }
-      } else {
-        // 미로드: 예상 행 수만큼 placeholder (첫 미리보기 day 기준).
-        const est = Math.min(
-          maxRows === Infinity ? Infinity : maxRows,
-          Math.max(1, Math.ceil((bucketCount.get(pdays[0]) ?? cols) / cols)),
-        );
-        for (let i = 0; i < (est === Infinity ? 1 : est); i++) {
+
+        const count = bucketCount.get(day) ?? cols;
+        const estimatedRows = Math.max(1, Math.ceil(count / cols));
+        const reserve =
+          rowBudget === Infinity ? estimatedRows : Math.min(rowBudget, estimatedRows);
+        represented += Math.min(count, reserve * cols);
+        for (let i = 0; i < reserve; i++) {
           rows.push({
             kind: "placeholder",
-            key: `x-${g.key}-${i}`,
+            key: `x-${g.key}-${day}-${i}`,
             groupKey: g.key,
-            day: pdays[0],
+            day,
             cols,
           });
+        }
+        if (rowBudget !== Infinity) rowBudget -= reserve;
+      }
+
+      if (maxRows !== Infinity) {
+        const hidden = Math.max(0, g.total - represented);
+        if (hidden > 0) {
+          rows.push({ kind: "more", key: `m-${g.key}`, groupKey: g.key, hidden });
         }
       }
     }
@@ -273,7 +287,11 @@ export function GroupedPhotoGrid({
       if (r?.kind === "photos" && r.height != null) return r.height;
       return tile + GAP;
     },
-    overscan: 8,
+    // A row already contains several thumbnails. Large overscan multiplied
+    // both day metadata calls and image requests on mobile; four rows are
+    // enough for continuous month/day scrolling, and the dense year overview
+    // needs only two.
+    overscan: maxRows === Infinity ? 4 : 2,
     getItemKey: (i) => rows[i]?.key ?? i,
     onChange: bumpTick,
   });
@@ -283,25 +301,16 @@ export function GroupedPhotoGrid({
 
   const virtualItems = virtualizer.getVirtualItems();
 
-  // 화면에 보이는 그룹의 미리보기 days를 요청. placeholder 행이 아니라 가시
-  // "그룹" 기준이라, 첫 day 로드로 photos 행으로 전환된 뒤에도(그리고 cols가
-  // 늘어 cap이 커진 뒤에도) 5줄을 채울 나머지 day를 계속 요청한다.
+  // 화면(overscan 포함)에 실제로 들어온 placeholder의 날짜만 요청한다. 그룹
+  // 하나가 보인다는 이유로 그 달 30일을 전부 요청하지 않는다.
   useEffect(() => {
     const have = new Set(requestedDays);
-    const visibleGroups = new Set<string>();
+    const need = new Set<string>();
     for (const v of virtualItems) {
       const r = rows[v.index];
-      if (r) visibleGroups.add(r.groupKey);
+      if (r?.kind === "placeholder" && !have.has(r.day)) need.add(r.day);
     }
-    const need: string[] = [];
-    for (const gkey of visibleGroups) {
-      const g = groups.find((gr) => gr.key === gkey);
-      if (!g) continue;
-      for (const d of previewDaysOf(g)) {
-        if (!have.has(d) && !need.includes(d)) need.push(d);
-      }
-    }
-    if (need.length) setRequestedDays((prev) => [...prev, ...need]);
+    if (need.size) setRequestedDays((prev) => [...prev, ...need]);
   });
 
   // scrollToGroup 대상 그룹의 미리보기 days를 선요청(화면 밖이라 placeholder
@@ -310,7 +319,9 @@ export function GroupedPhotoGrid({
     if (!scrollToGroup) return;
     const g = groups.find((gr) => gr.key === scrollToGroup);
     if (!g) return;
-    const days = previewDaysOf(g);
+    // 헤더 위치는 count 기반 placeholder만으로 계산 가능하다. 첫 날짜만 먼저
+    // 읽고, 나머지는 스크롤 뷰포트가 접근할 때 위 경로로 점진 로드한다.
+    const days = previewDaysOf(g).slice(0, 1);
     setRequestedDays((prev) => {
       const have = new Set(prev);
       const add = days.filter((d) => !have.has(d));

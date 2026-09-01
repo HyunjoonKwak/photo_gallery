@@ -6,6 +6,7 @@ export interface UserInfo {
   role: Role;
   can_browse_homes: boolean;
   mock_mode: boolean;
+  thumbnail_cache_scope: string;
 }
 
 export interface PhotoBucket {

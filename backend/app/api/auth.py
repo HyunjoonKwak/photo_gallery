@@ -6,22 +6,53 @@ and returns only an opaque HttpOnly cookie to the browser.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+import asyncio
+import ipaddress
+
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
 from ..config import Settings, get_settings
 from ..dsm.client import DsmClient
 from ..dsm.errors import DsmError
-from ..rate_limit import clear_failures, record_failure, seconds_until_unblocked
+from ..rate_limit import (
+    clear_failures,
+    discard_latest_ip_attempt,
+    record_failure,
+    record_ip_failure,
+    seconds_until_ip_unblocked,
+    seconds_until_unblocked,
+)
 from ..schemas import LoginRequest, UserInfo
 from ..session_store import (
     Session,
     create_session,
     delete_session,
     purge_expired,
+    thumbnail_cache_scope,
 )
 from .deps import get_current_session, get_dsm_client
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+
+def _login_client_ip(request: Request, settings: Settings) -> str:
+    """Resolve a normalized login address, trusting NPM only when configured."""
+    values: list[str] = []
+    if settings.login_trust_proxy_headers:
+        # NPM overwrites X-Real-IP with its TCP peer. Prefer it over XFF, whose
+        # left-most entry can be client-supplied with a permissive proxy config.
+        if request.headers.get("x-real-ip"):
+            values.append(request.headers["x-real-ip"])
+        if request.headers.get("x-forwarded-for"):
+            values.append(request.headers["x-forwarded-for"].split(",", 1)[0])
+    if request.client:
+        values.append(request.client.host)
+    for raw in values:
+        try:
+            return str(ipaddress.ip_address(raw.strip()))
+        except ValueError:
+            continue
+    return "unknown"
 
 
 async def detect_role(dsm: DsmClient, sid: str) -> str:
@@ -72,18 +103,31 @@ def _set_session_cookie(response: Response, settings: Settings, token: str) -> N
 @router.post("/login", response_model=UserInfo)
 async def login(
     body: LoginRequest,
+    request: Request,
     response: Response,
     settings: Settings = Depends(get_settings),
     dsm: DsmClient = Depends(get_dsm_client),
 ) -> UserInfo:
     # Throttle before touching DSM so repeated bad passwords can't trip DSM's
     # Auto Block and lock out the whole container IP for every family member.
-    retry_after = seconds_until_unblocked(
-        settings.sqlite_path,
-        body.account,
-        max_attempts=settings.login_max_attempts,
-        window_seconds=settings.login_window_seconds,
+    client_ip = _login_client_ip(request, settings)
+    account_retry, ip_retry = await asyncio.gather(
+        asyncio.to_thread(
+            seconds_until_unblocked,
+            settings.sqlite_path,
+            body.account,
+            max_attempts=settings.login_max_attempts,
+            window_seconds=settings.login_window_seconds,
+        ),
+        asyncio.to_thread(
+            seconds_until_ip_unblocked,
+            settings.sqlite_path,
+            client_ip,
+            max_attempts=settings.login_ip_max_attempts,
+            window_seconds=settings.login_window_seconds,
+        ),
     )
+    retry_after = max(account_retry, ip_retry)
     if retry_after > 0:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -95,7 +139,8 @@ async def login(
         # Dev-only path (no NAS): accept any credentials. "admin" account gets
         # the admin role so both role variants of the UI can be exercised.
         role = "admin" if body.account == "admin" else "member"
-        session = create_session(
+        session = await asyncio.to_thread(
+            create_session,
             settings.sqlite_path,
             sid="mock-sid",
             account=body.account,
@@ -109,6 +154,7 @@ async def login(
             role=session.role,
             can_browse_homes=session.can_browse_homes,
             mock_mode=True,
+            thumbnail_cache_scope=thumbnail_cache_scope(session.token),
         )
 
     # 시도를 DSM 호출 '전에' 기록한다. 로그인 요청이 클라이언트 타임아웃/사용자
@@ -116,7 +162,11 @@ async def login(
     # 전혀 기록되지 않았다 → rate limit이 안 걸려 매 재시도가 DSM 인증을 두들기고
     # PAM 지연이 눈덩이(7.5s→30s+)로 커졌다. 미리 기록하면 취소돼도 카운트되어
     # 5회/10분 초과 시 429로 빠르게 막아 DSM을 보호한다. 성공하면 아래서 초기화.
-    record_failure(settings.sqlite_path, body.account)
+    def record_attempt() -> None:
+        record_failure(settings.sqlite_path, body.account)
+        record_ip_failure(settings.sqlite_path, client_ip)
+
+    await asyncio.to_thread(record_attempt)
     try:
         result = await dsm.login(body.account, body.passwd, body.otp_code)
     except DsmError as exc:
@@ -139,13 +189,18 @@ async def login(
             status_code=status.HTTP_401_UNAUTHORIZED, detail=detail
         ) from exc
 
-    clear_failures(settings.sqlite_path, body.account)
-    # Opportunistically prune expired sessions on each login so stale rows don't
-    # accumulate between server restarts (no separate background sweeper needed).
-    purge_expired(settings.sqlite_path)
+    def finish_success() -> None:
+        clear_failures(settings.sqlite_path, body.account)
+        discard_latest_ip_attempt(settings.sqlite_path, client_ip)
+        # Opportunistically prune expired sessions on each login so stale rows
+        # don't accumulate between server restarts.
+        purge_expired(settings.sqlite_path)
+
+    await asyncio.to_thread(finish_success)
     role = await detect_role(dsm, result.sid)
     can_browse_homes = await detect_can_browse_homes(dsm, result.sid)
-    session = create_session(
+    session = await asyncio.to_thread(
+        create_session,
         settings.sqlite_path,
         sid=result.sid,
         account=result.account,
@@ -159,6 +214,7 @@ async def login(
         role=session.role,
         can_browse_homes=session.can_browse_homes,
         mock_mode=False,
+        thumbnail_cache_scope=thumbnail_cache_scope(session.token),
     )
 
 
@@ -172,6 +228,7 @@ async def me(
         role=session.role,
         can_browse_homes=session.can_browse_homes,
         mock_mode=settings.mock_mode,
+        thumbnail_cache_scope=thumbnail_cache_scope(session.token),
     )
 
 
@@ -182,7 +239,9 @@ async def logout(
     dsm: DsmClient = Depends(get_dsm_client),
     session: Session = Depends(get_current_session),
 ) -> Response:
-    sid = delete_session(settings.sqlite_path, session.token)
+    sid = await asyncio.to_thread(
+        delete_session, settings.sqlite_path, session.token
+    )
     if sid and not settings.mock_mode:
         await dsm.logout(sid)
     response.delete_cookie(settings.session_cookie_name, path="/")

@@ -18,6 +18,8 @@ class UserInfo(BaseModel):
     role: str  # admin | member
     can_browse_homes: bool  # may list /homes → gates the admin cross-user UI
     mock_mode: bool = False  # True when the backend serves fake data (dev only)
+    # Opaque per-session partition for browser/Service Worker thumbnail caches.
+    thumbnail_cache_scope: str
 
 
 class EndpointInfo(BaseModel):

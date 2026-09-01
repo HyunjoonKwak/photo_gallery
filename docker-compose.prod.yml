@@ -36,11 +36,14 @@ services:
       # 프론트 정적 서빙 + DB 경로 (이미지 내부 기본값 유지)
       - FRONTEND_DIST=/app/static
       - SQLITE_PATH=/data/app.db
-      # 리버스 프록시(HTTPS) 뒤 운영 시 true 권장
-      - COOKIE_SECURE=${COOKIE_SECURE:-false}
+      # 운영 도메인은 HTTPS(NPM) 전용 — 세션 쿠키의 평문 전송 금지.
+      - COOKIE_SECURE=${COOKIE_SECURE:-true}
       - SESSION_TTL_SECONDS=${SESSION_TTL_SECONDS:-28800}
       - LOGIN_MAX_ATTEMPTS=${LOGIN_MAX_ATTEMPTS:-5}
       - LOGIN_WINDOW_SECONDS=${LOGIN_WINDOW_SECONDS:-600}
+      - LOGIN_IP_MAX_ATTEMPTS=${LOGIN_IP_MAX_ATTEMPTS:-20}
+      # NPM이 덮어쓰는 X-Real-IP를 IP별 로그인 제한에 사용.
+      - LOGIN_TRUST_PROXY_HEADERS=${LOGIN_TRUST_PROXY_HEADERS:-true}
       # 운영에서는 반드시 false (실 NAS 연동)
       - MOCK_MODE=${MOCK_MODE:-false}
       - CORS_ORIGINS=${CORS_ORIGINS:-}

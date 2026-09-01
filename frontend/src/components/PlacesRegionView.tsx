@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
 import type { PhotoItem, PlaceInfo, Space } from "../api/types";
@@ -6,6 +6,7 @@ import { useTimelineStore } from "../store/timeline";
 import { Thumb } from "./timeline/Thumb";
 import { PhotoGrid } from "./timeline/PhotoGrid";
 import { PlacesMapView } from "./PlacesMapView";
+import { useNearViewport } from "../hooks/useNearViewport";
 
 /** 장소(지역별) 뷰어 — Synology Photos의 GPS 지오코딩 그룹(`places`)을 국가별
  * 섹션으로 한 화면에 펼치고, 각 국가 아래에 지역(first_level=도시) 카드를
@@ -55,6 +56,7 @@ interface CountrySection {
 export function PlacesRegionView({ space }: { space: Space }) {
   const [region, setRegion] = useState<RegionGroup | null>(null);
   const [mode, setMode] = useState<"regions" | "map">("regions");
+  const regionScrollRef = useRef<HTMLDivElement | null>(null);
   const registerBack = useTimelineStore((s) => s.registerBack);
   const setScreenBackDepth = useTimelineStore((s) => s.setScreenBackDepth);
 
@@ -182,7 +184,10 @@ export function PlacesRegionView({ space }: { space: Space }) {
         ) : mode === "map" ? (
           <PlacesMapView space={space} regions={allRegions} onOpen={setRegion} />
         ) : (
-          <div className="scroll-thin h-full space-y-6 overflow-y-auto p-4">
+          <div
+            ref={regionScrollRef}
+            className="scroll-thin h-full space-y-6 overflow-y-auto p-4"
+          >
             {countries.map((c) => (
               <section key={c.name}>
                 <h3 className="mb-2 flex items-baseline gap-2">
@@ -204,6 +209,7 @@ export function PlacesRegionView({ space }: { space: Space }) {
                       key={r.first_level}
                       space={space}
                       region={r}
+                      scrollRoot={regionScrollRef}
                       onOpen={() => setRegion(r)}
                     />
                   ))}
@@ -221,22 +227,27 @@ export function PlacesRegionView({ space }: { space: Space }) {
 function RegionCard({
   space,
   region,
+  scrollRoot,
   onOpen,
 }: {
   space: Space;
   region: RegionGroup;
+  scrollRoot: React.RefObject<HTMLDivElement | null>;
   onOpen: () => void;
 }) {
+  const [cardRef, near] = useNearViewport<HTMLButtonElement>(scrollRoot);
   // 미리보기 4장만 필요 → limit로 한 페이지만(그룹 전체 목록을 안 받음).
   // 전체 목록과 캐시 키를 분리(place-preview)해 서로 덮어쓰지 않게.
   const q = useQuery({
     queryKey: ["place-preview", space, region.coverId],
     queryFn: () => api.placeItems(space, region.coverId, 8),
+    enabled: near,
     staleTime: 5 * 60_000,
   });
   const preview = (q.data?.items ?? []).slice(0, 4);
   return (
     <button
+      ref={cardRef}
       onClick={onOpen}
       title={region.first_level}
       className="group flex flex-col gap-1.5 rounded-xl p-2 text-left hover:bg-slate-100"

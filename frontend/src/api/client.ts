@@ -40,6 +40,7 @@ import type {
 } from "./types";
 
 import { useTimelineStore } from "../store/timeline";
+import { getThumbnailCacheOwner } from "../lib/thumbnailCache";
 
 /** The active browsing scope, ridden by every photo/ops API call so the backend
  * picks the right source. Two mutually-exclusive off-normal scopes:
@@ -82,6 +83,8 @@ export class ApiError extends Error {
   }
 }
 
+export const AUTH_EXPIRED_EVENT = "nasphoto:auth-expired";
+
 /** Pull a human message out of a FastAPI error body. `detail` is a plain
  * string for HTTPException, an array of {msg,loc} for 422 validation errors,
  * or a structured object (with its own `message`) for richer errors. */
@@ -118,6 +121,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   const data = await resp.json().catch(() => null);
   if (!resp.ok) {
+    if (
+      resp.status === 401 &&
+      path !== "/api/auth/me" &&
+      path !== "/api/auth/login"
+    ) {
+      window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
+    }
     const raw =
       data && typeof data === "object" ? (data as { detail?: unknown }).detail : undefined;
     throw new ApiError(resp.status, errorDetail(data), raw);
@@ -452,7 +462,7 @@ export function downloadUrl(
 
 // 썸네일 획득 로직(백엔드)이 바뀌면 올린다 — URL이 달라져 브라우저/서비스워커의
 // 옛 캐시(같은 URL로 붙잡고 있던 저화질)를 무효화하고 재요청하게 한다.
-const THUMB_URL_VERSION = "5";
+const THUMB_URL_VERSION = "6";
 
 export function thumbnailUrl(
   space: Space,
@@ -460,7 +470,15 @@ export function thumbnailUrl(
   cacheKey: string,
   size: "sm" | "m" | "xl",
 ): string {
-  const q = new URLSearchParams({ space, id, cache_key: cacheKey, size });
+  const q = new URLSearchParams();
+  const owner = getThumbnailCacheOwner();
+  // `u` is deliberately first: the service worker only caches partitioned
+  // thumbnail URLs and ignores any request made before auth bootstrap finishes.
+  if (owner) q.set("u", owner);
+  q.set("space", space);
+  q.set("id", id);
+  q.set("cache_key", cacheKey);
+  q.set("size", size);
   applyScope(q);
   q.set("tv", THUMB_URL_VERSION);
   return `/api/photos/thumbnail?${q.toString()}`;

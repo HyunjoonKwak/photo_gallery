@@ -89,6 +89,29 @@ def test_thumbnail_serves_svg(logged_in):
     assert "max-age" in resp.headers.get("cache-control", "")
 
 
+def test_thumbnail_cache_scope_is_bound_to_session(client):
+    login = client.post(
+        "/api/auth/login", json={"account": "mom", "passwd": "x"}
+    ).json()
+    valid = login["thumbnail_cache_scope"]
+    assert len(valid) >= 16 and "mom" not in valid
+    day = client.get("/api/photos/buckets?space=personal").json()["buckets"][0]["day"]
+    item = client.get(
+        "/api/photos/items", params={"space": "personal", "day": day}
+    ).json()["items"][0]
+
+    ok = client.get(
+        "/api/photos/thumbnail",
+        params={"space": "personal", "id": item["id"], "size": "sm", "u": valid},
+    )
+    assert ok.status_code == 200
+    denied = client.get(
+        "/api/photos/thumbnail",
+        params={"space": "personal", "id": item["id"], "size": "sm", "u": "other"},
+    )
+    assert denied.status_code == 403
+
+
 def test_missing_thumbnail_returns_404_not_502(logged_in, monkeypatch):
     """Synology가 생성하지 않은 썸네일(DSM 404)은 502가 아니라 깔끔한 404여야
     프론트 <img> onError가 조용히 폴백한다 (2026-07-04 실 NAS: 개인 동영상 38%)."""

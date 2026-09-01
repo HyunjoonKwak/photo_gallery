@@ -1,10 +1,15 @@
 import { useState, type FormEvent } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api/client";
 import { useAuthStore } from "../store/auth";
+import {
+  clearThumbnailCaches,
+  setThumbnailCacheOwner,
+} from "../lib/thumbnailCache";
 
 export function LoginForm() {
   const setUser = useAuthStore((s) => s.setUser);
+  const queryClient = useQueryClient();
   const [account, setAccount] = useState("");
   const [passwd, setPasswd] = useState("");
   const [otp, setOtp] = useState("");
@@ -12,7 +17,15 @@ export function LoginForm() {
   const login = useMutation({
     mutationFn: () =>
       api.login({ account, passwd, otp_code: otp || undefined }),
-    onSuccess: (user) => setUser(user),
+    onSuccess: async (user) => {
+      // Account transitions must not inherit either decoded API data or
+      // CacheStorage responses from the previous family member.
+      queryClient.clear();
+      await clearThumbnailCaches();
+      setThumbnailCacheOwner(user.thumbnail_cache_scope);
+      queryClient.setQueryData(["me"], user);
+      setUser(user);
+    },
   });
 
   const onSubmit = (e: FormEvent) => {

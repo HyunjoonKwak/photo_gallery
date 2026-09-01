@@ -122,25 +122,6 @@ export function Lightbox() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item, readonly]);
 
-  // Prefetch neighbors so stepping feels instant (photos only — videos are
-  // streamed on demand).
-  useEffect(() => {
-    if (!item) return;
-    const s = useTimelineStore.getState();
-    const idx = s.orderedIds.indexOf(item.id);
-    for (const i of [idx - 1, idx + 1]) {
-      const neighbor = s.itemsById.get(s.orderedIds[i] ?? "");
-      if (neighbor && neighbor.type !== "video") {
-        new Image().src = thumbnailUrl(
-          neighbor.space ?? space,
-          neighbor.id,
-          neighbor.cache_key,
-          "xl",
-        );
-      }
-    }
-  }, [item, space]);
-
   // Mobile gestures (표준 사진앱 관례): 좌우 스와이프 = 이전/다음, 아래로
   // 쓸어내리기 = 닫기, 핀치/더블탭 = 확대(확대 중 한 손가락 = 이동).
   // 비디오 컨트롤 위 터치는 건드리지 않는다.
@@ -159,6 +140,53 @@ export function Lightbox() {
       : null;
   const xlReady = xlState != null && xlState.src === xlSrc && xlState.ok;
   const xlFailed = xlState != null && xlState.src === xlSrc && !xlState.ok;
+
+  // Only warm neighbors after the current XL image has decoded. The previous
+  // implementation launched two large requests immediately, competing with
+  // the image the user was actually waiting for on a high-latency mobile path.
+  // Next is more likely than previous, so fetch them sequentially and gently.
+  useEffect(() => {
+    if (!item || item.type === "video" || !xlReady) return;
+    const s = useTimelineStore.getState();
+    const idx = s.orderedIds.indexOf(item.id);
+    const neighbors = [idx + 1, idx - 1]
+      .map((i) => s.itemsById.get(s.orderedIds[i] ?? ""))
+      .filter((candidate) => candidate && candidate.type !== "video");
+    if (neighbors.length === 0) return;
+
+    let cancelled = false;
+    let timer: number | null = null;
+    const images: HTMLImageElement[] = [];
+    const warm = (at: number) => {
+      if (cancelled || at >= neighbors.length) return;
+      const neighbor = neighbors[at]!;
+      const image = new Image();
+      images.push(image);
+      const continueLater = () => {
+        image.onload = null;
+        image.onerror = null;
+        if (!cancelled)
+          timer = window.setTimeout(() => warm(at + 1), 250);
+      };
+      image.onload = continueLater;
+      image.onerror = continueLater;
+      image.src = thumbnailUrl(
+        neighbor.space ?? space,
+        neighbor.id,
+        neighbor.cache_key,
+        "xl",
+      );
+    };
+    timer = window.setTimeout(() => warm(0), 250);
+    return () => {
+      cancelled = true;
+      if (timer != null) window.clearTimeout(timer);
+      for (const image of images) {
+        image.onload = null;
+        image.onerror = null;
+      }
+    };
+  }, [item, space, xlReady]);
 
   const touchStart = useRef<{ x: number; y: number } | null>(null);
   const pinchStart = useRef<{ dist: number; scale: number } | null>(null);

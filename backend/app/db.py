@@ -75,6 +75,16 @@ CREATE TABLE IF NOT EXISTS login_attempt (
 CREATE INDEX IF NOT EXISTS idx_login_attempt_account
   ON login_attempt (account, attempted_at);
 
+-- A second, coarser throttle stops account-name rotation from bypassing the
+-- per-account limit. NPM supplies the real client address to the login route.
+CREATE TABLE IF NOT EXISTS login_ip_attempt (
+  client_ip    TEXT NOT NULL,
+  attempted_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_login_ip_attempt_ip
+  ON login_ip_attempt (client_ip, attempted_at);
+
 -- 1차 구역(기기 백업 zone): 로그인 사용자별로 등록한, Synology Photos 인덱스
 -- 밖의 폴더. 여기 사진은 타임라인에 안 나오고, 앱이 FileStation으로 탐색해
 -- 이벤트별로 개인 Photos(2차)로 옮기는 워크플로의 소스가 된다.

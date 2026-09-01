@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import os
+import secrets
 from collections import Counter
 from datetime import date, datetime
 from typing import Literal
@@ -78,7 +79,7 @@ from ..schemas import (
     PlacesResponse,
     RemoveFolderRequest,
 )
-from ..session_store import Session
+from ..session_store import Session, thumbnail_cache_scope
 from .deps import get_current_session, get_photo_source
 
 router = APIRouter(prefix="/api/photos", tags=["photos"])
@@ -87,6 +88,19 @@ Space = Literal["personal", "team"]
 # sm=grid, m=sm이 broken일 때 폴백(동영상 등), xl=라이트박스. 전부 DSM 실제
 # 썸네일 사이즈명과 1:1 (SYNO.Foto.Thumbnail size 파라미터).
 ThumbSize = Literal["sm", "m", "xl"]
+
+
+def _write_thumb_cache_entries(
+    cache: ThumbCache, entries: list[tuple[str, bytes]]
+) -> None:
+    """Persist thumbnail responses after the body has been sent.
+
+    ThumbCache uses ordinary filesystem calls. Running them as a Starlette
+    background task keeps both reads and writes off FastAPI's event loop and
+    removes cache-write latency from the user-visible response.
+    """
+    for key, content in entries:
+        cache.put(key, content)
 
 
 def _check_target_user(session: Session, target_user: str | None) -> None:
@@ -984,6 +998,7 @@ async def op_remove_folder(
 async def get_thumbnail(
     id: str,
     request: Request,
+    u: str = Query("", max_length=64),
     cache_key: str = "",
     space: Space = Query("team"),
     size: ThumbSize = Query("sm"),
@@ -991,6 +1006,13 @@ async def get_thumbnail(
     settings: Settings = Depends(get_settings),
     session: Session = Depends(get_current_session),
 ) -> Response:
+    # New clients partition CacheStorage and the browser HTTP cache by an
+    # opaque per-session value. Bind a supplied scope to this session so one
+    # authenticated user cannot populate another session's cache namespace.
+    # Missing `u` remains temporarily compatible with pre-upgrade clients; the
+    # new service worker refuses to store such responses.
+    if u and not secrets.compare_digest(u, thumbnail_cache_scope(session.token)):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "캐시 범위가 올바르지 않습니다.")
     # xl만 WebP 협상(실전송 30-45% 절감) — sm/m은 파일이 작아 인코딩 CPU가
     # 이득을 상쇄하고, 그리드 콜드 로드를 오히려 늦출 수 있어 제외.
     wants_webp = (
@@ -1023,6 +1045,7 @@ async def get_thumbnail(
     orig_key: str | None = None
     webp_key: str | None = None
     content: bytes | None = None
+    cache_writes: list[tuple[str, bytes]] = []
     if not settings.mock_mode:
         cache = ThumbCache(
             os.path.join(os.path.dirname(settings.sqlite_path), "thumb-cache")
@@ -1032,14 +1055,14 @@ async def get_thumbnail(
             webp_key = ThumbCache.key(
                 session.account, space, id, cache_key, f"{size}.webp"
             )
-            variant = cache.get(webp_key)
+            variant = await asyncio.to_thread(cache.get, webp_key)
             if variant is not None:
                 return Response(
                     content=variant,
                     media_type=media_type_of(variant),
                     headers=headers,
                 )
-        content = cache.get(orig_key)
+        content = await asyncio.to_thread(cache.get, orig_key)
     # 디스크 캐시 히트는 항상 DSM JPEG; 라이브 페치는 소스가 알려주는 타입
     # 그대로(mock은 SVG를 준다 — image/jpeg로 덮으면 mock 그리드가 깨진다).
     media_type = THUMB_MEDIA_TYPE
@@ -1060,19 +1083,29 @@ async def get_thumbnail(
                 ) from exc
             raise
         if cache is not None and orig_key is not None:
-            cache.put(orig_key, content)
+            cache_writes.append((orig_key, content))
     if wants_webp and cache is not None and webp_key is not None:
         # 인코딩은 스레드로(이벤트 루프 보호). 실패/무이득이면 원본을 변형
         # 키에 저장해 같은 이미지의 재인코딩 시도를 막는다.
         webp = await asyncio.to_thread(encode_webp, content)
         served = webp if webp is not None else content
-        cache.put(webp_key, served)
+        cache_writes.append((webp_key, served))
         return Response(
-            content=served, media_type=media_type_of(served), headers=headers
+            content=served,
+            media_type=media_type_of(served),
+            headers=headers,
+            background=BackgroundTask(
+                _write_thumb_cache_entries, cache, cache_writes
+            ),
         )
     return Response(
         content=content,
         media_type=media_type,
         # Session-scoped images; safe to let the browser cache aggressively.
         headers=headers,
+        background=(
+            BackgroundTask(_write_thumb_cache_entries, cache, cache_writes)
+            if cache is not None and cache_writes
+            else None
+        ),
     )

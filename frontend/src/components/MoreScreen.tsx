@@ -6,6 +6,10 @@ import { selectBackDepth, useTimelineStore } from "../store/timeline";
 import { OperationsPanel } from "./OperationsPanel";
 import { ZoneManager } from "./ZoneManager";
 import { ApiInfoPanel } from "./ApiInfoPanel";
+import {
+  clearThumbnailCaches,
+  setThumbnailCacheOwner,
+} from "../lib/thumbnailCache";
 
 /** 더보기 허브 (IA 개편 2단계) — 흩어져 있던 관리 기능의 단일 진입점.
  * 휴지통(일급 승격)·작업 기록·기기 백업 관리·DSM 정보·빌드 진단·계정/로그아웃.
@@ -136,9 +140,11 @@ export function MoreScreen() {
 
   const logout = useMutation({
     mutationFn: api.logout,
-    onSettled: () => {
+    onSettled: async () => {
+      setThumbnailCacheOwner(null);
       setUser(null);
       queryClient.clear();
+      await clearThumbnailCaches();
     },
   });
 

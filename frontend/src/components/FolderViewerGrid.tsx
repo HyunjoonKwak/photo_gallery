@@ -6,6 +6,7 @@ import { useTimelineStore } from "../store/timeline";
 import { Thumb } from "./timeline/Thumb";
 import { folderBasename } from "./FolderTree";
 import { VirtualRows } from "./VirtualRows";
+import { useNearViewport } from "../hooks/useNearViewport";
 
 /** 사진 뷰어의 폴더 줌 — 폴더 구조를 그대로 탐색(순수 뷰어). 폴더 카드에 직속
  * 사진 4장 미리보기, 클릭하면 한 depth 진입. 리프 폴더의 사진은 썸네일 그리드
@@ -108,7 +109,12 @@ export function FolderViewerGrid() {
               }}
             >
               {subFolders.map((f) => (
-                <FolderCard key={f.id} folder={f} onOpen={() => open(f)} />
+                <FolderCard
+                  key={f.id}
+                  folder={f}
+                  scrollRoot={scrollRef}
+                  onOpen={() => open(f)}
+                />
               ))}
             </div>
           </div>
@@ -131,21 +137,26 @@ export function FolderViewerGrid() {
 /** 폴더 카드 — 직속 사진 4장을 2×2 미리보기로. */
 function FolderCard({
   folder,
+  scrollRoot,
   onOpen,
 }: {
   folder: PhotoFolder;
+  scrollRoot: React.RefObject<HTMLDivElement | null>;
   onOpen: () => void;
 }) {
+  const [cardRef, near] = useNearViewport<HTMLButtonElement>(scrollRoot);
   // 미리보기 4장만 필요 → limit로 한 페이지만(폴더 전체 목록을 안 받음).
   // 전체 목록(folder-items)과 캐시 키 분리(folder-preview).
   const q = useQuery({
     queryKey: ["folder-preview", folder.id],
     queryFn: () => api.folderItems(folder.id, 8),
+    enabled: near,
     staleTime: 5 * 60_000,
   });
   const preview = (q.data?.items ?? []).slice(0, 4);
   return (
     <button
+      ref={cardRef}
       onClick={onOpen}
       title={folder.name}
       className="group flex flex-col gap-1.5 rounded-xl p-2 text-left hover:bg-slate-100"

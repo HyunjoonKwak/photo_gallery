@@ -43,6 +43,12 @@ class Settings(BaseSettings):
     # --- Login throttling (app-level, protects against DSM Auto Block lockout) ---
     login_max_attempts: int = Field(default=5)
     login_window_seconds: int = Field(default=600)  # 10 minutes
+    # Higher IP-wide ceiling catches username rotation while leaving a family
+    # behind one NAT enough room for ordinary mistakes.
+    login_ip_max_attempts: int = Field(default=20)
+    # Trust NPM's X-Real-IP on the production reverse-proxy path. Keep disabled
+    # by default for direct/dev access, where arbitrary clients can set headers.
+    login_trust_proxy_headers: bool = Field(default=False)
 
     # --- Dev mock mode (no NAS required) ---
     # True -> login accepts any credentials and photo APIs serve deterministic
