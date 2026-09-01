@@ -45,8 +45,9 @@ export function Lightbox() {
   const readonly = useTimelineStore((s) => s.section !== "manage");
   const ops = useFileOps();
   const [showInfo, setShowInfo] = useState(false);
-  // 필름스트립은 넓은 화면에서만 기본으로 편다 — 폰에서는 사진이 차지할
-  // 자리를 스트립이 뺏고, 좌우 넘기기가 이미 스와이프로 자연스럽다.
+  // 필름스트립은 폰에서도 편다. 처음엔 넓은 화면에만 뒀는데 — 폰에서는 사진이
+  // 차지할 자리를 스트립이 뺏는다고 봤다 — 정작 주로 쓰는 기기가 폰이라 기능
+  // 자체를 만날 수 없었다(2026-09-01 사용자 제보). 좁으면 🎞 단추로 접는다.
   const [showStrip, setShowStrip] = useState(true);
   const [showHelp, setShowHelp] = useState(false);
   const [showMove, setShowMove] = useState(false);
@@ -269,7 +270,7 @@ export function Lightbox() {
             autoPlay
             playsInline
             onClick={(e) => e.stopPropagation()}
-            className={`max-h-[90vh] max-w-[94%] ${showStrip ? "sm:max-h-[calc(90vh-76px)]" : ""}`}
+            className={`max-h-[90vh] max-w-[94%] ${showStrip ? "max-h-[calc(90vh-76px)]" : ""}`}
           />
         ) : (
           <>
@@ -281,7 +282,7 @@ export function Lightbox() {
                 alt=""
                 aria-hidden
                 draggable={false}
-                className={`pointer-events-none absolute inset-0 m-auto max-h-[90vh] max-w-[94%] object-contain ${showStrip ? "sm:max-h-[calc(90vh-76px)]" : ""}`}
+                className={`pointer-events-none absolute inset-0 m-auto max-h-[90vh] max-w-[94%] object-contain ${showStrip ? "max-h-[calc(90vh-76px)]" : ""}`}
                 style={{
                   transform: `translate(${zoom.tx}px, ${zoom.ty}px) scale(${zoom.scale})`,
                 }}
@@ -310,7 +311,7 @@ export function Lightbox() {
               }
               className={`max-h-[90vh] max-w-[94%] object-contain ${
                 xlReady ? "opacity-100" : "opacity-0"
-              } ${showStrip ? "sm:max-h-[calc(90vh-76px)]" : ""}`}
+              } ${showStrip ? "max-h-[calc(90vh-76px)]" : ""}`}
               style={{
                 transform: `translate(${zoom.tx}px, ${zoom.ty}px) scale(${zoom.scale})`,
                 transition:
@@ -398,6 +399,19 @@ export function Lightbox() {
               </button>
             </>
           )}
+          {/* 폰에는 키보드가 없어 f 만으로는 접을 수도 펼 수도 없다. */}
+          <button
+            onClick={() => setShowStrip((v) => !v)}
+            title="필름스트립 (f)"
+            aria-pressed={showStrip}
+            className={`rounded-full px-3 py-2 text-sm ${
+              showStrip
+                ? "bg-white/90 text-slate-800"
+                : "bg-black/50 text-white/80 hover:text-white"
+            }`}
+          >
+            🎞
+          </button>
           <button
             onClick={() => setShowInfo((v) => !v)}
             title="정보 (i)"
@@ -426,11 +440,7 @@ export function Lightbox() {
             <span className="font-medium text-white">{item.filename}</span>
             <span className="text-slate-400">f 필름스트립 · Shift+? 단축키</span>
           </div>
-          {showStrip && (
-            <div className="hidden sm:block">
-              <LightboxFilmstrip />
-            </div>
-          )}
+          {showStrip && <LightboxFilmstrip />}
         </div>
       </div>
 
