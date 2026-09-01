@@ -12,8 +12,8 @@
 | 앱 | 어디서 | 하는 일 |
 |---|---|---|
 | **우리집 사진관** (이것) | NAS 웹 | 가족이 공용·내사진을 감상 |
-| **Photo Desk** | 맥 | 맥·NAS 1차 구역을 분류·정리해 공용·내사진으로 보냄 |
-| **Photo Backup** | 안드로이드 | 폰 사진을 NAS 1차 구역으로 백업 |
+| **[Photo Desk](https://github.com/HyunjoonKwak/photo_desk)** | 맥 | 맥·NAS 1차 구역을 분류·정리해 공용·내사진으로 보냄 |
+| **[Photo Backup](https://github.com/HyunjoonKwak/photo_backup)** | 안드로이드 | 폰 사진을 NAS 1차 구역으로 백업 |
 
 사진은 `폰 → 1차 구역 → (Photo Desk 가 정리) → 공용·내사진 → (여기서 감상)` 순서로 흐릅니다.
 
