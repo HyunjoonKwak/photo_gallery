@@ -1,6 +1,6 @@
 # Photo Gallery ↔ Photo Desk 세션 분리 실행 가이드
 
-> 상태: Gallery G-A와 Desk G1 완료, Drive→NAS→Gallery 종단간 확인 대기
+> 상태: G2 완료, Gallery `drain` 복구 유예 중
 > 기준일: 2026-09-02
 > 상세 기능 명세: [Photo Gallery → Photo Desk 기능 이관 및 전환 기준](https://github.com/HyunjoonKwak/photo_desk/blob/main/docs/GALLERY_TRANSITION.md)
 
@@ -171,9 +171,11 @@ Desk 세션은 “구현 완료”라는 설명 대신 다음 증거를 제출�
 
 ### G-C. G1 검수와 종단간 파일럿
 
-Desk의 실제 JPEG 및 서로 다른 물리 볼륨 파일럿은 통과했다. 다만 그 파일럿은 운영
-Drive·NAS·Gallery를 변경하지 않는 격리 시험이므로, 아래 종단간 흐름 확인 전에는
-이 문서의 G2를 통과한 것으로 보지 않는다.
+Desk의 실제 JPEG 및 서로 다른 물리 볼륨 파일럿 뒤, 같은 SHA의 사본으로
+Drive→NAS→Gallery 경로까지 확인했다. 첫 Gallery 확인에서 Synology의 floating
+wall-clock을 실제 epoch로 해석해 KST를 두 번 더하는 9시간 오차가 발견됐고,
+`093934f`에서 읽기·일자 범위·버킷·레거시 시간 쓰기를 같은 규칙으로 교정했다.
+재검증 결과 경로·장수·SHA·촬영일이 모두 일치해 G2를 통과했다.
 
 - Desk 커밋과 테스트를 확인하고, 제공된 표본으로 핵심 테스트 재실행
 - 복사본 파일럿에서 Desk의 write와 undo를 먼저 확인
@@ -255,7 +257,7 @@ before→write→rescan→undo manifest, 이동/복사/undo 결과, migration과
 
 ## 8. 현재 Gallery 세션의 다음 작업
 
-`G-A` 구현과 전체 회귀 검증, Desk G1, 실제 JPEG 및 서로 다른 물리 볼륨 파일럿은
-완료됐다. 운영 모드는 `legacy`, 마운트는 `rw`, 정리 화면은 현재 상태로 유지한다.
-다음 단계는 실제 `Drive 동기화 → NAS 색인 → Gallery 날짜·경로·장수` 확인이다.
-이 확인 전에는 `drain`, `curation`, `ro` 또는 레거시 제거로 넘어가지 않는다.
+`G-A`와 Desk G1/G2가 완료됐고 Gallery 운영 모드는 2026-09-02부터 `drain`이다.
+원본 마운트는 복구를 위해 `rw`로 유지하고 신규 물리 변이는 서버에서 차단한다.
+현재 undo 가능 작업과 휴지통 항목을 검토하며 최소 7일 유예한 뒤, 복구 대상이 0일
+때만 `curation`과 `ro`로 넘어간다. 레거시 코드는 30일 안정화 전까지 제거하지 않는다.

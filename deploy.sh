@@ -11,7 +11,14 @@ cd "$SCRIPT_DIR"
 
 GHCR_USERNAME="${GHCR_USERNAME:-hyunjoonkwak}"
 GHCR_USERNAME=$(echo "$GHCR_USERNAME" | tr '[:upper:]' '[:lower:]')
-IMAGE_TAG="${IMAGE_TAG:-latest}"
+# 셸에서 명시한 태그가 최우선이고, 없으면 배포 디렉터리 .env의 고정 태그를
+# 따른다. 여기서 무조건 latest를 넣으면 compose가 .env보다 셸 환경을 우선해
+# `./deploy.sh deploy/restart`만으로 검증되지 않은 latest로 돌아갈 수 있다.
+ENV_IMAGE_TAG=""
+if [ -f .env ]; then
+    ENV_IMAGE_TAG=$(sed -n 's/^IMAGE_TAG=//p' .env | tail -n 1)
+fi
+IMAGE_TAG="${IMAGE_TAG:-${ENV_IMAGE_TAG:-latest}}"
 IMAGE="ghcr.io/${GHCR_USERNAME}/nas-photo:${IMAGE_TAG}"
 COMPOSE_FILE="docker-compose.prod.yml"
 
@@ -90,7 +97,7 @@ show_help() {
 
 환경 변수:
   GHCR_USERNAME   GitHub 사용자명 (기본: hyunjoonkwak)
-  IMAGE_TAG       이미지 태그 (기본: latest)
+  IMAGE_TAG       이미지 태그 (기본: .env 값, 없으면 latest)
 
 예) IMAGE_TAG=latest ./deploy.sh update
 EOF

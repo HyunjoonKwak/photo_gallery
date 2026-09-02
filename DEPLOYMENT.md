@@ -35,6 +35,8 @@ IMAGE_TAG=latest ./deploy.sh update   # pull + 배포
 명령:
 - `deploy.sh update` — pull + 재배포 (일반적인 업데이트)
 - `deploy.sh status` / `logs` / `restart` / `stop`
+- 태그를 명시하지 않은 `deploy/restart`는 NAS `.env`의 `IMAGE_TAG`를 사용한다.
+  긴급 롤백·검증 때만 셸의 `IMAGE_TAG=<sha>`로 일시 덮어쓴다.
 
 접속: `http://<NAS_IP>:9800`
 
