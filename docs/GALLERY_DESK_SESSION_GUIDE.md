@@ -1,6 +1,6 @@
 # Photo Gallery ↔ Photo Desk 세션 분리 실행 가이드
 
-> 상태: G2 완료, Gallery `drain` 복구 유예 중
+> 상태: G2 완료, Desk G2 설치 완료, Gallery `drain` 복구 유예 중
 > 기준일: 2026-09-02
 > 상세 기능 명세: [Photo Gallery → Photo Desk 기능 이관 및 전환 기준](https://github.com/HyunjoonKwak/photo_desk/blob/main/docs/GALLERY_TRANSITION.md)
 
@@ -212,6 +212,13 @@ Photo Backup/1차 구역 → Desk 수집 → 촬영일 교정 → 내사진/공�
 - 컨테이너 내부 직접 쓰기 실패와 썸네일/EXIF 읽기 성공 확인
 - Manage의 물리 작업 UI를 제거하고 논리 앨범·인물 기능만 유지
 
+2026-09-02 전수 점검 기준 operation은 397건이고, 현재 `can_undo` 조건을 만족하는
+작업은 114건이다(`copy` 1, `mkdir` 28, `move` 19, `move_folder` 65,
+`trash_folder` 1). 대부분 7월 작업이라 현재 폴더 구조에 일괄 undo하지 않고 감사
+기록으로 보존한다. 앱 휴지통에는 7일 undo 기한이 지난 개인 사진 13장이 남아 있다.
+자동 복원·영구 삭제하지 말고 소유자 판단을 받은 뒤 G-E의 "복구 대상 0" 게이트를
+통과시킨다.
+
 ### G-F. 안정화 뒤 정리
 
 30일 동안 회귀가 없고 레거시 Synology 날짜 교정 백로그가 0일 때만 Gallery의
@@ -259,5 +266,7 @@ before→write→rescan→undo manifest, 이동/복사/undo 결과, migration과
 
 `G-A`와 Desk G1/G2가 완료됐고 Gallery 운영 모드는 2026-09-02부터 `drain`이다.
 원본 마운트는 복구를 위해 `rw`로 유지하고 신규 물리 변이는 서버에서 차단한다.
-현재 undo 가능 작업과 휴지통 항목을 검토하며 최소 7일 유예한 뒤, 복구 대상이 0일
-때만 `curation`과 `ro`로 넘어간다. 레거시 코드는 30일 안정화 전까지 제거하지 않는다.
+검증된 Desk G2 앱을 같은 날 운영 Mac에 설치했고, Gallery의 임시 레거시 날짜 교정
+예외도 껐다. 기존 Desk 앱은 사용자 라이브러리에 복구용으로 보관한다. 현재 undo 가능
+작업과 휴지통 항목을 검토하며 최소 7일 유예한 뒤, 복구 대상이 0일 때만 `curation`과
+`ro`로 넘어간다. 레거시 코드는 30일 안정화 전까지 제거하지 않는다.
