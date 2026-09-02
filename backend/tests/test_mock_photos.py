@@ -29,6 +29,8 @@ async def test_items_count_matches_bucket_count():
     for bucket in buckets[:5]:
         items = await source.items("team", bucket.day)
         assert len(items) == bucket.count
+        order = [(item.taken_at, item.id) for item in items]
+        assert order == sorted(order, reverse=True)
 
 
 async def test_item_fields_are_plausible():

@@ -213,7 +213,7 @@ class _DsmBrowseOps:
                     "start_time": start,
                     "end_time": end,
                     "sort_by": "takentime",
-                    "sort_direction": "asc",
+                    "sort_direction": "desc",
                     "additional": json.dumps(["thumbnail", "resolution", "video_meta"]),
                 },
             )
@@ -237,6 +237,11 @@ class _DsmBrowseOps:
                 if str(it.get("id")) not in trash_ids
                 and str(it.get("id")) not in tomb
             )
+        # Timeline buckets are newest-first, and every grid consumer assumes the
+        # items inside a bucket follow the same direction.  Sort again after the
+        # bounded parallel page fetch so response completion order and DSM page
+        # ties cannot make the visible grid jump between reloads.
+        out.sort(key=lambda item: (item.taken_at, item.id), reverse=True)
         return out
 
     async def _trash_item_ids(self, space: str = "team") -> frozenset[str]:

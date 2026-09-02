@@ -62,7 +62,7 @@ class PhotoSource(Protocol):
         ...
 
     async def items(self, space: str, day: str) -> list[PhotoItem]:
-        """All items of one day bucket, in display (taken_at) order."""
+        """All items of one day bucket, newest first by taken_at."""
         ...
 
     async def folders(self, parent_id: str | None = None) -> list[PhotoFolder]:

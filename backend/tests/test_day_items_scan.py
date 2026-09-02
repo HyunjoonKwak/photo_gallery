@@ -14,12 +14,14 @@ class _DayDsm:
         self.active = 0
         self.max_active = 0
         self.day_calls = 0
+        self.sort_directions: list[str] = []
 
     async def call(self, api, method, **kwargs):
         extra = kwargs.get("extra", {}) or {}
         if "Browse.Item" not in api or "start_time" not in extra:
             return {"list": []}  # trash-folder lookup
         self.day_calls += 1
+        self.sort_directions.append(str(extra.get("sort_direction")))
         self.active += 1
         self.max_active = max(self.max_active, self.active)
         try:
@@ -49,6 +51,7 @@ async def test_large_day_continuation_pages_are_parallel(monkeypatch):
 
     items = await source.items("team", date.today().isoformat())
 
-    assert [item.id for item in items] == [str(i) for i in range(dsm.TOTAL)]
+    assert [item.id for item in items] == [str(i) for i in reversed(range(dsm.TOTAL))]
+    assert set(dsm.sort_directions) == {"desc"}
     assert dsm.day_calls == 1 + dsm_browse._DAY_PAGE_CONCURRENCY
     assert dsm.max_active == dsm_browse._DAY_PAGE_CONCURRENCY

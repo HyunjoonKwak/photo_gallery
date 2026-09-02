@@ -435,7 +435,7 @@ class MockPhotoSource:
                 item.model_copy(update={"folder": self._folder_name(folder_id)})
             )
 
-        result.sort(key=lambda i: (i.taken_at, i.id))
+        result.sort(key=lambda i: (i.taken_at, i.id), reverse=True)
         return result
 
     async def folders(self, parent_id: str | None = None) -> list[PhotoFolder]:
