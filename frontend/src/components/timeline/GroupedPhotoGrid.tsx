@@ -10,6 +10,7 @@ import { useQueries } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { api } from "../../api/client";
 import type { PhotoBucket, PhotoItem, Space } from "../../api/types";
+import { groupLoadedDayRuns } from "../../lib/groupDayRuns";
 import { useTimelineStore } from "../../store/timeline";
 import { layoutBucket, type CellLayout } from "../../lib/rowModel";
 import { Thumb } from "./Thumb";
@@ -186,16 +187,26 @@ export function GroupedPhotoGrid({
       const pdays = previewDaysOf(g);
       let rowBudget = maxRows;
       let represented = 0;
-      for (const day of pdays) {
+      const dayRuns = groupLoadedDayRuns(
+        pdays,
+        loaded,
+        (day) => bucketCount.get(day) ?? cols,
+      );
+      for (const run of dayRuns) {
         if (rowBudget <= 0) break;
-        const items = loaded.get(day);
-        if (items) {
+        if (run.kind === "loaded") {
+          const items = run.items;
+          const runKey = `${run.days[0]}-${run.days[run.days.length - 1]}`;
           if (fit === "masonry" && width > 0) {
-            // 날짜 단위로 배치해야 아직 안 읽은 다음 날짜의 placeholder가
-            // 독립적으로 남고, 뷰포트 접근 시점에만 그 날짜 요청이 시작된다.
-            const laidOut = layoutBucket(`${g.key}-${day}`, items, width, tile).filter(
-              (r) => r.kind === "photos",
-            );
+            // 연·월 그룹에는 날짜 사이 헤더가 없으므로, 인접해 읽힌 날짜는
+            // 한 묶음으로 배치해 전날의 마지막 행을 다음 날 사진이 채운다.
+            // 아직 안 읽은 날짜는 별도 pending run으로 남아 지연 로딩한다.
+            const laidOut = layoutBucket(
+              `${g.key}-${runKey}`,
+              items,
+              width,
+              tile,
+            ).filter((r) => r.kind === "photos");
             const use =
               rowBudget === Infinity ? laidOut : laidOut.slice(0, rowBudget);
             for (const [i, r] of use.entries()) {
@@ -205,9 +216,9 @@ export function GroupedPhotoGrid({
               represented += rowItems.length;
               rows.push({
                 kind: "photos",
-                key: `p-${g.key}-${day}-${i}`,
+                key: `p-${g.key}-${runKey}-${i}`,
                 groupKey: g.key,
-                day,
+                day: run.days[0],
                 items: rowItems,
                 cells: r.cells,
                 height: r.height,
@@ -223,9 +234,9 @@ export function GroupedPhotoGrid({
             for (let i = 0; i < dayRows; i++) {
               rows.push({
                 kind: "photos",
-                key: `p-${g.key}-${day}-${i}`,
+                key: `p-${g.key}-${runKey}-${i}`,
                 groupKey: g.key,
-                day,
+                day: run.days[0],
                 items: shown.slice(i * cols, i * cols + cols),
               });
             }
@@ -234,7 +245,8 @@ export function GroupedPhotoGrid({
           continue;
         }
 
-        const count = bucketCount.get(day) ?? cols;
+        const day = run.day;
+        const count = run.count;
         const estimatedRows = Math.max(1, Math.ceil(count / cols));
         const reserve =
           rowBudget === Infinity ? estimatedRows : Math.min(rowBudget, estimatedRows);
