@@ -18,6 +18,7 @@ const TYPE_ICON: Record<OperationEntry["type"], string> = {
   trash_folder: "🗑",
   move_folder: "📁",
   copy_folder: "📁",
+  restore: "↩️",
   empty_trash: "🧹",
 };
 
@@ -84,6 +85,56 @@ function EmptyTrashConfirm({
   );
 }
 
+/** 오래된 경로 journal은 Desk가 만든 최신 구조와 충돌할 수 있어 한 번 더 확인한다. */
+function OldUndoConfirm({
+  operation,
+  onCancel,
+  onConfirm,
+}: {
+  operation: OperationEntry;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const dialogRef = useDialogFocus<HTMLDivElement>(onCancel);
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div
+        ref={dialogRef}
+        data-modal-root="true"
+        role="alertdialog"
+        aria-modal="true"
+        aria-label="오래된 작업 되돌리기 확인"
+        tabIndex={-1}
+        className="w-80 rounded-2xl bg-white p-5 shadow-xl"
+      >
+        <h4 className="text-sm font-bold text-slate-800">현재 정리 상태를 확인했나요?</h4>
+        <p className="mt-2 text-sm leading-relaxed text-slate-600">
+          이 작업은 7일이 지난 기록입니다. 이후 Photo Desk나 다른 앱에서 위치를
+          바꿨다면 되돌리기가 실패하거나 현재 정리 결과를 바꿀 수 있습니다.
+        </p>
+        <p className="mt-2 line-clamp-2 text-xs text-slate-400">
+          {operation.summary}
+        </p>
+        <div className="mt-5 flex items-center justify-between">
+          <button
+            data-autofocus="true"
+            onClick={onCancel}
+            className="rounded-lg border border-slate-300 px-4 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
+          >
+            취소
+          </button>
+          <button
+            onClick={onConfirm}
+            className="rounded-lg bg-amber-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-amber-700"
+          >
+            확인 후 되돌리기
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** Right slide-over listing recent operations with per-entry undo (spec 9.1).
  * This is the safety net after the undo toast disappears (IMPROVEMENTS B-6).
  * Also hosts 휴지통 비우기 (admin-only — it kills everyone's delete undos).
@@ -101,6 +152,7 @@ export function OperationsPanel({
   const user = useAuthStore((s) => s.user);
   const queryClient = useQueryClient();
   const [confirming, setConfirming] = useState(false);
+  const [reviewingUndo, setReviewingUndo] = useState<OperationEntry | null>(null);
   const [trashOpen, setTrashOpen] = useState(initialTrashOpen);
 
   const query = useQuery({ queryKey: ["ops"], queryFn: api.listOps });
@@ -135,7 +187,17 @@ export function OperationsPanel({
       className="fixed inset-y-0 right-0 z-40 flex w-80 flex-col border-l border-slate-200 bg-white shadow-xl"
     >
       <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-        <h3 className="text-sm font-bold text-slate-800">작업 기록</h3>
+        <div>
+          <h3 className="text-sm font-bold text-slate-800">작업 기록</h3>
+          {query.data && (
+            <p className="mt-0.5 text-[11px] text-slate-400">
+              전체 {query.data.total.toLocaleString()}건 · 복구 가능{" "}
+              {query.data.undoable.toLocaleString()}건
+              {query.data.needs_review > 0 &&
+                ` · 오래된 기록 ${query.data.needs_review.toLocaleString()}건`}
+            </p>
+          )}
+        </div>
         <button
           data-autofocus="true"
           onClick={onClose}
@@ -228,6 +290,11 @@ export function OperationsPanel({
                         (영구 삭제됨)
                       </span>
                     )}
+                    {op.needs_review && (
+                      <span className="ml-1 text-xs text-amber-600">
+                        (오래된 기록)
+                      </span>
+                    )}
                   </p>
                   <p className="mt-0.5 text-xs text-slate-400">
                     {timeLabel(op.created_at)}
@@ -236,7 +303,9 @@ export function OperationsPanel({
                 </div>
                 {op.can_undo && ops.canRecover && (
                   <button
-                    onClick={() => ops.undo(op.id)}
+                    onClick={() =>
+                      op.needs_review ? setReviewingUndo(op) : ops.undo(op.id)
+                    }
                     className="shrink-0 rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
                   >
                     되돌리기
@@ -254,6 +323,16 @@ export function OperationsPanel({
           busy={emptyMutation.isPending}
           onCancel={() => setConfirming(false)}
           onConfirm={() => emptyMutation.mutate()}
+        />
+      )}
+      {reviewingUndo && (
+        <OldUndoConfirm
+          operation={reviewingUndo}
+          onCancel={() => setReviewingUndo(null)}
+          onConfirm={() => {
+            ops.undo(reviewingUndo.id);
+            setReviewingUndo(null);
+          }}
         />
       )}
     </div>

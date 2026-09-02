@@ -798,7 +798,11 @@ export function FolderPane({
                 return (
                   <div style={{ position: "relative", height: row.height }}>
                     {row.cells.map((cell) => (
-                      <PhotoCell key={cell.item.id} cell={cell} />
+                      <PhotoCell
+                        key={cell.item.id}
+                        cell={cell}
+                        dndEnabled={ops.canMutate}
+                      />
                     ))}
                   </div>
                 );

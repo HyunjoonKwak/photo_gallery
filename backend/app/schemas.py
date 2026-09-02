@@ -435,11 +435,14 @@ class OperationResponse(BaseModel):
 
 class OperationEntry(BaseModel):
     id: int
-    type: str  # move | copy | delete | mkdir | empty_trash
+    type: str  # move | copy | delete | mkdir | restore | empty_trash
     summary: str
     status: str  # done | undone | failed | purged (trash emptied — undo gone)
     created_at: str
     can_undo: bool
+    # 오래된 경로 기반 journal은 이후 Desk 정리와 충돌할 수 있으므로 UI에서
+    # 한 번 더 검토하도록 한다. 서버의 실제 undo 가능 여부와는 별도 신호다.
+    needs_review: bool = False
     target_user: str | None = None
 
 
@@ -477,6 +480,9 @@ class TrashStatsResponse(BaseModel):
 
 class OperationsResponse(BaseModel):
     operations: list[OperationEntry]
+    total: int
+    undoable: int
+    needs_review: int
 
 
 class MemberInfo(BaseModel):

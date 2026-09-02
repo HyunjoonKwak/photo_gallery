@@ -114,7 +114,10 @@ export function TimelineScreen() {
   return (
     <>
       <DndContext
-        sensors={ops.canMutate ? sensors : []}
+        // 센서 배열 길이를 권한 로딩 전후로 바꾸면 dnd-kit 내부 useEffect의
+        // dependency 크기가 달라져 React 경고가 난다. 배열은 고정하고 각
+        // draggable을 disabled로 만들어 읽기 전용 모드를 지킨다.
+        sensors={sensors}
         collisionDetection={pointerWithin}
         onDragStart={onDragStart}
         onDragOver={onDragOver}

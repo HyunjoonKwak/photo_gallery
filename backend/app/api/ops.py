@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from ..config import Settings, get_settings
@@ -10,6 +12,7 @@ from ..operations import (
     execute_restore_items,
     list_operations,
     list_trash_items,
+    operation_stats,
     trash_stats,
     undo_operation,
 )
@@ -46,8 +49,17 @@ async def operations(
     session: Session = Depends(get_current_session),
     settings: Settings = Depends(get_settings),
 ) -> OperationsResponse:
+    viewer = _viewer(session)
+    entries, stats = await asyncio.gather(
+        asyncio.to_thread(list_operations, settings.sqlite_path, limit, viewer),
+        asyncio.to_thread(operation_stats, settings.sqlite_path, viewer),
+    )
+    total, undoable, needs_review = stats
     return OperationsResponse(
-        operations=list_operations(settings.sqlite_path, limit, _viewer(session))
+        operations=entries,
+        total=total,
+        undoable=undoable,
+        needs_review=needs_review,
     )
 
 

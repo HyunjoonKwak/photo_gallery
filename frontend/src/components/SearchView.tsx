@@ -4,6 +4,7 @@ import { api } from "../api/client";
 import { libraryLabel } from "../lib/library";
 import { layoutBucket } from "../lib/rowModel";
 import { useTimelineStore } from "../store/timeline";
+import { useGalleryCapabilities } from "../hooks/useGalleryCapabilities";
 import { PhotoCell } from "./timeline/PhotoCell";
 import { VirtualRows } from "./VirtualRows";
 import { QueryErrorState } from "./QueryErrorState";
@@ -13,6 +14,7 @@ import { QueryErrorState } from "./QueryErrorState";
  * lightbox / bulk progress all work on them unchanged.
  */
 export function SearchView() {
+  const { capabilities } = useGalleryCapabilities();
   const space = useTimelineStore((s) => s.space);
   const query = useTimelineStore((s) => s.searchQuery);
   const setOrdered = useTimelineStore((s) => s.setOrdered);
@@ -76,7 +78,9 @@ export function SearchView() {
           전체 선택
         </button>
         <span className="hidden text-xs text-slate-400 sm:inline">
-          파일명·폴더명·태그 기준 · 선택 후 액션바/드래그로 정리
+          {capabilities.physical_mutations
+            ? "파일명·폴더명·태그 기준 · 선택 후 액션바/드래그로 정리"
+            : "파일명·폴더명·태그 기준"}
         </span>
         <button
           onClick={() => history.back()}
@@ -114,7 +118,11 @@ export function SearchView() {
                 return (
                   <div style={{ position: "relative", height: row.height }}>
                     {row.cells.map((cell) => (
-                      <PhotoCell key={cell.item.id} cell={cell} />
+                      <PhotoCell
+                        key={cell.item.id}
+                        cell={cell}
+                        dndEnabled={capabilities.physical_mutations}
+                      />
                     ))}
                   </div>
                 );

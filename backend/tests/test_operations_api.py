@@ -1,5 +1,8 @@
 """End-to-end tests for file operations + undo, in mock mode."""
 
+import sqlite3
+from datetime import datetime, timedelta, timezone
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -702,11 +705,39 @@ def test_operations_list_reflects_status(client):
     ops = client.get("/api/ops").json()["operations"]
     entry = next(o for o in ops if o["id"] == op["operation_id"])
     assert entry["can_undo"] is True and entry["status"] == "done"
+    assert entry["needs_review"] is False
 
     client.post(f"/api/ops/{op['operation_id']}/undo")
     ops = client.get("/api/ops").json()["operations"]
     entry = next(o for o in ops if o["id"] == op["operation_id"])
     assert entry["can_undo"] is False and entry["status"] == "undone"
+
+
+def test_operations_stats_include_full_journal_and_flag_old_undo(client):
+    _, items = _first_day_items(client)
+    op = client.post(
+        "/api/photos/ops/move",
+        json={
+            "item_ids": [items[0]["id"]],
+            "dest_folder_id": "f-team-2",
+            "copy_mode": False,
+        },
+    ).json()
+
+    old = (datetime.now(timezone.utc) - timedelta(days=8)).isoformat()
+    with sqlite3.connect(get_settings().sqlite_path) as conn:
+        conn.execute(
+            "UPDATE operation SET created_at = ? WHERE id = ?",
+            (old, op["operation_id"]),
+        )
+        conn.commit()
+
+    body = client.get("/api/ops?limit=1").json()
+    assert len(body["operations"]) == 1
+    assert body["total"] == 1
+    assert body["undoable"] == 1
+    assert body["needs_review"] == 1
+    assert body["operations"][0]["needs_review"] is True
 
 
 def test_member_cannot_target_other_user(client):

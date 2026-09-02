@@ -275,12 +275,15 @@ export interface OperationEntry {
     | "trash_folder"
     | "move_folder"
     | "copy_folder"
+    | "restore"
     | "empty_trash";
   summary: string;
   /** purged = 휴지통 비우기로 undo 소멸 */
   status: "done" | "undone" | "failed" | "purged";
   created_at: string;
   can_undo: boolean;
+  /** 7일이 지난 경로 기반 journal — 실행 전 현재 정리 상태 재확인 필요. */
+  needs_review: boolean;
   target_user: string | null;
 }
 
@@ -306,6 +309,9 @@ export interface TrashStatsResponse {
 
 export interface OperationsResponse {
   operations: OperationEntry[];
+  total: number;
+  undoable: number;
+  needs_review: number;
 }
 
 export interface MemberInfo {

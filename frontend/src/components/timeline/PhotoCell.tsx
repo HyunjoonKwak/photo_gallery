@@ -16,7 +16,13 @@ import type { CellLayout } from "../../lib/rowModel";
  * scan has hashed the item) or placeholder color → sm thumbnail fades in →
  * xl in the lightbox.
  */
-export const PhotoCell = memo(function PhotoCell({ cell }: { cell: CellLayout }) {
+export const PhotoCell = memo(function PhotoCell({
+  cell,
+  dndEnabled,
+}: {
+  cell: CellLayout;
+  dndEnabled: boolean;
+}) {
   const { item } = cell;
   const globalSpace = useTimelineStore((s) => s.space);
   const space = item.space ?? globalSpace;
@@ -31,6 +37,7 @@ export const PhotoCell = memo(function PhotoCell({ cell }: { cell: CellLayout })
     isDragging,
   } = useDraggable({
     id: item.id,
+    disabled: !dndEnabled,
   });
   const [loaded, setLoaded] = useState(false);
   // Synology가 poster를 생성하지 않은 아이템(개인 공간 동영상의 38%가 이렇다 —
@@ -56,7 +63,7 @@ export const PhotoCell = memo(function PhotoCell({ cell }: { cell: CellLayout })
     <div
       ref={setNodeRef}
       data-photo-id={item.id}
-      data-draggable="true"
+      data-draggable={dndEnabled ? "true" : undefined}
       onMouseEnter={() => useTimelineStore.getState().setHover(item.id)}
       onMouseLeave={() => useTimelineStore.getState().setHover(null)}
       className={`group absolute top-0 select-none overflow-hidden rounded-sm transition-shadow ${

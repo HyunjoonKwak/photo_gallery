@@ -39,10 +39,36 @@ UNDOABLE_TYPES = frozenset(
 )
 # Deleted items sit in the trash; keep undo open for 7 days (spec: 휴지통 보존).
 DELETE_UNDO_WINDOW = timedelta(days=7)
+# 이동·폴더 작업은 기존 계약상 기한 없이 되돌릴 수 있지만, 7일이 지나면 실제
+# 경로가 Desk나 다른 앱에서 달라졌을 가능성이 크다. 차단하지는 않고 UI가 재확인할
+# 수 있도록 별도 신호를 보낸다.
+UNDO_REVIEW_AGE = timedelta(days=7)
 
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _can_undo_row(row, now: datetime) -> bool:
+    deadline = row["undo_deadline"]
+    deadline_ok = not deadline or datetime.fromisoformat(deadline) > now
+    return (
+        row["status"] == "done"
+        and row["type"] in UNDOABLE_TYPES
+        and deadline_ok
+    )
+
+
+def _needs_undo_review(row, now: datetime) -> bool:
+    if not _can_undo_row(row, now):
+        return False
+    created_at = row["created_at"]
+    if not created_at:
+        return True
+    created = datetime.fromisoformat(created_at)
+    if created.tzinfo is None:
+        created = created.replace(tzinfo=timezone.utc)
+    return created <= now - UNDO_REVIEW_AGE
 
 
 def _affected(pairs: list[tuple[str, str]]) -> list[AffectedDay]:
@@ -571,9 +597,6 @@ def list_operations(
     out: list[OperationEntry] = []
     for row in rows:
         payload = json.loads(row["payload_json"] or "{}")
-        deadline_ok = not row["undo_deadline"] or datetime.fromisoformat(
-            row["undo_deadline"]
-        ) > now
         out.append(
             OperationEntry(
                 id=row["id"],
@@ -581,10 +604,30 @@ def list_operations(
                 summary=payload.get("summary", row["type"]),
                 status=row["status"],
                 created_at=row["created_at"],
-                can_undo=row["status"] == "done"
-                and row["type"] in UNDOABLE_TYPES
-                and deadline_ok,
+                can_undo=_can_undo_row(row, now),
+                needs_review=_needs_undo_review(row, now),
                 target_user=row["target_user"],
             )
         )
     return out
+
+
+def operation_stats(
+    sqlite_path: str, viewer: str | None = None
+) -> tuple[int, int, int]:
+    """Return (all operations, currently undoable, old undo needing review).
+
+    The list endpoint is intentionally bounded, but the drain transition needs an
+    honest count across the full journal so older recoveries are not hidden below
+    the first page.
+    """
+    with connect(sqlite_path) as conn:
+        rows = conn.execute(
+            "SELECT type, status, created_at, undo_deadline FROM operation"
+            + (" WHERE user = ?" if viewer else ""),
+            (viewer,) if viewer else (),
+        ).fetchall()
+    now = _now()
+    undoable = sum(_can_undo_row(row, now) for row in rows)
+    needs_review = sum(_needs_undo_review(row, now) for row in rows)
+    return len(rows), undoable, needs_review
