@@ -191,10 +191,16 @@ export function OperationsPanel({
           <h3 className="text-sm font-bold text-slate-800">작업 기록</h3>
           {query.data && (
             <p className="mt-0.5 text-[11px] text-slate-400">
-              전체 {query.data.total.toLocaleString()}건 · 복구 가능{" "}
-              {query.data.undoable.toLocaleString()}건
-              {query.data.needs_review > 0 &&
-                ` · 오래된 기록 ${query.data.needs_review.toLocaleString()}건`}
+              전체 {query.data.total.toLocaleString()}건 ·{" "}
+              {ops.canRecover ? (
+                <>
+                  복구 가능 {query.data.undoable.toLocaleString()}건
+                  {query.data.needs_review > 0 &&
+                    ` · 오래된 기록 ${query.data.needs_review.toLocaleString()}건`}
+                </>
+              ) : (
+                "복구 종료"
+              )}
             </p>
           )}
         </div>

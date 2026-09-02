@@ -26,6 +26,7 @@ from ..schemas import (
     TrashStatsResponse,
 )
 from ..session_store import Session
+from ..write_policy import capabilities_for
 from .deps import (
     get_current_session,
     get_photo_source,
@@ -55,6 +56,12 @@ async def operations(
         asyncio.to_thread(operation_stats, settings.sqlite_path, viewer),
     )
     total, undoable, needs_review = stats
+    # The journal may contain technically undoable legacy entries, but curation
+    # mode deliberately closes every Gallery recovery route.  Return effective
+    # recoverability so API clients do not advertise stale undo work.
+    if not capabilities_for(settings, session.role).undo_drain:
+        undoable = 0
+        needs_review = 0
     return OperationsResponse(
         operations=entries,
         total=total,

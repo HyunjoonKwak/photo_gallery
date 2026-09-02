@@ -1,6 +1,6 @@
 # Photo Gallery ↔ Photo Desk 세션 분리 실행 가이드
 
-> 상태: G2 완료, Desk G2 설치 완료, Gallery `drain` 복구 유예 중
+> 상태: G2 완료, Desk G2 설치 완료, Gallery `curation` + 원본 `ro` 전환 진행
 > 기준일: 2026-09-02
 > 상세 기능 명세: [Photo Gallery → Photo Desk 기능 이관 및 전환 기준](https://github.com/HyunjoonKwak/photo_desk/blob/main/docs/GALLERY_TRANSITION.md)
 
@@ -26,7 +26,7 @@
 현재 Gallery 세션 재개
   G-C. 종단간 파일럿
   G-D. Gallery legacy 배포 → drain 전환
-  G-E. 최소 7일 복구 유예 → curation + 원본 ro
+  G-E. 운영 우선 전환 → curation + 원본 ro
   G-F. 30일 안정화 뒤 레거시 제거
 ```
 
@@ -202,9 +202,9 @@ Photo Backup/1차 구역 → Desk 수집 → 촬영일 교정 → 내사진/공�
 
 문제가 생기면 마운트는 `rw` 상태로 둔 채 즉시 `legacy`로 되돌린다.
 
-### G-E. 복구 유예 뒤 `curation`과 읽기 전용
+### G-E. 운영 우선 `curation`과 읽기 전용
 
-- `drain`을 최소 7일 유지
+- 사용자 결정으로 사전 7일 대기 대신 즉시 전환하고 실제 운영에서 보완점을 찾는다
 - 기한 없는 move/copy/mkdir operation도 전부 검토
 - 휴지통 복구 대상과 의도하지 않은 미완료 작업이 0인지 확인
 - `curation`으로 전환
@@ -215,9 +215,9 @@ Photo Backup/1차 구역 → Desk 수집 → 촬영일 교정 → 내사진/공�
 2026-09-02 전수 점검 기준 operation은 397건이고, 현재 `can_undo` 조건을 만족하는
 작업은 114건이다(`copy` 1, `mkdir` 28, `move` 19, `move_folder` 65,
 `trash_folder` 1). 대부분 7월 작업이라 현재 폴더 구조에 일괄 undo하지 않고 감사
-기록으로 보존한다. 앱 휴지통에는 7일 undo 기한이 지난 개인 사진 13장이 남아 있다.
-자동 복원·영구 삭제하지 말고 소유자 판단을 받은 뒤 G-E의 "복구 대상 0" 게이트를
-통과시킨다.
+기록으로 보존한다. 앱 휴지통의 개인 사진 13장은 전환 직전 원본 위치로 복원했고,
+복구 전 DB·환경·파일 SHA-256 매니페스트를 운영 NAS의 `deploy-backups`에 보존했다.
+과거 operation은 자동 undo하지 않고 감사 기록으로만 유지한다.
 
 ### G-F. 안정화 뒤 정리
 
@@ -233,7 +233,7 @@ Photo Backup/1차 구역 → Desk 수집 → 촬영일 교정 → 내사진/공�
 | Gallery G0 완료 | 표본·guard·테스트 전달 | P0 구현/검증 | 불가 |
 | Desk G1 완료 | 증거 검수·파일럿 | Gallery에 결과 전달 후 대기 | 파일럿만 가능 |
 | G2 파일럿 완료 | `legacy` 배포 후 `drain` | 결함 대응 | `drain` 가능 |
-| 7일 복구 유예 완료 | `curation`+`ro` | 정상 흐름 관찰 | 읽기 전용 가능 |
+| 운영 우선 전환 완료 | `curation`+`ro` | 정상 흐름 관찰 | 읽기 전용 가능 |
 | 30일 안정화 완료 | 레거시 제거 | P1 작업 가능 | 최종 전환 완료 |
 
 ## 7. 별도 Photo Desk 세션에 전달할 시작 프롬프트
@@ -264,9 +264,8 @@ before→write→rescan→undo manifest, 이동/복사/undo 결과, migration과
 
 ## 8. 현재 Gallery 세션의 다음 작업
 
-`G-A`와 Desk G1/G2가 완료됐고 Gallery 운영 모드는 2026-09-02부터 `drain`이다.
-원본 마운트는 복구를 위해 `rw`로 유지하고 신규 물리 변이는 서버에서 차단한다.
-검증된 Desk G2 앱을 같은 날 운영 Mac에 설치했고, Gallery의 임시 레거시 날짜 교정
-예외도 껐다. 기존 Desk 앱은 사용자 라이브러리에 복구용으로 보관한다. 현재 undo 가능
-작업과 휴지통 항목을 검토하며 최소 7일 유예한 뒤, 복구 대상이 0일 때만 `curation`과
-`ro`로 넘어간다. 레거시 코드는 30일 안정화 전까지 제거하지 않는다.
+`G-A`와 Desk G1/G2가 완료됐고 Gallery는 2026-09-02에 `drain`을 거쳐
+`curation`+원본 `ro`로 전환한다. 검증된 Desk G2 앱을 같은 날 운영 Mac에 설치했고,
+Gallery의 임시 레거시 날짜 교정 예외도 껐다. 과거 operation은 감사 기록으로 남기고
+휴지통 13장은 해시 검증 후 원본으로 복원했다. 운영에서 발견되는 문제를 보완하되,
+레거시 코드는 30일 안정화 전까지 제거하지 않는다.

@@ -198,6 +198,12 @@ def test_drain_allows_existing_undo_and_item_restore(tmp_path, monkeypatch):
         assert client.post("/api/ops/trash/empty").status_code == 403
 
         settings.gallery_write_mode = "curation"
+        history = client.get("/api/ops")
+        assert history.status_code == 200
+        # Two deletes plus the explicit partial-restore audit entry.
+        assert history.json()["total"] == 3
+        assert history.json()["undoable"] == 0
+        assert history.json()["needs_review"] == 0
         assert client.post(f"/api/ops/{delete_one.json()['operation_id']}/undo").status_code == 403
         assert (
             client.post(

@@ -17,10 +17,9 @@ services:
       - "9800:9800"
     volumes:
       - ./data:/data # SQLite (세션/작업로그/사진 해시 캐시)
-      # homes 마운트: ① 썸네일 디스크 직접 읽기(@eaDir/SYNOPHOTO_THUMB — DSM API가
-      # @eaDir을 막아 동영상 포스터·고화질을 못 주는 문제 우회) ② 촬영일 교정 시
-      # 소유자 본인 파일에 EXIF/mtime 직접 기록(capture_fix). 이를 위해 :rw.
-      - ${THUMB_HOMES_HOST:-/volume1/homes}:/photovol/homes:rw
+      # homes 마운트: 썸네일·EXIF 직접 읽기용. 최종 curation 운영은 ro가 기본이며,
+      # legacy/drain 롤백 때만 .env의 THUMB_HOMES_MODE=rw로 명시해 쓰기를 연다.
+      - ${THUMB_HOMES_HOST:-/volume1/homes}:/photovol/homes:${THUMB_HOMES_MODE:-ro}
       # 공용(team) 공유 — 촬영일 교정 시 EXIF 읽기용(읽기전용). 파일 수정은 안 함
       # (공용은 Synology set API로 교정, 파일은 못 씀).
       - ${THUMB_PHOTO_HOST:-/volume1/photo}:/photovol/photo:ro
@@ -46,12 +45,10 @@ services:
       - LOGIN_TRUST_PROXY_HEADERS=${LOGIN_TRUST_PROXY_HEADERS:-true}
       # 운영에서는 반드시 false (실 NAS 연동)
       - MOCK_MODE=${MOCK_MODE:-false}
-      # Gallery→Desk 전환: 첫 배포는 기존 동작을 보존하는 legacy. Desk P0
-      # 파일럿 전에는 drain/curation으로 바꾸지 않는다.
-      - GALLERY_WRITE_MODE=${GALLERY_WRITE_MODE:-legacy}
-      # 기존 Synology 촬영일 백로그용 임시 관리자 스위치. 첫 전환 배포는
-      # 무회귀를 위해 true, 백로그 정리 후 false로 내린다.
-      - GALLERY_LEGACY_DATE_REPAIR=${GALLERY_LEGACY_DATE_REPAIR:-true}
+      # Gallery는 감상·검색·다운로드·Synology 논리 큐레이션만 담당한다.
+      # 긴급 롤백 때만 GALLERY_WRITE_MODE=drain과 homes=rw를 함께 사용한다.
+      - GALLERY_WRITE_MODE=${GALLERY_WRITE_MODE:-curation}
+      - GALLERY_LEGACY_DATE_REPAIR=${GALLERY_LEGACY_DATE_REPAIR:-false}
       - CORS_ORIGINS=${CORS_ORIGINS:-}
     healthcheck:
       test:
