@@ -89,7 +89,7 @@ function AlbumList({ onOpen }: { onOpen: (a: AlbumInfo) => void }) {
             </h2>
             <p className="max-w-sm text-sm leading-relaxed text-slate-500">
               직접 고른 사진을 모아 앨범을 만들어 보세요. 만든 앨범은 Synology
-              Photos 앱에도 그대로 보입니다. 사진은 정리 화면에서 선택해 앨범에
+              Photos 앱에도 그대로 보입니다. 사진 화면에서 한 장을 열고 앨범에
               담을 수 있습니다.
             </p>
             <button
@@ -339,7 +339,7 @@ function AlbumDetail({
           />
         ) : items.length === 0 ? (
           <p className="p-6 text-center text-sm text-slate-400">
-            이 앨범에는 아직 사진이 없습니다. 정리 화면에서 사진을 선택해
+            이 앨범에는 아직 사진이 없습니다. 사진 화면에서 한 장을 열어
             앨범에 담아 보세요.
           </p>
         ) : removeMode ? (

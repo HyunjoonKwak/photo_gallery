@@ -23,22 +23,20 @@ function rangeIds(orderedIds: string[], a: string, b: string): string[] {
   return orderedIds.slice(lo, hi + 1);
 }
 
-/** 상위 4영역: 사진 뷰어 / 앨범 / 폴더 분류(정리) / 더보기. */
+/** 상위 영역과 검색·관리자 폴더 열람에 쓰는 내부 manage 라우트. */
 export type Section = "viewer" | "albums" | "manage" | "more";
 
 /**
- * 「정리」 탭을 화면에 보일까.
+ * 레거시 파일 정리 탭을 화면에 보일까.
  *
  * 세 앱의 역할을 다시 가르면서(2026-09-01, ECOSYSTEM.md) 무거운 판정 —
  * 중복·잡동사니·폴더 이동 — 은 전량 사본이 있는 맥의 Photo Desk 가 맡기로 했다.
  * 이 앱은 감상을 맡는다.
  *
- * 중복·잡동사니 같은 무거운 판정은 맥의 Photo Desk가 맡지만, 이 앱에서도
- * 기기 백업·검색 결과·폴더 이동으로 들어가는 최소 파일 관리 화면은 필요하다.
- * 숨기면 검색 중에도 「사진」 탭이 켜지는 등 현재 위치가 거짓으로 표시되므로
- * 폴더 정리 탭은 항상 노출한다.
+ * 최종 curation 전환 뒤에는 false다. 내부 manage 라우트는 검색 결과와 관리자
+ * 구성원 폴더 열람을 위해 30일 롤백 기간 동안 유지하되 주 메뉴에는 노출하지 않는다.
  */
-export const SHOW_MANAGE = true;
+export const SHOW_MANAGE = false;
 
 /** NAS 웹앱에서 중복·잡동사니 판정 도구까지 노출할지. */
 export const SHOW_MANAGE_TOOLS = false;
@@ -46,8 +44,7 @@ export const SHOW_MANAGE_TOOLS = false;
 /**
  * 탭바에 불을 켤 영역.
  *
- * 과거 빌드에서 정리 탭을 감추던 설정과 호환하기 위한 안전망. 현재는 정리
- * 탭을 표시하므로 실제 섹션을 그대로 반환한다.
+ * 숨은 manage 라우트(검색·관리자 폴더 열람)에서는 사진 탭을 활성 상태로 보인다.
  */
 export function activeSection(section: Section): Section {
   return !SHOW_MANAGE && section === "manage" ? "viewer" : section;

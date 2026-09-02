@@ -8,7 +8,7 @@ import {
 const ALL_TABS: { section: Section; label: string; icon: string }[] = [
   { section: "viewer", label: "사진", icon: "🖼" },
   { section: "albums", label: "앨범", icon: "📔" },
-  { section: "manage", label: "정리", icon: "🗂" },
+  { section: "manage", label: "폴더", icon: "📂" },
   { section: "more", label: "더보기", icon: "⋯" },
 ];
 const TABS = ALL_TABS.filter((t) => SHOW_MANAGE || t.section !== "manage");
@@ -21,7 +21,7 @@ export function BottomTabBar() {
   const section = useTimelineStore((s) => s.section);
   const setSection = useTimelineStore((s) => s.setSection);
   const goHome = useTimelineStore((s) => s.goHome);
-  // 목록에 없는 영역(감춘 「정리」)에 들어가 있어도 불은 남긴다.
+  // 검색처럼 내부 manage 화면에 들어가 있어도 사진 탭에 불을 남긴다.
   const current = activeSection(section);
   return (
     <nav

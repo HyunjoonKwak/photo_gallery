@@ -15,6 +15,7 @@ import {
   type Section,
 } from "./store/timeline";
 import { useBackTrap } from "./hooks/useBackTrap";
+import { useGalleryCapabilities } from "./hooks/useGalleryCapabilities";
 import { LoginForm } from "./components/LoginForm";
 import {
   clearLegacyThumbnailCaches,
@@ -48,12 +49,12 @@ import { NavControls } from "./components/NavControls";
 import { ConflictDialogHost } from "./components/ConflictDialog";
 import { AskDialogHost, Modal } from "./components/Dialog";
 
-// 주 메뉴 4영역 — 감상(사진/앨범)·정리·더보기(관리 허브). 데스크톱 토글과
-// 모바일 하단 탭이 같은 목록을 쓴다(IA 개편 2단계).
+// 주 메뉴 — 사진·앨범·더보기. manage는 검색과 관리자용 폴더 열람의 내부
+// 라우트로만 남고 최종 Gallery 내비게이션에는 노출하지 않는다.
 export const ALL_SECTIONS: { section: Section; label: string; icon: string }[] = [
   { section: "viewer", label: "사진", icon: "🖼" },
   { section: "albums", label: "앨범", icon: "📔" },
-  { section: "manage", label: "정리", icon: "🗂" },
+  { section: "manage", label: "폴더", icon: "📂" },
   { section: "more", label: "더보기", icon: "⋯" },
 ];
 export const SECTIONS = ALL_SECTIONS.filter((t) => SHOW_MANAGE || t.section !== "manage");
@@ -65,7 +66,7 @@ function SectionToggle() {
   const section = useTimelineStore((s) => s.section);
   const setSection = useTimelineStore((s) => s.setSection);
   const goHome = useTimelineStore((s) => s.goHome);
-  // 목록에 없는 영역(감춘 「정리」)에 들어가 있어도 불은 남긴다.
+  // 검색처럼 내부 manage 화면에 들어가도 사진 탭에 불을 남긴다.
   const current = activeSection(section);
   return (
     <nav className="hidden gap-1 px-2 sm:px-4 md:flex">
@@ -170,6 +171,7 @@ function LibrarySelector({ account, isAdmin }: { account: string; isAdmin: boole
   const section = useTimelineStore((s) => s.section);
   const selectLibrary = useTimelineStore((s) => s.selectLibrary);
   const queryClient = useQueryClient();
+  const { capabilities } = useGalleryCapabilities();
   const [open, setOpen] = useState(false);
   const membersQuery = useQuery({
     queryKey: ["members"],
@@ -179,8 +181,16 @@ function LibrarySelector({ account, isAdmin }: { account: string; isAdmin: boole
   const members = (membersQuery.data?.members ?? []).filter(
     (m) => m.name !== account,
   );
-  const zonesQuery = useQuery({ queryKey: ["zones"], queryFn: api.listZones });
-  const zones = zonesQuery.data?.zones ?? [];
+  const zonesQuery = useQuery({
+    queryKey: ["zones"],
+    queryFn: api.listZones,
+    enabled: capabilities.physical_mutations,
+  });
+  // 기기 백업은 Photo Desk의 수집/정리 영역이다. Gallery가 legacy로 긴급
+  // 롤백된 경우에만 기존 zone 진입점을 되살린다.
+  const zones = capabilities.physical_mutations
+    ? (zonesQuery.data?.zones ?? [])
+    : [];
 
   const label = activeZone
     ? `📦 ${activeZone.label}`
@@ -196,15 +206,14 @@ function LibrarySelector({ account, isAdmin }: { account: string; isAdmin: boole
     zone?: { id: string; label: string } | null;
   }) => {
     setOpen(false);
-    // 기기 백업/구성원은 정리 전용 → 감상 영역에서 고르면 자동 이동을 예고
-    // (3단계: 암묵적 화면 전환을 명시로).
+    // 기기 백업/구성원은 내부 폴더 화면으로 이동하므로 전환을 예고한다.
     if ((lib.zone || lib.owner) && section !== "manage") {
       useToastStore
         .getState()
         .push(
           lib.zone
-            ? "기기 백업은 정리 화면에서 열려요."
-            : "구성원 사진은 정리 화면에서 열려요.",
+            ? "기기 백업은 폴더 화면에서 열려요."
+            : "구성원 사진은 읽기 전용 폴더 화면에서 열려요.",
         );
     }
     selectLibrary(lib);
@@ -277,16 +286,14 @@ function LibrarySelector({ account, isAdmin }: { account: string; isAdmin: boole
             >
               👤 내 사진
             </button>
-            {/* 기기 백업/구성원은 정리 전용이지만 목록엔 항상 노출(3단계:
-             * 같은 버튼은 항상 같은 목록). 감상 중 선택 시 pick이 예고 토스트
-             * 후 정리로 이동시킨다. */}
+            {/* 관리자는 구성원의 개인 폴더를 읽기 전용으로 열람할 수 있다. */}
             {isAdmin && members.length > 0 && (
               <>
                 <p className="px-3 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
                   관리자 · 구성원 사진
                   {section !== "manage" && (
                     <span className="ml-1 font-normal normal-case text-slate-300">
-                      · {SHOW_MANAGE ? "정리에서 열림" : "폴더 보기로 열림"}
+                      · 폴더 보기로 열림
                     </span>
                   )}
                 </p>
@@ -312,7 +319,7 @@ function LibrarySelector({ account, isAdmin }: { account: string; isAdmin: boole
                   기기 백업
                   {section !== "manage" && (
                     <span className="ml-1 font-normal normal-case text-slate-300">
-                      · {SHOW_MANAGE ? "정리에서 열림" : "폴더 보기로 열림"}
+                      · 폴더 보기로 열림
                     </span>
                   )}
                 </p>
@@ -345,10 +352,7 @@ function LibrarySelector({ account, isAdmin }: { account: string; isAdmin: boole
   );
 }
 
-/** High-contrast persistent banner while organizing someone else's photos —
- * the standard impersonation pattern (IMPROVEMENTS B-7): always visible,
- * one-click return.
- */
+/** 다른 구성원의 폴더를 읽기 전용으로 보는 관리자 상태 배너. */
 function ImpersonationBanner() {
   const viewedOwner = useTimelineStore((s) => s.viewedOwner);
   const selectLibrary = useTimelineStore((s) => s.selectLibrary);
@@ -358,7 +362,7 @@ function ImpersonationBanner() {
     <div className="flex items-center justify-center gap-3 bg-amber-500 px-4 py-1.5 text-sm font-medium text-white">
       <span>
         보는 중: {viewedOwner}의 개인 폴더 (폴더 화면에서만 지원 · 타임라인/
-        검색 제외) — 모든 작업이 기록됩니다
+        검색 제외) — 읽기 전용
       </span>
       <button
         onClick={() => {
@@ -421,8 +425,8 @@ function AccountChip({ account, role }: { account: string; role: string }) {
   );
 }
 
-/** 첫 로그인 1회 안내(IA 4단계) — 2축 구조(무엇을 × 어떻게)와 되돌리기
- * 안전망을 한 장으로. 확인하면 다시 안 뜬다(localStorage, 계정별 —
+/** 첫 로그인 1회 안내 — Gallery와 Photo Desk의 역할을 한 장으로 설명한다.
+ * 확인하면 다시 안 뜬다(localStorage, 계정별 —
  * 가족이 한 기기를 돌려 써도 각자 한 번씩 본다). 더보기의 "처음 안내
  * 다시 보기"(firstRunTipTick)로 1회 재표시할 수 있다. */
 function FirstRunTip({ account }: { account: string }) {
@@ -434,11 +438,6 @@ function FirstRunTip({ account }: { account: string }) {
       return true; // private mode 등 — 안내 없이 진행
     }
   });
-  // 첫 불릿의 라이브러리 목록은 이 계정이 실제 보는 메뉴와 일치시킨다 —
-  // 기기 백업은 계정별 등록제라 처음 로그인한 구성원 메뉴엔 없는 경우가
-  // 대부분(안내가 없는 항목을 가리키면 "내 화면이 잘못됐나" 혼란).
-  const zonesQuery = useQuery({ queryKey: ["zones"], queryFn: api.listZones });
-  const hasBackup = (zonesQuery.data?.zones.length ?? 0) > 0;
   // 더보기 → 처음 안내 다시 보기: 틱이 오르면 이번 1회만 다시 연다.
   const tick = useTimelineStore((s) => s.firstRunTipTick);
   useEffect(() => {
@@ -458,17 +457,17 @@ function FirstRunTip({ account }: { account: string }) {
       <ul className="mt-3 space-y-2.5 text-sm leading-relaxed text-slate-600">
         <li>
           📚 <b>왼쪽 위 메뉴</b>에서 <b>무엇을 볼지</b> 골라요 — 가족 사진 ·
-          내 사진{hasBackup && " · 기기 백업(휴대폰 백업)"}.
+          내 사진.
         </li>
         <li>
           🖼 화면 <b><span className="md:hidden">아래</span>
             <span className="hidden md:inline">위</span> 탭</b>에서{" "}
-          <b>어떻게 볼지</b> 골라요 — 사진(감상) · 앨범 · 정리(이동/삭제) ·
-          더보기.
+          <b>어떻게 볼지</b> 골라요 — 사진(타임라인·폴더·사람·장소·비디오) ·
+          앨범 · 더보기.
         </li>
         <li>
-          ↩️ 실수해도 괜찮아요 — 삭제·이동은 전부 <b>되돌리기</b>가 돼요
-          (더보기 → 휴지통·작업 기록).
+          🖥 파일 이동·삭제와 촬영일 교정은 <b>Photo Desk</b>에서 하고,
+          Gallery에서는 감상·검색·앨범·인물 이름을 관리해요.
         </li>
       </ul>
       <button

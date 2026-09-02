@@ -137,7 +137,11 @@ export function MoreScreen() {
   const [apiOpen, setApiOpen] = useState(false);
   const { capabilities } = useGalleryCapabilities();
 
-  const trashQ = useQuery({ queryKey: ["trash"], queryFn: api.trashStats });
+  const trashQ = useQuery({
+    queryKey: ["trash"],
+    queryFn: api.trashStats,
+    enabled: capabilities.undo_drain,
+  });
   const trashItems = trashQ.data?.items ?? 0;
 
   const logout = useMutation({
@@ -176,18 +180,24 @@ export function MoreScreen() {
           </button>
         </div>
 
-        <GroupLabel>보관함</GroupLabel>
-        <Row
-          icon="🗑"
-          label="휴지통"
-          desc="삭제한 사진 보기·선택 복원 (7일 보관)"
-          badge={trashItems > 0 ? `${trashItems.toLocaleString()}장` : undefined}
-          onClick={() => setPanel("trash")}
-        />
+        <GroupLabel>{capabilities.undo_drain ? "보관함" : "기록"}</GroupLabel>
+        {capabilities.undo_drain && (
+          <Row
+            icon="🗑"
+            label="휴지통"
+            desc="삭제한 사진 보기·선택 복원"
+            badge={trashItems > 0 ? `${trashItems.toLocaleString()}장` : undefined}
+            onClick={() => setPanel("trash")}
+          />
+        )}
         <Row
           icon="🕘"
           label="작업 기록"
-          desc="이동·복사·삭제 내역과 되돌리기"
+          desc={
+            capabilities.undo_drain
+              ? "이동·복사·삭제 내역과 되돌리기"
+              : "Gallery 전환 전 파일 작업 감사 기록"
+          }
           onClick={() => setPanel("ops")}
         />
 
@@ -207,7 +217,7 @@ export function MoreScreen() {
         <Row
           icon="💡"
           label="처음 안내 다시 보기"
-          desc="무엇을·어떻게 볼지, 되돌리기 안내 한 장"
+          desc="Gallery와 Photo Desk의 역할 안내"
           onClick={() => useTimelineStore.getState().showFirstRunTip()}
         />
         <Row

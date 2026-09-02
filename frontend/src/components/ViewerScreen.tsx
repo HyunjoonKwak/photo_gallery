@@ -63,8 +63,8 @@ function TimelineLens() {
         </p>
         <p className="max-w-xs text-xs leading-relaxed">
           {space === "team"
-            ? "정리 화면에서 사진을 골라 “가족에 복사”하면 온 가족이 여기서 함께 봐요."
-            : "휴대폰으로 백업한 사진은 왼쪽 위 라이브러리 메뉴의 “기기 백업”에서 골라 내 사진으로 옮겨요."}
+            ? "Photo Desk에서 가족 사진으로 발행하면 온 가족이 여기서 함께 볼 수 있어요."
+            : "Photo Desk에서 내 사진으로 정리한 사진이 여기에 표시됩니다."}
         </p>
       </div>
     );

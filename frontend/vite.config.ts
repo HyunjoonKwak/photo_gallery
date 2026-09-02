@@ -27,7 +27,7 @@ export default defineConfig({
       manifest: {
         name: "우리집 사진관",
         short_name: "사진관",
-        description: "Synology NAS 가족 사진 감상·정리 앱",
+        description: "Synology NAS 가족 사진 감상·검색·앨범 앱",
         lang: "ko",
         theme_color: "#2563eb",
         background_color: "#ffffff",
