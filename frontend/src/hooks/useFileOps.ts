@@ -19,6 +19,7 @@ import { useConflictStore, conflictInfoOf } from "../store/conflict";
 import { useProgressStore } from "../store/progress";
 import { useTimelineStore } from "../store/timeline";
 import { useToastStore } from "../store/toast";
+import { useGalleryCapabilities } from "./useGalleryCapabilities";
 
 /** crypto.randomUUID is secure-context only — plain-HTTP NAS access
  * (http://<nas-ip>:9800) doesn't have it, so fall back to a manual key. */
@@ -68,6 +69,15 @@ function startProgress(label: string, unit = "장") {
 
 export function useFileOps() {
   const queryClient = useQueryClient();
+  const { capabilities, galleryWriteMode } = useGalleryCapabilities();
+  const denyMutation = () =>
+    useToastStore
+      .getState()
+      .push("원본 보호 모드입니다. 파일·폴더 정리는 Photo Desk에서 해주세요.");
+  const denyRecovery = () =>
+    useToastStore
+      .getState()
+      .push("읽기 전용 전환이 끝나 이 작업은 더 이상 복구할 수 없습니다.");
 
   // 폴더 이동/삭제는 파일시스템엔 즉시 반영되지만 Synology Photos 인덱스가
   // 새 위치를 재색인할 때까지 옮긴 폴더가 목록에 안 나타난다(인덱스 지연,
@@ -115,6 +125,10 @@ export function useFileOps() {
   });
 
   const runUndo = (opId: number) => {
+    if (!capabilities.undo_drain) {
+      denyRecovery();
+      return;
+    }
     const p = startProgress("되돌리기");
     undoMutation.mutate({ opId, progressKey: p.key }, { onSettled: p.stop });
   };
@@ -464,9 +478,12 @@ export function useFileOps() {
     };
 
   return {
-    move: (itemIds: string[], folderId: string, copyMode: boolean) =>
-      moveChunked(itemIds, folderId, copyMode),
+    move: (itemIds: string[], folderId: string, copyMode: boolean) => {
+      if (!capabilities.physical_mutations) return denyMutation();
+      return moveChunked(itemIds, folderId, copyMode);
+    },
     remove: (itemIds: string[], onSuccess?: () => void) => {
+      if (!capabilities.physical_mutations) return denyMutation();
       optimisticRemove(itemIds); // 즉시 사라지게(실패 시 invalidate가 복구)
       const p = startProgress("삭제");
       deleteMutation.mutate(
@@ -484,14 +501,16 @@ export function useFileOps() {
       name: string,
       parentId?: string,
       area?: AreaScope,
-    ) =>
-      mkdirMutation.mutate({
+    ) => {
+      if (!capabilities.physical_mutations) return denyMutation();
+      return mkdirMutation.mutate({
         space,
         name,
         parent_id: parentId,
         target_user: targetUser(),
         _area: area,
-      }),
+      });
+    },
     moveFolders: (
       space: Space,
       folderIds: string[],
@@ -500,6 +519,7 @@ export function useFileOps() {
       onSuccess?: () => void,
       area?: AreaScope,
     ) => {
+      if (!capabilities.physical_mutations) return denyMutation();
       const p = startProgress(copyMode ? "폴더 복사" : "폴더 이동", "%");
       moveFoldersMutation.mutate(
         {
@@ -521,6 +541,7 @@ export function useFileOps() {
       onSuccess?: () => void,
       area?: AreaScope,
     ) => {
+      if (!capabilities.physical_mutations) return denyMutation();
       // 재귀 삭제는 사진 많은 폴더면 수 초 걸릴 수 있어 진행 표시를 띄운다.
       // 서버가 하위 진행을 보고하지 않으므로 총계 없는 "삭제 중…" 형태.
       const p = startProgress("삭제");
@@ -542,6 +563,11 @@ export function useFileOps() {
       area?: AreaScope,
       onDone?: () => void,
     ) => {
+      if (!capabilities.physical_mutations) {
+        denyMutation();
+        onDone?.();
+        return;
+      }
       // 벌크 삭제: 폴더마다 rmdirMutation.onSuccess가 folder-counts를 무효화하고
       // resettleFolders(1.5·4·8초 지연 재무효화)까지 돌면, 103개 삭제 시 폴더 수
       // 세기 재요청이 수백 회로 폭주해 DSM 동시성을 포화시킨다(실측). 그래서
@@ -588,6 +614,10 @@ export function useFileOps() {
       onDone?.();
     },
     undo: runUndo,
+    canMutate: capabilities.physical_mutations,
+    canRecover: capabilities.undo_drain,
+    canLegacyDateRepair: capabilities.legacy_date_repair,
+    galleryWriteMode,
     isBusy:
       moveMutation.isPending ||
       deleteMutation.isPending ||

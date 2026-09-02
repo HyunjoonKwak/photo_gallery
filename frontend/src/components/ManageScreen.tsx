@@ -8,6 +8,7 @@ import { DedupView } from "./DedupView";
 import { OrganizeView } from "./organize/OrganizeView";
 import { SearchView } from "./SearchView";
 import { FolderPanel } from "./FolderPanel";
+import { useGalleryCapabilities } from "../hooks/useGalleryCapabilities";
 
 /** 정리 영역 — 우리 앱의 특색. 폴더 이동/복사/삭제 + 정리 도우미(마법사) +
  * 중복 정리 + (헤더 검색으로 진입하는) 검색 결과. 가족/내사진/기기백업/타인
@@ -39,21 +40,38 @@ export function ManageScreen() {
   const manageTab = useTimelineStore((s) => s.manageTab);
   const setManageTab = useTimelineStore((s) => s.setManageTab);
   const space = useTimelineStore((s) => s.space);
+  const { capabilities, galleryWriteMode, isError } = useGalleryCapabilities();
+  const visibleTabs = MANAGE_TABS.filter(
+    (t) => capabilities.physical_mutations || t.tab === "folders",
+  );
+  const effectiveTab =
+    !capabilities.physical_mutations && manageTab !== "search"
+      ? "folders"
+      : manageTab;
 
   return (
     <div className="flex h-full flex-col">
+      {!capabilities.physical_mutations && (
+        <div className="shrink-0 border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800">
+          {isError
+            ? "서버 권한을 확인할 수 없어 파일 작업을 안전하게 숨겼습니다."
+            : galleryWriteMode === "drain"
+              ? "전환 유예 중입니다. 새 파일·폴더 작업은 Photo Desk에서 하고, 기존 작업 복구만 가능합니다."
+              : "원본 읽기 전용입니다. 이 화면에서는 폴더를 열람할 수만 있습니다."}
+        </div>
+      )}
       {manageTab !== "search" && (
         <div
           data-no-boxselect
           className="flex shrink-0 flex-wrap items-center gap-1 border-b border-slate-200 bg-white px-3 py-1.5 sm:px-4"
         >
-          {MANAGE_TABS.map((t) => (
+          {visibleTabs.map((t) => (
             <button
               key={t.tab}
               onClick={() => setManageTab(t.tab)}
               title={t.hint}
               className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors sm:text-sm ${
-                manageTab === t.tab
+                effectiveTab === t.tab
                   ? "bg-slate-800 text-white"
                   : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
               }`}
@@ -66,10 +84,10 @@ export function ManageScreen() {
       )}
 
       <div className="min-h-0 flex-1">
-        {manageTab === "folders" && <FolderView />}
-        {manageTab === "dedup" && <DedupView key={space} />}
-        {manageTab === "junk" && <OrganizeView />}
-        {manageTab === "search" && (
+        {effectiveTab === "folders" && <FolderView />}
+        {effectiveTab === "dedup" && <DedupView key={space} />}
+        {effectiveTab === "junk" && <OrganizeView />}
+        {effectiveTab === "search" && (
           <div className="flex h-full">
             <FolderPanel />
             <main className="relative min-w-0 flex-1">

@@ -416,9 +416,20 @@ export interface EndpointInfo {
   available: boolean;
 }
 
+export type GalleryWriteMode = "legacy" | "drain" | "curation";
+
+export interface GalleryCapabilities {
+  physical_mutations: boolean;
+  undo_drain: boolean;
+  synology_curation: boolean;
+  legacy_date_repair: boolean;
+}
+
 export interface ApiInfoResponse {
   dsm_webapi_base: string;
   endpoints: EndpointInfo[];
+  gallery_write_mode: GalleryWriteMode;
+  capabilities: GalleryCapabilities;
 }
 
 export interface LoginRequest {

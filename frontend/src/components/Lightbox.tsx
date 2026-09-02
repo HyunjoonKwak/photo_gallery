@@ -43,8 +43,9 @@ export function Lightbox() {
   const space = item?.space ?? globalSpace;
   // 감상 영역(사진/앨범)에서는 순수 뷰어 — 이동/삭제 없이 정보+넘기기만.
   // 정리는 폴더 분류(manage)에서만.
-  const readonly = useTimelineStore((s) => s.section !== "manage");
+  const readonlySection = useTimelineStore((s) => s.section !== "manage");
   const ops = useFileOps();
+  const readonly = readonlySection || !ops.canMutate;
   const close = () => useTimelineStore.getState().closeLightbox();
   const dialogRef = useDialogFocus<HTMLDivElement>(close, item != null);
   const [showInfo, setShowInfo] = useState(false);

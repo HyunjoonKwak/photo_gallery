@@ -46,6 +46,12 @@ services:
       - LOGIN_TRUST_PROXY_HEADERS=${LOGIN_TRUST_PROXY_HEADERS:-true}
       # 운영에서는 반드시 false (실 NAS 연동)
       - MOCK_MODE=${MOCK_MODE:-false}
+      # Gallery→Desk 전환: 첫 배포는 기존 동작을 보존하는 legacy. Desk P0
+      # 파일럿 전에는 drain/curation으로 바꾸지 않는다.
+      - GALLERY_WRITE_MODE=${GALLERY_WRITE_MODE:-legacy}
+      # 기존 Synology 촬영일 백로그용 임시 관리자 스위치. 첫 전환 배포는
+      # 무회귀를 위해 true, 백로그 정리 후 false로 내린다.
+      - GALLERY_LEGACY_DATE_REPAIR=${GALLERY_LEGACY_DATE_REPAIR:-true}
       - CORS_ORIGINS=${CORS_ORIGINS:-}
     healthcheck:
       test:

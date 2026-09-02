@@ -71,6 +71,19 @@ IMAGE_TAG=latest ./deploy.sh update   # pull + 배포
 - **데이터**: SQLite는 배포 디렉터리의 `./data`에 보존(세션/작업로그/사진 해시).
 - `MOCK_MODE`는 운영에서 반드시 `false`.
 
+### Gallery → Desk 전환 설정
+
+- 첫 전환 장치 배포는 반드시 `GALLERY_WRITE_MODE=legacy`로 합니다. 이 값에서는
+  기존 파일·폴더 작업이 그대로 동작합니다.
+- `GALLERY_LEGACY_DATE_REPAIR=true`는 이미 Synology에 색인된 촬영일 백로그를
+  관리자가 정리하기 위한 임시 호환값입니다. 백로그를 끝내면 `false`로 내립니다.
+- `drain`은 신규 물리 작업을 403으로 막고 기존 undo·개별 휴지통 복원만 남깁니다.
+  Photo Desk의 P0 기능과 종단간 파일럿이 통과하기 전에는 사용하지 않습니다.
+- `curation`은 복구까지 닫고 원본·폴더를 읽기 전용으로 취급합니다. 최소 7일의
+  `drain` 유예와 미복구 작업 0건 확인 뒤에만 전환합니다.
+- 모드와 effective capability는 로그인 후 `/api/system/info`에서 확인할 수 있습니다.
+  전환 순서는 [세션 분리 실행 가이드](docs/GALLERY_DESK_SESSION_GUIDE.md)를 따릅니다.
+
 ## 4. 트러블슈팅
 
 - 컨테이너가 `Restarting`(exit 3) → `./data` 볼륨 쓰기 권한. 컨테이너는

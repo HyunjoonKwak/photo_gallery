@@ -23,7 +23,12 @@ from ..schemas import (
     TrashStatsResponse,
 )
 from ..session_store import Session
-from .deps import get_current_session, get_photo_source
+from .deps import (
+    get_current_session,
+    get_photo_source,
+    require_physical_mutations,
+    require_recovery,
+)
 from .. import progress as progress_registry
 
 router = APIRouter(prefix="/api/ops", tags=["operations"])
@@ -82,7 +87,11 @@ async def get_trash_items(
     )
 
 
-@router.post("/trash-restore", response_model=OperationResponse)
+@router.post(
+    "/trash-restore",
+    response_model=OperationResponse,
+    dependencies=[Depends(require_recovery)],
+)
 async def restore_trash_items(
     req: TrashRestoreRequest,
     session: Session = Depends(get_current_session),
@@ -108,7 +117,11 @@ async def restore_trash_items(
             progress_registry.clear(req.progress_key)
 
 
-@router.post("/trash/empty", response_model=OperationResponse)
+@router.post(
+    "/trash/empty",
+    response_model=OperationResponse,
+    dependencies=[Depends(require_physical_mutations)],
+)
 async def empty_trash(
     session: Session = Depends(get_current_session),
     source: PhotoSource = Depends(get_photo_source),
@@ -126,7 +139,11 @@ async def empty_trash(
     )
 
 
-@router.post("/{op_id}/undo", response_model=OperationResponse)
+@router.post(
+    "/{op_id}/undo",
+    response_model=OperationResponse,
+    dependencies=[Depends(require_recovery)],
+)
 async def undo(
     op_id: int,
     progress_key: str | None = Query(default=None, max_length=64),

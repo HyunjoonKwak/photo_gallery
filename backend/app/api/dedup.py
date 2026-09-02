@@ -17,7 +17,7 @@ from ..dedup import build_groups, cancel_scan, latest_job, start_scan
 from ..photos.source import PhotoSource
 from ..schemas import DedupGroupsResponse, DedupJob, DedupJobResponse
 from ..session_store import Session
-from .deps import get_current_session, get_photo_source
+from .deps import get_current_session, get_photo_source, require_physical_mutations
 
 router = APIRouter(prefix="/api/dedup", tags=["dedup"])
 
@@ -30,7 +30,11 @@ class ScanRequest(BaseModel):
     sync: bool = Field(default=False)
 
 
-@router.post("/scan", response_model=DedupJob)
+@router.post(
+    "/scan",
+    response_model=DedupJob,
+    dependencies=[Depends(require_physical_mutations)],
+)
 async def scan(
     req: ScanRequest,
     _session: Session = Depends(get_current_session),
@@ -49,7 +53,11 @@ async def status(
     return DedupJobResponse(job=latest_job(settings.sqlite_path, space))
 
 
-@router.post("/cancel", response_model=DedupJobResponse)
+@router.post(
+    "/cancel",
+    response_model=DedupJobResponse,
+    dependencies=[Depends(require_physical_mutations)],
+)
 async def cancel(
     space: Space = Query("team"),
     _session: Session = Depends(get_current_session),

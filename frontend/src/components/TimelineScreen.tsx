@@ -77,6 +77,7 @@ export function TimelineScreen() {
   }, []);
 
   const onDragStart = (e: DragStartEvent) => {
+    if (!ops.canMutate) return;
     const id = String(e.active.id);
     const store = useTimelineStore.getState();
     // Finder convention: dragging an unselected photo makes it the selection.
@@ -105,7 +106,7 @@ export function TimelineScreen() {
       (typeof overId === "string" && overId.startsWith("folder:")
         ? overId.slice("folder:".length)
         : null);
-    if (!ids || !folderId) return;
+    if (!ops.canMutate || !ids || !folderId) return;
     // Finder convention: drag = move, ⌥ = copy. No confirmation — undo toast.
     ops.move(ids, folderId, altHeld);
   };
@@ -113,7 +114,7 @@ export function TimelineScreen() {
   return (
     <>
       <DndContext
-        sensors={sensors}
+        sensors={ops.canMutate ? sensors : []}
         collisionDetection={pointerWithin}
         onDragStart={onDragStart}
         onDragOver={onDragOver}

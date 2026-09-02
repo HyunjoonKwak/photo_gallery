@@ -159,7 +159,7 @@ export function OperationsPanel({
               {trashOpen ? "닫기" : "내용 보기"}
             </button>
           </p>
-          {user?.role === "admin" && (
+          {user?.role === "admin" && ops.canMutate && (
             <button
               onClick={() => {
                 // B-7: 타인 라이브러리 열람 중 영구 삭제 금지 — 되돌리기가
@@ -180,7 +180,12 @@ export function OperationsPanel({
           )}
         </div>
       )}
-      {trashOpen && <TrashBrowser onDone={() => setTrashOpen(false)} />}
+      {trashOpen && (
+        <TrashBrowser
+          canRestore={ops.canRecover}
+          onDone={() => setTrashOpen(false)}
+        />
+      )}
 
       <div className="scroll-thin min-h-0 flex-1 overflow-y-auto px-3 py-2">
         {query.isPending && (
@@ -229,7 +234,7 @@ export function OperationsPanel({
                     {op.target_user && ` · 대상: ${op.target_user} (관리자 수행)`}
                   </p>
                 </div>
-                {op.can_undo && (
+                {op.can_undo && ops.canRecover && (
                   <button
                     onClick={() => ops.undo(op.id)}
                     className="shrink-0 rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
@@ -257,7 +262,13 @@ export function OperationsPanel({
 
 
 /** 휴지통 내용(사진 단위) + 선택 복원 — 작업 undo의 부분집합. */
-function TrashBrowser({ onDone }: { onDone: () => void }) {
+function TrashBrowser({
+  canRestore,
+  onDone,
+}: {
+  canRestore: boolean;
+  onDone: () => void;
+}) {
   const queryClient = useQueryClient();
   const q = useQuery({ queryKey: ["trash-items"], queryFn: api.trashItems });
   const [sel, setSel] = useState<Set<string>>(new Set());
@@ -309,11 +320,13 @@ function TrashBrowser({ onDone }: { onDone: () => void }) {
             key={k}
             className="flex cursor-pointer items-center gap-2 px-4 py-1.5 text-xs hover:bg-slate-50"
           >
-            <input
-              type="checkbox"
-              checked={sel.has(k)}
-              onChange={() => toggle(k)}
-            />
+            {canRestore && (
+              <input
+                type="checkbox"
+                checked={sel.has(k)}
+                onChange={() => toggle(k)}
+              />
+            )}
             <span className="min-w-0 flex-1 truncate text-slate-700">
               {e.filename}
             </span>
@@ -326,18 +339,20 @@ function TrashBrowser({ onDone }: { onDone: () => void }) {
       })}
       {items.length > 0 && (
         <div className="sticky bottom-0 flex justify-end gap-2 border-t border-slate-100 bg-white px-4 py-2">
-          <button
-            onClick={() => {
-              const entries = items
-                .filter((e) => sel.has(keyOf(e)))
-                .map((e) => ({ op_id: e.op_id, item_id: e.item_id }));
-              if (entries.length) restoreMut.mutate(entries);
-            }}
-            disabled={sel.size === 0 || restoreMut.isPending}
-            className="rounded-lg bg-blue-600 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-40"
-          >
-            {restoreMut.isPending ? "복원 중…" : `${sel.size}장 원위치 복원`}
-          </button>
+          {canRestore && (
+            <button
+              onClick={() => {
+                const entries = items
+                  .filter((e) => sel.has(keyOf(e)))
+                  .map((e) => ({ op_id: e.op_id, item_id: e.item_id }));
+                if (entries.length) restoreMut.mutate(entries);
+              }}
+              disabled={sel.size === 0 || restoreMut.isPending}
+              className="rounded-lg bg-blue-600 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-40"
+            >
+              {restoreMut.isPending ? "복원 중…" : `${sel.size}장 원위치 복원`}
+            </button>
+          )}
           <button
             onClick={onDone}
             className="rounded-lg px-3 py-1 text-xs text-slate-500 hover:bg-slate-100"

@@ -20,9 +20,13 @@
 **세 앱이 무엇을 주고받고, 무엇을 바꾸면 무엇이 깨지는지는 [ECOSYSTEM.md](ECOSYSTEM.md) 에 있습니다.**
 서로 부르는 코드는 없고 NAS 위의 같은 폴더로만 이어지므로, 경로 합의가 어긋나면 **아무 오류 없이** 동작하지 않습니다.
 
-> **정리 기능은 Photo Desk 로 넘어갔습니다.** 이 저장소에도 중복 찾기·잡동사니
-> 걸러내기·폴더 이동 코드가 있지만, 무거운 판정은 전량 사본이 있는 맥에서 하는 것이
-> 빠르고 안전합니다. 남아 있는 정리 기능은 맥이 꺼져 있을 때를 위한 예비입니다.
+> **정리 기능은 Photo Desk 로 이관 중입니다.** 중복·잡동사니 같은 무거운 판정은
+> 이미 Desk가 맡지만, 촬영일 파일 교정·임의 목적지 이동/복사·일반 폴더 작업은
+> Desk v2의 동등 기능이 아직 없어 이 앱에 남아 있습니다. 동등 기능 검증과 서버 측
+> 쓰기 차단이 끝나기 전에는 이 앱을 원본 기준 읽기 전용으로 간주하면 안 됩니다.
+> 전체 기능표와 전환 게이트는 [Gallery→Desk 전환 기준](https://github.com/HyunjoonKwak/photo_desk/blob/main/docs/GALLERY_TRANSITION.md)에 있습니다.
+> 저장소별 작업 순서와 인계 조건은 [Gallery↔Desk 세션 분리 실행 가이드](docs/GALLERY_DESK_SESSION_GUIDE.md)를 따릅니다.
+> 현재 Gallery G-A 검증 결과와 Desk 착수 입력은 [Photo Desk G0 인계서](docs/DESK_G0_HANDOFF.md)에 있습니다.
 
 ---
 

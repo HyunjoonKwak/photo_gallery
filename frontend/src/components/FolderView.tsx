@@ -97,6 +97,14 @@ function DualActions({
   const btn =
     "flex flex-col items-center gap-0.5 rounded-lg px-2 py-2 text-[11px] font-medium transition-colors disabled:opacity-30 lg:w-full";
 
+  if (!ops.canMutate) {
+    return (
+      <div className="flex shrink-0 items-center justify-center border-y border-slate-200 bg-slate-50 px-3 py-2 text-center text-[11px] font-medium text-slate-400 lg:w-20 lg:border-x lg:border-y-0">
+        읽기 전용
+      </div>
+    );
+  }
+
   return (
     <div
       data-no-boxselect

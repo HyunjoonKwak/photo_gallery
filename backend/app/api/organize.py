@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 from ..config import Settings, get_settings
 from ..db import connect
 from ..session_store import Session
-from .deps import get_current_session
+from .deps import get_current_session, require_physical_mutations
 
 router = APIRouter(prefix="/api/organize", tags=["organize"])
 
@@ -46,7 +46,11 @@ async def get_wizard_session(
     )
 
 
-@router.put("/session", response_model=WizardSession)
+@router.put(
+    "/session",
+    response_model=WizardSession,
+    dependencies=[Depends(require_physical_mutations)],
+)
 async def put_wizard_session(
     body: WizardSession,
     session: Session = Depends(get_current_session),
@@ -69,7 +73,7 @@ class CopiedRequest(BaseModel):
     item_ids: list[str] = Field(min_length=1, max_length=5000)
 
 
-@router.post("/copied")
+@router.post("/copied", dependencies=[Depends(require_physical_mutations)])
 async def record_copied(
     body: CopiedRequest,
     session: Session = Depends(get_current_session),
@@ -97,7 +101,7 @@ def copied_ids(sqlite_path: str, user: str) -> set[str]:
         }
 
 
-@router.delete("/session")
+@router.delete("/session", dependencies=[Depends(require_physical_mutations)])
 async def reset_wizard_session(
     session: Session = Depends(get_current_session),
     settings: Settings = Depends(get_settings),

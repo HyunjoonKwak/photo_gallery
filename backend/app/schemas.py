@@ -6,6 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from .config import GalleryWriteMode
+
 
 class LoginRequest(BaseModel):
     account: str = Field(min_length=1, max_length=128)
@@ -30,9 +32,18 @@ class EndpointInfo(BaseModel):
     available: bool
 
 
+class GalleryCapabilitiesResponse(BaseModel):
+    physical_mutations: bool
+    undo_drain: bool
+    synology_curation: bool
+    legacy_date_repair: bool
+
+
 class ApiInfoResponse(BaseModel):
     dsm_webapi_base: str
     endpoints: list[EndpointInfo]
+    gallery_write_mode: GalleryWriteMode
+    capabilities: GalleryCapabilitiesResponse
 
 
 # --- Photos (timeline) ---

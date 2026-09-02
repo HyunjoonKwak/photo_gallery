@@ -47,7 +47,7 @@ export function SelectionActionBar() {
         <span className="mr-2 text-sm font-semibold text-white">
           {count}장 선택됨
         </span>
-        {activeZone ? (
+        {ops.canMutate && (activeZone ? (
           // 1차 구역: 고른 사진을 개인 Photos(2차)로. 이동/복사는 피커 토글.
           <button
             className={`${btn} bg-indigo-500/30 text-indigo-100 hover:bg-indigo-500/50`}
@@ -75,7 +75,7 @@ export function SelectionActionBar() {
               </button>
             )}
           </>
-        )}
+        ))}
         {canAddToAlbum && (
           <button
             className={btn}
@@ -85,13 +85,15 @@ export function SelectionActionBar() {
             앨범에 추가
           </button>
         )}
-        <button
-          className="rounded-lg px-3 py-1.5 text-sm text-red-300 hover:bg-red-900/40 disabled:opacity-40"
-          disabled={ops.isBusy}
-          onClick={() => ops.remove(selectedIds())}
-        >
-          삭제
-        </button>
+        {ops.canMutate && (
+          <button
+            className="rounded-lg px-3 py-1.5 text-sm text-red-300 hover:bg-red-900/40 disabled:opacity-40"
+            disabled={ops.isBusy}
+            onClick={() => ops.remove(selectedIds())}
+          >
+            삭제
+          </button>
+        )}
       </div>
 
       {picker && (

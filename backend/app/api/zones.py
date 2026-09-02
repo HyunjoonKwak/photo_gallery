@@ -31,7 +31,7 @@ from ..zone_store import (
     mark_zone_seen,
     validate_zone_root,
 )
-from .deps import get_current_session, get_dsm_client
+from .deps import get_current_session, get_dsm_client, require_physical_mutations
 
 router = APIRouter(prefix="/api/zones", tags=["zones"])
 
@@ -164,7 +164,11 @@ async def browse_folders(
     return ZoneBrowseResponse(path=target, parent=parent, dirs=dirs)
 
 
-@router.post("", response_model=ZoneInfo)
+@router.post(
+    "",
+    response_model=ZoneInfo,
+    dependencies=[Depends(require_physical_mutations)],
+)
 async def add_zone(
     req: ZoneCreateRequest,
     session: Session = Depends(get_current_session),
@@ -194,7 +198,7 @@ async def add_zone(
     return ZoneInfo(id=zone.id, root_path=zone.root_path, label=zone.label)
 
 
-@router.delete("/{zone_id}")
+@router.delete("/{zone_id}", dependencies=[Depends(require_physical_mutations)])
 async def remove_zone(
     zone_id: str,
     session: Session = Depends(get_current_session),

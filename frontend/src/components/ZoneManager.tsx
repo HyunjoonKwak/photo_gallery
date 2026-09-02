@@ -4,6 +4,7 @@ import { api } from "../api/client";
 import type { ZoneBrowseEntry } from "../api/types";
 import { useDialogFocus } from "../hooks/useDialogFocus";
 import { QueryErrorState } from "./QueryErrorState";
+import { useGalleryCapabilities } from "../hooks/useGalleryCapabilities";
 
 /** 1차 구역(기기 백업) 관리 모달: 등록된 구역 목록/삭제 + 새 구역 추가.
  * 추가는 내 홈(/homes/<나>) 아래를 FileStation으로 탐색해 폴더를 고른다
@@ -11,6 +12,7 @@ import { QueryErrorState } from "./QueryErrorState";
 export function ZoneManager({ onClose }: { onClose: () => void }) {
   const queryClient = useQueryClient();
   const dialogRef = useDialogFocus<HTMLDivElement>(onClose);
+  const { capabilities } = useGalleryCapabilities();
   const zonesQuery = useQuery({ queryKey: ["zones"], queryFn: api.listZones });
   const zones = zonesQuery.data?.zones ?? [];
 
@@ -113,12 +115,14 @@ export function ZoneManager({ onClose }: { onClose: () => void }) {
                       {z.root_path}
                     </span>
                   </span>
-                  <button
-                    onClick={() => deleteMut.mutate(z.id)}
-                    className="shrink-0 rounded-lg border border-red-200 px-2 py-0.5 text-xs text-red-500 hover:bg-red-50"
-                  >
-                    삭제
-                  </button>
+                  {capabilities.physical_mutations && (
+                    <button
+                      onClick={() => deleteMut.mutate(z.id)}
+                      className="shrink-0 rounded-lg border border-red-200 px-2 py-0.5 text-xs text-red-500 hover:bg-red-50"
+                    >
+                      삭제
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>
@@ -126,6 +130,7 @@ export function ZoneManager({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* 새 구역 추가 — 폴더 탐색 */}
+        {capabilities.physical_mutations ? (
         <div className="scroll-thin min-h-0 flex-1 overflow-y-auto">
           <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
             새 구역 추가 — 폴더 선택
@@ -207,6 +212,11 @@ export function ZoneManager({ onClose }: { onClose: () => void }) {
             </div>
           )}
         </div>
+        ) : (
+          <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
+            원본 보호 모드에서는 기존 기기 백업 구역을 조회할 수만 있습니다.
+          </p>
+        )}
       </div>
     </div>
   );

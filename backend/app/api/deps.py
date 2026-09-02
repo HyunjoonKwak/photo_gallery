@@ -12,6 +12,7 @@ from ..photos.mock import get_mock_zone, mock_source
 from ..photos.source import PhotoSource
 from ..photos.zone_source import ZonePhotoSource
 from ..session_store import Session, get_session
+from ..write_policy import capabilities_for
 from ..zone_store import get_zone
 
 
@@ -42,6 +43,45 @@ def get_current_session(
             detail="세션이 만료되었습니다. 다시 로그인하세요.",
         )
     return session
+
+
+def require_physical_mutations(
+    settings: Settings = Depends(get_settings),
+    session: Session = Depends(get_current_session),
+) -> None:
+    """Allow new file/folder and legacy-management mutations in legacy only."""
+    if not capabilities_for(settings, session.role).physical_mutations:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "Photo Gallery가 원본 보호 모드여서 새 파일·폴더 작업을 할 수 "
+                "없습니다. Photo Desk에서 작업하세요."
+            ),
+        )
+
+
+def require_recovery(
+    settings: Settings = Depends(get_settings),
+    session: Session = Depends(get_current_session),
+) -> None:
+    """Allow existing undo/restore during the drain window, not in curation."""
+    if not capabilities_for(settings, session.role).undo_drain:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="원본 읽기 전용 전환이 끝나 이 작업은 더 이상 복구할 수 없습니다.",
+        )
+
+
+def require_legacy_date_repair(
+    settings: Settings = Depends(get_settings),
+    session: Session = Depends(get_current_session),
+) -> None:
+    """Gate the temporary Synology item-time repair escape hatch."""
+    if not capabilities_for(settings, session.role).legacy_date_repair:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="관리자용 레거시 Synology 촬영일 교정이 비활성화되어 있습니다.",
+        )
 
 
 def get_photo_source(

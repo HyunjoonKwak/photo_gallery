@@ -59,6 +59,7 @@ function FolderCard({
   count,
   dndPrefix,
   onOpen,
+  dndEnabled,
   checked = false,
   onToggleCheck,
 }: {
@@ -66,12 +67,14 @@ function FolderCard({
   count: number | undefined;
   dndPrefix: string;
   onOpen: (f: PhotoFolder) => void;
+  dndEnabled: boolean;
   checked?: boolean;
   onToggleCheck?: (f: PhotoFolder) => void;
 }) {
   const { isOver, setNodeRef } = useDroppable({
     id: `${dndPrefix}folder:${folder.id}`,
     data: { folderId: folder.id },
+    disabled: !dndEnabled,
   });
   useSpringOpen(isOver, () => onOpen(folder));
   return (
@@ -121,6 +124,7 @@ function FolderRow({
   count,
   dndPrefix,
   onOpen,
+  dndEnabled,
   checked = false,
   onToggleCheck,
 }: {
@@ -128,12 +132,14 @@ function FolderRow({
   count: number | undefined;
   dndPrefix: string;
   onOpen: (f: PhotoFolder) => void;
+  dndEnabled: boolean;
   checked?: boolean;
   onToggleCheck?: (f: PhotoFolder) => void;
 }) {
   const { isOver, setNodeRef } = useDroppable({
     id: `${dndPrefix}folder:${folder.id}`,
     data: { folderId: folder.id },
+    disabled: !dndEnabled,
   });
   useSpringOpen(isOver, () => onOpen(folder));
   return (
@@ -245,6 +251,10 @@ export function FolderPane({
     if (current.id.startsWith("/homes/")) return { kind: "fs", root: current.id };
     return { kind: "foto", folder: current.id, space: current.space };
   }, [current]);
+  const canCapture =
+    captureTarget?.kind === "foto"
+      ? ops.canLegacyDateRepair
+      : ops.canMutate;
 
   const openFolder = (f: PhotoFolder) => onPathChange([...path, f]);
   const jumpTo = (index: number) => onPathChange(path.slice(0, index + 1));
@@ -256,6 +266,7 @@ export function FolderPane({
   // 바뀜), 내 사진/공용은 SYNO.Foto.Browse.Folder rename(id 유지). 사진·썸네일은
   // 그대로. 응답 id/name으로 현재 경로 항목을 갱신한다.
   const onRenameFolder = async () => {
+    if (!ops.canMutate) return;
     if (!current) return;
     const cur = folderBasename(current.name);
     const name = await askPrompt({ title: "폴더 이름 변경", body: `'${cur}' 폴더의 새 이름`, initial: cur, confirmLabel: "변경" });
@@ -456,7 +467,7 @@ export function FolderPane({
   const bgDrop = useDroppable({
     id: `${dndPrefix}bg`,
     data: current ? { folderId: current.id } : undefined,
-    disabled: !dropTarget || !current,
+    disabled: !ops.canMutate || !dropTarget || !current,
   });
 
   const gridRef = useRef<HTMLDivElement | null>(null);
@@ -540,7 +551,7 @@ export function FolderPane({
         ))}
         {/* 폴더 관리: 생성(현재 위치 하위) / 삭제(빈 폴더만) / 이름 정리(1차 구역) */}
         <span className="ml-auto flex shrink-0 items-center gap-1">
-          {isFsContext && (
+          {ops.canMutate && isFsContext && (
             <button
               onClick={() => setAuditOpen(true)}
               title="이 폴더 아래에서 날짜부가 밑줄(2016_06_06)인 폴더를 하이픈으로 정리"
@@ -549,7 +560,7 @@ export function FolderPane({
               이름 정리
             </button>
           )}
-          {captureTarget && (
+          {captureTarget && canCapture && (
             <button
               onClick={() => setCaptureOpen(true)}
               title="이 폴더 사진의 촬영일을 파일명에서 읽어 교정(복사시각으로 잘못 잡힌 날짜 정정)"
@@ -558,15 +569,17 @@ export function FolderPane({
               촬영일 교정
             </button>
           )}
-          <button
-            onClick={onCreateFolder}
-            disabled={ops.isBusy}
-            title={current ? "이 폴더 아래 새 폴더" : "최상위에 새 폴더"}
-            className="rounded-lg border border-dashed border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:border-slate-400 hover:text-slate-700 disabled:opacity-40"
-          >
-            ＋ 새 폴더
-          </button>
-          {current && (
+          {ops.canMutate && (
+            <button
+              onClick={onCreateFolder}
+              disabled={ops.isBusy}
+              title={current ? "이 폴더 아래 새 폴더" : "최상위에 새 폴더"}
+              className="rounded-lg border border-dashed border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:border-slate-400 hover:text-slate-700 disabled:opacity-40"
+            >
+              ＋ 새 폴더
+            </button>
+          )}
+          {ops.canMutate && current && (
             <button
               onClick={onRenameFolder}
               title="이 폴더의 이름 변경(사진·썸네일은 그대로)"
@@ -575,7 +588,7 @@ export function FolderPane({
               이름 변경
             </button>
           )}
-          {current && (
+          {ops.canMutate && current && (
             <button
               onClick={onRemoveFolder}
               disabled={ops.isBusy}
@@ -611,7 +624,7 @@ export function FolderPane({
               </h3>
               <div className="flex shrink-0 items-center gap-1.5">
                 {/* 분할 뷰: 이 페인의 하위 폴더 모두 선택/해제 */}
-                {onToggleFolderCheck && onToggleAllFolders && (
+                {ops.canMutate && onToggleFolderCheck && onToggleAllFolders && (
                   <button
                     onClick={() =>
                       onToggleAllFolders(subFolders, folderSelState !== "all")
@@ -693,9 +706,10 @@ export function FolderPane({
                     folder={f}
                     count={counts[f.id]}
                     dndPrefix={dndPrefix}
+                    dndEnabled={ops.canMutate}
                     onOpen={openFolder}
                     checked={checkedFolderIds?.has(f.id) ?? false}
-                    onToggleCheck={onToggleFolderCheck}
+                    onToggleCheck={ops.canMutate ? onToggleFolderCheck : undefined}
                   />
                 ))}
               </div>
@@ -707,9 +721,10 @@ export function FolderPane({
                     folder={f}
                     count={counts[f.id]}
                     dndPrefix={dndPrefix}
+                    dndEnabled={ops.canMutate}
                     onOpen={openFolder}
                     checked={checkedFolderIds?.has(f.id) ?? false}
-                    onToggleCheck={onToggleFolderCheck}
+                    onToggleCheck={ops.canMutate ? onToggleFolderCheck : undefined}
                   />
                 ))}
               </div>
@@ -809,14 +824,14 @@ export function FolderPane({
           />
         )}
       </div>
-      {captureOpen && captureTarget && (
+      {captureOpen && captureTarget && canCapture && (
         <CaptureDateDialog
           target={captureTarget}
           onClose={() => setCaptureOpen(false)}
           onDone={() => setCaptureOpen(false)}
         />
       )}
-      {auditOpen && (
+      {auditOpen && ops.canMutate && (
         <FolderNameAuditDialog
           rootId={current?.id ?? null}
           area={area}

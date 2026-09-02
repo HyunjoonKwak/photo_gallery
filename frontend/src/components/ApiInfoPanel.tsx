@@ -20,11 +20,18 @@ export function ApiInfoPanel() {
     );
   }
 
-  const { dsm_webapi_base, endpoints } = query.data;
+  const { dsm_webapi_base, endpoints, gallery_write_mode, capabilities } = query.data;
   const availableCount = endpoints.filter((e) => e.available).length;
 
   return (
     <div className="space-y-3">
+      <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+        Gallery 모드: <b className="text-slate-800">{gallery_write_mode}</b>
+        {" · "}파일 작업 {capabilities.physical_mutations ? "허용" : "차단"}
+        {" · "}복구 {capabilities.undo_drain ? "허용" : "차단"}
+        {" · "}앨범·인물 {capabilities.synology_curation ? "허용" : "차단"}
+        {" · "}레거시 날짜 교정 {capabilities.legacy_date_repair ? "허용" : "차단"}
+      </div>
       <div className="text-sm text-slate-500">
         대상: <code className="text-slate-700">{dsm_webapi_base}</code> · 사용 가능{" "}
         {availableCount}/{endpoints.length}

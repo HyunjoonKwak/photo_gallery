@@ -85,7 +85,12 @@ from ..schemas import (
     RemoveFolderRequest,
 )
 from ..session_store import Session, thumbnail_cache_scope
-from .deps import get_current_session, get_photo_source
+from .deps import (
+    get_current_session,
+    get_photo_source,
+    require_legacy_date_repair,
+    require_physical_mutations,
+)
 
 router = APIRouter(prefix="/api/photos", tags=["photos"])
 
@@ -409,7 +414,11 @@ async def remove_from_album(
     return AlbumMutationResponse(album=None, added=-removed)
 
 
-@router.get("/junk-candidates", response_model=JunkCandidatesResponse)
+@router.get(
+    "/junk-candidates",
+    response_model=JunkCandidatesResponse,
+    dependencies=[Depends(require_physical_mutations)],
+)
 async def junk_candidates_route(
     session: Session = Depends(get_current_session),
     settings: Settings = Depends(get_settings),
@@ -467,7 +476,11 @@ def _short_place(address: str | None) -> str | None:
     return " ".join(parts[:2]) or None
 
 
-@router.get("/event-suggestions", response_model=EventSuggestionsResponse)
+@router.get(
+    "/event-suggestions",
+    response_model=EventSuggestionsResponse,
+    dependencies=[Depends(require_physical_mutations)],
+)
 async def event_suggestions_route(
     gap_hours: float = Query(4.0, ge=0.5, le=48.0),
     min_photos: int = Query(8, ge=2, le=500),
@@ -574,7 +587,11 @@ async def event_suggestions_route(
 # ------------------------------------------------------------ file operations
 
 
-@router.post("/ops/move-check", response_model=MoveCheckResponse)
+@router.post(
+    "/ops/move-check",
+    response_model=MoveCheckResponse,
+    dependencies=[Depends(require_physical_mutations)],
+)
 async def op_move_check(
     req: MoveCheckRequest,
     session: Session = Depends(get_current_session),
@@ -589,7 +606,11 @@ async def op_move_check(
     )
 
 
-@router.post("/ops/move", response_model=OperationResponse)
+@router.post(
+    "/ops/move",
+    response_model=OperationResponse,
+    dependencies=[Depends(require_physical_mutations)],
+)
 async def op_move(
     req: MoveRequest,
     session: Session = Depends(get_current_session),
@@ -610,7 +631,11 @@ async def op_move(
         progress.clear(req.progress_key)
 
 
-@router.post("/ops/delete", response_model=OperationResponse)
+@router.post(
+    "/ops/delete",
+    response_model=OperationResponse,
+    dependencies=[Depends(require_physical_mutations)],
+)
 async def op_delete(
     req: DeleteRequest,
     session: Session = Depends(get_current_session),
@@ -630,7 +655,11 @@ async def op_delete(
         progress.clear(req.progress_key)
 
 
-@router.post("/folders", response_model=OperationResponse)
+@router.post(
+    "/folders",
+    response_model=OperationResponse,
+    dependencies=[Depends(require_physical_mutations)],
+)
 async def op_create_folder(
     req: CreateFolderRequest,
     session: Session = Depends(get_current_session),
@@ -736,7 +765,11 @@ async def stream_video(
         raise
 
 
-@router.post("/ops/move-folders", response_model=OperationResponse)
+@router.post(
+    "/ops/move-folders",
+    response_model=OperationResponse,
+    dependencies=[Depends(require_physical_mutations)],
+)
 async def op_move_folders(
     req: MoveFoldersRequest,
     session: Session = Depends(get_current_session),
@@ -768,7 +801,11 @@ async def folder_name_audit(
     return FolderAuditResponse(items=await source.audit_folder_names(root))
 
 
-@router.post("/folders/rename", response_model=RenameFolderResponse)
+@router.post(
+    "/folders/rename",
+    response_model=RenameFolderResponse,
+    dependencies=[Depends(require_physical_mutations)],
+)
 async def rename_folder(
     req: RenameFolderRequest,
     session: Session = Depends(get_current_session),
@@ -848,7 +885,11 @@ def _run_auto(paths: list[str], cb) -> Counter:
     return counter
 
 
-@router.post("/capture-fix", response_model=CaptureFixResponse)
+@router.post(
+    "/capture-fix",
+    response_model=CaptureFixResponse,
+    dependencies=[Depends(require_physical_mutations)],
+)
 async def capture_fix_auto(
     req: CaptureFixRequest,
     progress_key: str | None = Query(default=None, max_length=64),
@@ -879,7 +920,11 @@ def _run_manual(items) -> Counter:
     return counter
 
 
-@router.post("/capture-fix-manual", response_model=CaptureFixResponse)
+@router.post(
+    "/capture-fix-manual",
+    response_model=CaptureFixResponse,
+    dependencies=[Depends(require_physical_mutations)],
+)
 async def capture_fix_manual(
     req: CaptureFixManualRequest,
     session: Session = Depends(get_current_session),
@@ -964,7 +1009,11 @@ async def capture_audit_foto(
     return CaptureAuditResponse(items=rows, total=len(rows), auto=auto, manual=manual)
 
 
-@router.post("/capture-fix-foto", response_model=CaptureFixResponse)
+@router.post(
+    "/capture-fix-foto",
+    response_model=CaptureFixResponse,
+    dependencies=[Depends(require_legacy_date_repair)],
+)
 async def capture_fix_foto(
     req: CaptureFixFotoRequest,
     progress_key: str | None = Query(default=None, max_length=64),
@@ -996,7 +1045,11 @@ async def capture_fix_foto(
     return _summarize(counter)
 
 
-@router.post("/folders/delete", response_model=OperationResponse)
+@router.post(
+    "/folders/delete",
+    response_model=OperationResponse,
+    dependencies=[Depends(require_physical_mutations)],
+)
 async def op_remove_folder(
     req: RemoveFolderRequest,
     session: Session = Depends(get_current_session),

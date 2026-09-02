@@ -5,9 +5,13 @@ per-login by the user and exchanged for a DSM session id (SID) at runtime.
 """
 
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+GalleryWriteMode = Literal["legacy", "drain", "curation"]
 
 
 class Settings(BaseSettings):
@@ -55,6 +59,17 @@ class Settings(BaseSettings):
     # fake data, so the frontend can be developed without a reachable DSM.
     # NEVER enable in production.
     mock_mode: bool = Field(default=False)
+
+    # --- Gallery → Desk transition ---
+    # legacy: current file/folder mutations are available.
+    # drain: no new mutations; existing undo/trash restore remain available.
+    # curation: originals/folders are read-only; Synology albums/person labels
+    # remain writable because they are logical curation, not file mutations.
+    gallery_write_mode: GalleryWriteMode = Field(default="legacy")
+    # Temporary admin-only escape hatch for correcting the Synology index time
+    # of already-indexed legacy photos. Keep disabled unless clearing a reviewed
+    # backlog; it is never available in curation mode.
+    gallery_legacy_date_repair: bool = Field(default=False)
 
     # --- Storage ---
     sqlite_path: str = Field(default="./data/app.db")

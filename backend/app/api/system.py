@@ -8,8 +8,9 @@ from fastapi import APIRouter, Depends
 
 from ..config import Settings, get_settings
 from ..dsm.client import DsmClient
-from ..schemas import ApiInfoResponse, EndpointInfo
+from ..schemas import ApiInfoResponse, EndpointInfo, GalleryCapabilitiesResponse
 from ..session_store import Session
+from ..write_policy import capabilities_for
 from .deps import get_current_session, get_dsm_client
 
 router = APIRouter(prefix="/api/system", tags=["system"])
@@ -26,6 +27,9 @@ async def api_info(
     DSM failures propagate to the app-wide ``DsmError`` handler (session-invalid
     codes → 401, everything else → 502).
     """
+    capabilities = capabilities_for(settings, _session.role)
+    capability_response = GalleryCapabilitiesResponse(**capabilities.__dict__)
+
     if settings.mock_mode:
         # No NAS to probe — report every core API as (mock) available so the
         # panel stays meaningful during NAS-free development.
@@ -37,6 +41,8 @@ async def api_info(
                 )
                 for api in DsmClient.CORE_APIS
             ],
+            gallery_write_mode=settings.gallery_write_mode,
+            capabilities=capability_response,
         )
 
     resolved = await dsm.query_api_info(refresh=True)
@@ -52,5 +58,8 @@ async def api_info(
         for api in DsmClient.CORE_APIS
     ]
     return ApiInfoResponse(
-        dsm_webapi_base=settings.dsm_webapi_base, endpoints=endpoints
+        dsm_webapi_base=settings.dsm_webapi_base,
+        endpoints=endpoints,
+        gallery_write_mode=settings.gallery_write_mode,
+        capabilities=capability_response,
     )

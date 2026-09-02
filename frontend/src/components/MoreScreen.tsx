@@ -10,6 +10,7 @@ import {
   clearThumbnailCaches,
   setThumbnailCacheOwner,
 } from "../lib/thumbnailCache";
+import { useGalleryCapabilities } from "../hooks/useGalleryCapabilities";
 
 /** 더보기 허브 (IA 개편 2단계) — 흩어져 있던 관리 기능의 단일 진입점.
  * 휴지통(일급 승격)·작업 기록·기기 백업 관리·DSM 정보·빌드 진단·계정/로그아웃.
@@ -134,6 +135,7 @@ export function MoreScreen() {
   const [panel, setPanel] = useState<"ops" | "trash" | null>(null);
   const [zonesOpen, setZonesOpen] = useState(false);
   const [apiOpen, setApiOpen] = useState(false);
+  const { capabilities } = useGalleryCapabilities();
 
   const trashQ = useQuery({ queryKey: ["trash"], queryFn: api.trashStats });
   const trashItems = trashQ.data?.items ?? 0;
@@ -189,13 +191,17 @@ export function MoreScreen() {
           onClick={() => setPanel("ops")}
         />
 
-        <GroupLabel>관리</GroupLabel>
-        <Row
-          icon="📲"
-          label="기기 백업 관리"
-          desc="타임라인 밖 백업 폴더 등록·삭제"
-          onClick={() => setZonesOpen(true)}
-        />
+        {capabilities.physical_mutations && (
+          <>
+            <GroupLabel>관리</GroupLabel>
+            <Row
+              icon="📲"
+              label="기기 백업 관리"
+              desc="타임라인 밖 백업 폴더 등록·삭제"
+              onClick={() => setZonesOpen(true)}
+            />
+          </>
+        )}
 
         <GroupLabel>정보</GroupLabel>
         <Row
