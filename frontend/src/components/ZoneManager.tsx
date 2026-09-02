@@ -2,12 +2,15 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import type { ZoneBrowseEntry } from "../api/types";
+import { useDialogFocus } from "../hooks/useDialogFocus";
+import { QueryErrorState } from "./QueryErrorState";
 
 /** 1차 구역(기기 백업) 관리 모달: 등록된 구역 목록/삭제 + 새 구역 추가.
  * 추가는 내 홈(/homes/<나>) 아래를 FileStation으로 탐색해 폴더를 고른다
  * (Synology Photos 인덱스 밖이라 일반 폴더 API로는 안 보임). */
 export function ZoneManager({ onClose }: { onClose: () => void }) {
   const queryClient = useQueryClient();
+  const dialogRef = useDialogFocus<HTMLDivElement>(onClose);
   const zonesQuery = useQuery({ queryKey: ["zones"], queryFn: api.listZones });
   const zones = zonesQuery.data?.zones ?? [];
 
@@ -50,12 +53,20 @@ export function ZoneManager({ onClose }: { onClose: () => void }) {
       onClick={onClose}
     >
       <div
+        ref={dialogRef}
+        data-modal-root="true"
+        role="dialog"
+        aria-modal="true"
+        aria-label="기기 백업 관리"
+        tabIndex={-1}
         className="flex max-h-[85vh] w-full max-w-lg flex-col rounded-2xl bg-white p-5 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-2 flex items-center justify-between">
           <h3 className="text-sm font-bold text-slate-800">기기 백업 관리</h3>
           <button
+            data-autofocus="true"
+            aria-label="닫기"
             onClick={onClose}
             className="flex h-7 w-7 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100"
           >
@@ -72,7 +83,17 @@ export function ZoneManager({ onClose }: { onClose: () => void }) {
           <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
             등록된 구역 ({zones.length})
           </h4>
-          {zones.length === 0 ? (
+          {zonesQuery.isPending ? (
+            <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-400">
+              불러오는 중…
+            </p>
+          ) : zonesQuery.isError && zones.length === 0 ? (
+            <QueryErrorState
+              compact
+              message="기기 백업 목록을 불러오지 못했습니다."
+              onRetry={() => void zonesQuery.refetch()}
+            />
+          ) : zones.length === 0 ? (
             <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-400">
               아직 없습니다. 아래에서 폴더를 골라 추가하세요.
             </p>
@@ -124,6 +145,12 @@ export function ZoneManager({ onClose }: { onClose: () => void }) {
             </div>
             {browseQuery.isPending ? (
               <p className="px-3 py-3 text-xs text-slate-400">불러오는 중…</p>
+            ) : browseQuery.isError ? (
+              <QueryErrorState
+                compact
+                message="폴더 목록을 불러오지 못했습니다."
+                onRetry={() => void browseQuery.refetch()}
+              />
             ) : (browseQuery.data?.dirs.length ?? 0) === 0 ? (
               <p className="px-3 py-3 text-xs text-slate-400">하위 폴더가 없습니다.</p>
             ) : (

@@ -56,6 +56,9 @@ export function TimelineScreen() {
       if (e.key === "Shift") useTimelineStore.getState().setShift(true);
       if (e.key === "Alt") setAltHeld(true);
       if (e.key === "Escape") {
+        // 최상위 모달이 Esc를 직접 처리한다. 여기서 함께 닫으면 앨범/폴더
+        // 선택창을 닫을 때 뒤의 라이트박스까지 한 번에 사라진다.
+        if (document.querySelector("[data-modal-root='true']")) return;
         const s = useTimelineStore.getState();
         if (s.lightboxId) s.closeLightbox();
         else s.clearSelection();

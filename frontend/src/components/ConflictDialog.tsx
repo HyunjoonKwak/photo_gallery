@@ -1,4 +1,5 @@
 import { useConflictStore, type ConflictKind } from "../store/conflict";
+import { useDialogFocus } from "../hooks/useDialogFocus";
 
 const OPT =
   "w-full rounded-lg border px-3 py-2.5 text-left text-sm transition-colors";
@@ -16,13 +17,22 @@ function FullMatchFolderDialog({
   onChoose: (strategy: string) => void;
   onCancel: () => void;
 }) {
+  const dialogRef = useDialogFocus<HTMLDivElement>(onCancel);
   const label =
     names.length === 1
       ? `'${names[0]}'`
       : `'${names[0]}' 외 ${names.length - 1}개`;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-      <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
+      <div
+        ref={dialogRef}
+        data-modal-root="true"
+        role="alertdialog"
+        aria-modal="true"
+        aria-label="동일한 폴더 확인"
+        tabIndex={-1}
+        className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl"
+      >
         <h4 className="text-sm font-bold text-slate-800">
           내용이 이미 대상과 완전히 같습니다
         </h4>
@@ -36,6 +46,7 @@ function FullMatchFolderDialog({
         {copyMode ? (
           <div className="mt-4 flex justify-end">
             <button
+              data-autofocus="true"
               onClick={onCancel}
               className="rounded-lg bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
             >
@@ -58,6 +69,7 @@ function FullMatchFolderDialog({
                 </span>
               </button>
               <button
+                data-autofocus="true"
                 onClick={onCancel}
                 className={`${OPT} border-slate-200 hover:bg-slate-50`}
               >
@@ -98,6 +110,7 @@ function ConflictDialog({
   onChoose: (strategy: string) => void;
   onCancel: () => void;
 }) {
+  const dialogRef = useDialogFocus<HTMLDivElement>(onCancel);
   // 폴더 충돌인데 모든 원본이 대상에 완전 포함(추가분 0) → 전용 다이얼로그.
   if (
     kind === "folder" &&
@@ -124,7 +137,15 @@ function ConflictDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-      <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
+      <div
+        ref={dialogRef}
+        data-modal-root="true"
+        role="alertdialog"
+        aria-modal="true"
+        aria-label={`같은 이름의 ${noun} 충돌`}
+        tabIndex={-1}
+        className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl"
+      >
         <h4 className="text-sm font-bold text-slate-800">
           같은 이름의 {noun} {names.length}
           {kind === "folder" ? "개" : "장"}
@@ -194,6 +215,7 @@ function ConflictDialog({
 
         <div className="mt-4 flex justify-end">
           <button
+            data-autofocus="true"
             onClick={onCancel}
             className="rounded-lg border border-slate-300 px-4 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
           >

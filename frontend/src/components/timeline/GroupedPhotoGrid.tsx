@@ -400,29 +400,56 @@ export function GroupedPhotoGrid({
     onTopGroupChange(row ? labelOf(row.groupKey) : null);
   }, [scrollTop, measureTick, rows, virtualizer, onTopGroupChange, labelOf]);
 
-  // 사이드 스크러버용 월 마커: 그룹 헤더가 시작하는 콘텐츠 offset. 그룹 키
-  // 길이로 줌 판별(연 "2025" / 월 "2025-12" / 일 "2025-12-30") → 월(YYYY-MM)
-  // 단위로 중복 제거. offset은 가상화 실측(getOffsetForIndex)이라 스크롤과 일치.
+  // 사이드 스크러버용 월 마커. 월/일 줌은 그룹 헤더의 실측 offset을 쓰고,
+  // 연 줌은 한 해가 헤더 하나뿐이라 기존에는 연도당 마커 하나만 생겼다.
+  // 연 그룹 안의 실제 보유 월을 그 해의 시각 영역에 균등 배치해 하위 기간
+  // 눈금과 드래그 월 안내도 보이게 한다. 실제 스크롤 경계(연 헤더)는 유지한다.
   const totalSize = virtualizer.getTotalSize();
   const markers = useMemo<ScrubberMarker[]>(() => {
     const out: ScrubberMarker[] = [];
-    let last = "";
+    const headers: { key: string; offset: number }[] = [];
+    const groupsByKey = new Map(groups.map((g) => [g.key, g]));
+
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
       if (r.kind !== "header") continue;
-      const k = r.groupKey;
-      const month = k.length <= 4 ? `${k}-01` : k.slice(0, 7);
-      if (month === last) continue;
-      last = month;
       const off = virtualizer.getOffsetForIndex(i, "start");
       const offset =
         typeof off === "number" ? off : Array.isArray(off) ? off[0] : 0;
-      out.push({ month, offset });
+      headers.push({ key: r.groupKey, offset });
+    }
+
+    let last = "";
+    for (let i = 0; i < headers.length; i++) {
+      const header = headers[i];
+      const k = header.key;
+      if (k.length <= 4) {
+        const months = [
+          ...new Set(
+            (groupsByKey.get(k)?.days ?? []).map((day) => day.slice(0, 7)),
+          ),
+        ];
+        if (months.length === 0) months.push(`${k}-01`);
+        const end = headers[i + 1]?.offset ?? totalSize;
+        const span = Math.max(0, end - header.offset);
+        for (let j = 0; j < months.length; j++) {
+          out.push({
+            month: months[j],
+            offset: header.offset + (span * j) / months.length,
+          });
+        }
+        continue;
+      }
+
+      const month = k.slice(0, 7);
+      if (month === last) continue;
+      last = month;
+      out.push({ month, offset: header.offset });
     }
     return out;
     // totalSize를 dep에 넣어 로드·측정으로 레이아웃이 바뀌면 재계산.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, totalSize, viewportH]);
+  }, [rows, groups, totalSize, viewportH]);
 
   if (groups.length === 0) {
     return (
@@ -482,7 +509,7 @@ export function GroupedPhotoGrid({
                           width: c.width,
                           height: c.height,
                         }}
-                        className="overflow-hidden rounded-sm outline-none"
+                        className="overflow-hidden rounded-sm focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-blue-400"
                       >
                         <Thumb item={c.item} space={space} />
                       </button>
@@ -496,7 +523,7 @@ export function GroupedPhotoGrid({
                         data-photo-id={it.id}
                         onClick={() => onPhotoClick(it)}
                         style={{ width: tile, height: tile }}
-                        className="overflow-hidden rounded-sm outline-none"
+                        className="overflow-hidden rounded-sm focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-blue-400"
                       >
                         <Thumb item={it} space={space} />
                       </button>

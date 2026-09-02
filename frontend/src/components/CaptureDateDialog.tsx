@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { useProgressStore } from "../store/progress";
 import { useToastStore } from "../store/toast";
+import { useDialogFocus } from "../hooks/useDialogFocus";
 
 /** 촬영일 교정 — root(홈 폴더 경로) 하위를 스캔해 파일 날짜(mtime, 복사시각으로
  * 오염됨)를 파일명에서 읽은 실제 촬영일로 파일에 기록(JPEG=EXIF, 전 포맷=mtime).
@@ -36,6 +37,7 @@ export function CaptureDateDialog({
   onDone: () => void;
 }) {
   const qc = useQueryClient();
+  const dialogRef = useDialogFocus<HTMLDivElement>(onClose);
   const pushToast = useToastStore((s) => s.push);
   const q = useQuery({
     queryKey:
@@ -153,12 +155,20 @@ export function CaptureDateDialog({
       onClick={onClose}
     >
       <div
+        ref={dialogRef}
+        data-modal-root="true"
+        role="dialog"
+        aria-modal="true"
+        aria-label="촬영일 교정"
+        tabIndex={-1}
         className="flex max-h-[85vh] w-full max-w-xl flex-col rounded-2xl bg-white shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
           <h3 className="text-sm font-semibold text-slate-800">촬영일 교정</h3>
           <button
+            data-autofocus="true"
+            aria-label="닫기"
             onClick={onClose}
             className="rounded-full px-2 py-0.5 text-slate-400 hover:bg-slate-100"
           >

@@ -7,6 +7,7 @@ import { Thumb } from "./timeline/Thumb";
 import { folderBasename } from "./FolderTree";
 import { VirtualRows } from "./VirtualRows";
 import { useNearViewport } from "../hooks/useNearViewport";
+import { QueryErrorState } from "./QueryErrorState";
 
 /** 사진 뷰어의 폴더 줌 — 폴더 구조를 그대로 탐색(순수 뷰어). 폴더 카드에 직속
  * 사진 4장 미리보기, 클릭하면 한 depth 진입. 리프 폴더의 사진은 썸네일 그리드
@@ -95,6 +96,13 @@ export function FolderViewerGrid() {
             폴더 불러오는 중…
           </p>
         )}
+        {subQuery.isError && subFolders.length === 0 && (
+          <QueryErrorState
+            compact
+            message="폴더 목록을 불러오지 못했습니다."
+            onRetry={() => void subQuery.refetch()}
+          />
+        )}
 
         {/* 하위 폴더 카드 (미리보기 4장) */}
         {subFolders.length > 0 && (
@@ -123,10 +131,16 @@ export function FolderViewerGrid() {
         {/* 현재 폴더 직속 사진 */}
         {current && (
           <FolderPhotos
-          scrollRef={scrollRef} items={items} pending={itemsQuery.isPending} hasSub={subFolders.length > 0} />
+            scrollRef={scrollRef}
+            items={items}
+            pending={itemsQuery.isPending}
+            error={itemsQuery.isError}
+            onRetry={() => void itemsQuery.refetch()}
+            hasSub={subFolders.length > 0}
+          />
         )}
 
-        {!current && !subQuery.isPending && subFolders.length === 0 && (
+        {!current && !subQuery.isPending && !subQuery.isError && subFolders.length === 0 && (
           <p className="p-10 text-center text-sm text-slate-400">폴더가 없습니다.</p>
         )}
       </div>
@@ -186,11 +200,15 @@ function FolderCard({
 function FolderPhotos({
   items,
   pending,
+  error,
+  onRetry,
   hasSub,
   scrollRef,
 }: {
   items: PhotoItem[];
   pending: boolean;
+  error: boolean;
+  onRetry: () => void;
   hasSub: boolean;
   scrollRef: React.RefObject<HTMLDivElement | null>;
 }) {
@@ -218,6 +236,14 @@ function FolderPhotos({
 
   if (pending)
     return <p className="p-6 text-center text-sm text-slate-400">불러오는 중…</p>;
+  if (error && items.length === 0)
+    return (
+      <QueryErrorState
+        compact
+        message="폴더 사진을 불러오지 못했습니다."
+        onRetry={onRetry}
+      />
+    );
   if (items.length === 0)
     return (
       <p className="p-6 text-center text-sm text-slate-400">
@@ -247,7 +273,7 @@ function FolderPhotos({
                   key={it.id}
                   data-photo-id={it.id}
                   onClick={() => openLightbox(it.id)}
-                  className="aspect-square overflow-hidden rounded-sm outline-none"
+                  className="aspect-square overflow-hidden rounded-sm focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-blue-400"
                 >
                   <Thumb item={it} space={it.space} />
                 </button>

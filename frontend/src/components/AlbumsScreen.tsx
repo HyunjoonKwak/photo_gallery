@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { askConfirm, askPrompt } from "./Dialog";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, thumbnailUrl } from "../api/client";
@@ -8,6 +8,7 @@ import { useToastStore } from "../store/toast";
 import { PhotoGrid } from "./timeline/PhotoGrid";
 import { PhotoLayoutToggle } from "./timeline/PhotoLayoutToggle";
 import { Thumb } from "./timeline/Thumb";
+import { QueryErrorState } from "./QueryErrorState";
 
 /** 앨범(큐레이션 전용) — 사용자가 직접 만드는 Synology 네이티브 앨범(개인 공간).
  *
@@ -75,6 +76,11 @@ function AlbumList({ onOpen }: { onOpen: (a: AlbumInfo) => void }) {
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         {q.isPending ? (
           <p className="p-6 text-center text-sm text-slate-400">불러오는 중…</p>
+        ) : q.isError && albums.length === 0 ? (
+          <QueryErrorState
+            message="앨범 목록을 불러오지 못했습니다."
+            onRetry={() => void q.refetch()}
+          />
         ) : albums.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center text-center">
             <div className="mb-3 text-5xl">📔</div>
@@ -114,6 +120,26 @@ function AlbumCard({
 }) {
   const qc = useQueryClient();
   const pushToast = useToastStore((s) => s.push);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuButtonRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const frame = requestAnimationFrame(() => {
+      menuRef.current?.querySelector<HTMLButtonElement>("[role='menuitem']")?.focus();
+    });
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setMenuOpen(false);
+      menuButtonRef.current?.focus();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [menuOpen]);
   const delMut = useMutation({
     mutationFn: () => api.deleteAlbum(album.id),
     onSuccess: () => {
@@ -130,8 +156,8 @@ function AlbumCard({
     },
     onError: () => pushToast("이름 변경에 실패했습니다."),
   });
-  const rename = async (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const rename = async () => {
+    setMenuOpen(false);
     const name = await askPrompt({
       title: "앨범 이름 변경",
       initial: album.name,
@@ -139,8 +165,8 @@ function AlbumCard({
     });
     if (name?.trim() && name.trim() !== album.name) renameMut.mutate(name.trim());
   };
-  const del = async (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const del = async () => {
+    setMenuOpen(false);
     if (
       await askConfirm({
         title: "앨범 삭제",
@@ -152,12 +178,13 @@ function AlbumCard({
       delMut.mutate();
   };
   return (
-    <button
-      onClick={onOpen}
-      title={album.name}
-      className="group relative flex w-40 flex-col gap-1.5 rounded-xl p-2 text-left hover:bg-slate-100"
-    >
-      <div className="aspect-square w-full overflow-hidden rounded-lg bg-slate-200">
+    <div className="group relative flex w-40 flex-col gap-1 rounded-xl p-2 hover:bg-slate-100">
+      <button
+        type="button"
+        onClick={onOpen}
+        title={album.name}
+        className="aspect-square w-full overflow-hidden rounded-lg bg-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+      >
         {album.cover_item_id ? (
           <img
             src={thumbnailUrl(
@@ -171,34 +198,68 @@ function AlbumCard({
             loading="lazy"
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center text-4xl">
+          <span className="flex h-full w-full items-center justify-center text-4xl">
             📔
-          </div>
+          </span>
         )}
-      </div>
-      <div className="flex items-center justify-between gap-1">
-        <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700">
+      </button>
+      <div className="flex min-w-0 items-center gap-1">
+        <button
+          type="button"
+          onClick={onOpen}
+          className="min-w-0 flex-1 truncate rounded text-left text-sm font-medium text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+        >
           {album.name}
-        </span>
-        <span
-          onClick={rename}
-          title="이름 변경"
-          className="hidden shrink-0 rounded px-1 text-xs text-slate-400 hover:text-blue-600 group-hover:inline"
+        </button>
+        <button
+          ref={menuButtonRef}
+          type="button"
+          aria-label={`${album.name} 앨범 메뉴`}
+          aria-expanded={menuOpen}
+          aria-haspopup="menu"
+          onClick={() => setMenuOpen((v) => !v)}
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-lg leading-none text-slate-500 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
         >
-          ✎
-        </span>
-        <span
-          onClick={del}
-          title="앨범 삭제"
-          className="hidden shrink-0 rounded px-1 text-xs text-slate-400 hover:text-red-500 group-hover:inline"
-        >
-          🗑
-        </span>
+          ⋯
+        </button>
       </div>
       <span className="text-[10px] text-slate-400">
         {album.item_count != null ? `${album.item_count.toLocaleString()}장` : " "}
       </span>
-    </button>
+      {menuOpen && (
+        <>
+          <div
+            aria-hidden="true"
+            className="fixed inset-0 z-20 cursor-default"
+            onClick={() => setMenuOpen(false)}
+          />
+          <div
+            ref={menuRef}
+            role="menu"
+            aria-label={`${album.name} 앨범 작업`}
+            className="absolute right-1 z-30 w-32 overflow-hidden rounded-xl border border-slate-200 bg-white p-1 shadow-lg"
+            style={{ top: "calc(100% - 1.5rem)" }}
+          >
+            <button
+              type="button"
+              role="menuitem"
+              onClick={rename}
+              className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            >
+              ✎ 이름 변경
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={del}
+              className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            >
+              🗑 앨범 삭제
+            </button>
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -271,6 +332,11 @@ function AlbumDetail({
       <div className="min-h-0 flex-1">
         {q.isPending ? (
           <p className="p-6 text-center text-sm text-slate-400">불러오는 중…</p>
+        ) : q.isError && items.length === 0 ? (
+          <QueryErrorState
+            message="앨범 사진을 불러오지 못했습니다."
+            onRetry={() => void q.refetch()}
+          />
         ) : items.length === 0 ? (
           <p className="p-6 text-center text-sm text-slate-400">
             이 앨범에는 아직 사진이 없습니다. 정리 화면에서 사진을 선택해
@@ -286,7 +352,7 @@ function AlbumDetail({
                 key={it.id}
                 onClick={() => removeMut.mutate(it.id)}
                 title="앨범에서 빼기"
-                className="relative aspect-square overflow-hidden rounded-sm outline-none ring-red-400 hover:ring-2"
+                className="relative aspect-square overflow-hidden rounded-sm ring-red-400 hover:ring-2 focus-visible:outline-none focus-visible:ring-4"
               >
                 <Thumb item={it} space="personal" />
                 <span className="absolute right-1 top-1 rounded-full bg-red-600 px-1.5 text-xs font-bold text-white">

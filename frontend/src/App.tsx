@@ -46,7 +46,7 @@ import { Toasts } from "./components/Toasts";
 import { PwaUpdater } from "./components/PwaUpdater";
 import { NavControls } from "./components/NavControls";
 import { ConflictDialogHost } from "./components/ConflictDialog";
-import { AskDialogHost } from "./components/Dialog";
+import { AskDialogHost, Modal } from "./components/Dialog";
 
 // 주 메뉴 4영역 — 감상(사진/앨범)·정리·더보기(관리 허브). 데스크톱 토글과
 // 모바일 하단 탭이 같은 목록을 쓴다(IA 개편 2단계).
@@ -64,6 +64,7 @@ export const SECTIONS = ALL_SECTIONS.filter((t) => SHOW_MANAGE || t.section !== 
 function SectionToggle() {
   const section = useTimelineStore((s) => s.section);
   const setSection = useTimelineStore((s) => s.setSection);
+  const goHome = useTimelineStore((s) => s.goHome);
   // 목록에 없는 영역(감춘 「정리」)에 들어가 있어도 불은 남긴다.
   const current = activeSection(section);
   return (
@@ -73,8 +74,12 @@ function SectionToggle() {
         return (
           <button
             key={v.section}
-            onClick={() => setSection(v.section)}
-            className={`relative flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 pb-2 pt-1.5 text-sm transition-colors ${
+            aria-current={active ? "page" : undefined}
+            onClick={() => {
+              if (v.section === "viewer" && section === "viewer") goHome();
+              else setSection(v.section);
+            }}
+            className={`relative flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 pb-2 pt-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
               active
                 ? "font-bold text-blue-700"
                 : "font-medium text-slate-500 hover:text-slate-700"
@@ -98,9 +103,13 @@ function SectionToggle() {
  * 고장으로 오인). */
 function SearchBox() {
   const runSearch = useTimelineStore((s) => s.runSearch);
+  const activeQuery = useTimelineStore((s) => s.searchQuery);
   const activeZone = useTimelineStore((s) => s.activeZone);
   const viewedOwner = useTimelineStore((s) => s.viewedOwner);
   const [value, setValue] = useState("");
+  useEffect(() => {
+    setValue(activeQuery);
+  }, [activeQuery]);
   const disabledReason = activeZone
     ? "기기 백업 폴더는 검색 대상이 아니에요 (Photos 색인 밖)"
     : viewedOwner
@@ -121,6 +130,7 @@ function SearchBox() {
         🔍
       </span>
       <input
+        aria-label="사진 검색"
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={(e) => {
@@ -130,6 +140,19 @@ function SearchBox() {
         placeholder={disabledReason ? "검색 불가" : "사진 검색"}
         className="w-24 bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:w-40 sm:w-32 sm:focus:w-48 transition-[width] disabled:cursor-not-allowed"
       />
+      {value && !disabledReason && (
+        <button
+          type="button"
+          aria-label="검색어 지우기"
+          onClick={() => {
+            setValue("");
+            if (activeQuery) history.back();
+          }}
+          className="flex h-7 w-7 items-center justify-center rounded-full text-xs text-slate-400 hover:bg-slate-200 hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+        >
+          ✕
+        </button>
+      )}
     </div>
   );
 }
@@ -431,47 +454,31 @@ function FirstRunTip({ account }: { account: string }) {
     setSeen(true);
   };
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      onClick={dismiss}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="first-run-tip-title"
-        className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h3
-          id="first-run-tip-title"
-          className="mb-3 text-base font-bold text-slate-800"
-        >
-          처음 오셨나요? 세 가지만 기억하세요
-        </h3>
-        <ul className="space-y-2.5 text-sm leading-relaxed text-slate-600">
-          <li>
-            📚 <b>왼쪽 위 메뉴</b>에서 <b>무엇을 볼지</b> 골라요 — 가족 사진 ·
-            내 사진{hasBackup && " · 기기 백업(휴대폰 백업)"}.
-          </li>
-          <li>
-            🖼 화면 <b><span className="md:hidden">아래</span>
+    <Modal title="처음 오셨나요? 세 가지만 기억하세요" onClose={dismiss}>
+      <ul className="mt-3 space-y-2.5 text-sm leading-relaxed text-slate-600">
+        <li>
+          📚 <b>왼쪽 위 메뉴</b>에서 <b>무엇을 볼지</b> 골라요 — 가족 사진 ·
+          내 사진{hasBackup && " · 기기 백업(휴대폰 백업)"}.
+        </li>
+        <li>
+          🖼 화면 <b><span className="md:hidden">아래</span>
             <span className="hidden md:inline">위</span> 탭</b>에서{" "}
-            <b>어떻게 볼지</b> 골라요 — 사진(감상) · 앨범 · 정리(이동/삭제) ·
-            더보기.
-          </li>
-          <li>
-            ↩️ 실수해도 괜찮아요 — 삭제·이동은 전부 <b>되돌리기</b>가 돼요
-            (더보기 → 휴지통·작업 기록).
-          </li>
-        </ul>
-        <button
-          onClick={dismiss}
-          className="mt-4 w-full rounded-xl bg-blue-600 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-        >
-          시작하기
-        </button>
-      </div>
-    </div>
+          <b>어떻게 볼지</b> 골라요 — 사진(감상) · 앨범 · 정리(이동/삭제) ·
+          더보기.
+        </li>
+        <li>
+          ↩️ 실수해도 괜찮아요 — 삭제·이동은 전부 <b>되돌리기</b>가 돼요
+          (더보기 → 휴지통·작업 기록).
+        </li>
+      </ul>
+      <button
+        data-autofocus="true"
+        onClick={dismiss}
+        className="mt-4 w-full rounded-xl bg-blue-600 py-2 text-sm font-semibold text-white hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+      >
+        시작하기
+      </button>
+    </Modal>
   );
 }
 

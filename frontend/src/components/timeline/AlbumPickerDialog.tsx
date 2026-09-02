@@ -2,6 +2,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { askPrompt } from "../Dialog";
 import { api } from "../../api/client";
 import { useToastStore } from "../../store/toast";
+import { useDialogFocus } from "../../hooks/useDialogFocus";
+import { QueryErrorState } from "../QueryErrorState";
 
 /** 선택한 사진들을 기존 앨범에 담거나 새 앨범을 만들어 담는 모달.
  * 앨범은 개인 공간 전용이라, 호출부(SelectionActionBar)에서 1차 구역·타인
@@ -18,6 +20,7 @@ export function AlbumPickerDialog({
   onDone: () => void;
 }) {
   const qc = useQueryClient();
+  const dialogRef = useDialogFocus<HTMLDivElement>(onClose);
   const pushToast = useToastStore((s) => s.push);
   const q = useQuery({ queryKey: ["albums"], queryFn: api.albums });
   const albums = q.data?.albums ?? [];
@@ -54,6 +57,12 @@ export function AlbumPickerDialog({
       onClick={onClose}
     >
       <div
+        ref={dialogRef}
+        data-modal-root="true"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`${count}장을 앨범에 담기`}
+        tabIndex={-1}
         className="flex max-h-[80vh] w-full max-w-sm flex-col rounded-2xl bg-white shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
@@ -62,6 +71,8 @@ export function AlbumPickerDialog({
             {count}장을 앨범에 담기
           </h3>
           <button
+            data-autofocus="true"
+            aria-label="닫기"
             onClick={onClose}
             className="rounded-full px-2 py-0.5 text-slate-400 hover:bg-slate-100"
           >
@@ -80,6 +91,12 @@ export function AlbumPickerDialog({
         <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
           {q.isPending ? (
             <p className="p-4 text-center text-sm text-slate-400">불러오는 중…</p>
+          ) : q.isError && albums.length === 0 ? (
+            <QueryErrorState
+              compact
+              message="앨범 목록을 불러오지 못했습니다."
+              onRetry={() => void q.refetch()}
+            />
           ) : albums.length === 0 ? (
             <p className="p-4 text-center text-sm text-slate-400">
               기존 앨범이 없습니다. 위에서 새 앨범을 만들어 담아 보세요.

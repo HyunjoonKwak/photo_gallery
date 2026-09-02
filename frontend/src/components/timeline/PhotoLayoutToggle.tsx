@@ -25,7 +25,7 @@ export function PhotoLayoutToggle({ className = "" }: { className?: string }) {
           : "비율 그대로 보기 — 세로 사진이 잘리지 않습니다"
       }
       aria-pressed={masonry}
-      className={`flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium transition-colors ${
+      className={`flex min-h-10 shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 sm:min-h-0 ${
         masonry
           ? "bg-slate-800 text-white"
           : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"

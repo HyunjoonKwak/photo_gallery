@@ -88,7 +88,7 @@ export function MasonryPhotoGrid({
                   height: cell.height,
                   transform: `translate(${cell.left}px, ${cell.top}px)`,
                 }}
-                className="overflow-hidden rounded-sm outline-none"
+                className="overflow-hidden rounded-sm focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-blue-400"
               >
                 <Thumb item={cell.item} space={space} />
               </button>

@@ -23,7 +23,7 @@ function rangeIds(orderedIds: string[], a: string, b: string): string[] {
   return orderedIds.slice(lo, hi + 1);
 }
 
-/** 상위 3영역: 사진 뷰어(감상·모든 렌즈) / 앨범(사용자 큐레이션) / 폴더 분류(정리). */
+/** 상위 4영역: 사진 뷰어 / 앨범 / 폴더 분류(정리) / 더보기. */
 export type Section = "viewer" | "albums" | "manage" | "more";
 
 /**
@@ -33,18 +33,21 @@ export type Section = "viewer" | "albums" | "manage" | "more";
  * 중복·잡동사니·폴더 이동 — 은 전량 사본이 있는 맥의 Photo Desk 가 맡기로 했다.
  * 이 앱은 감상을 맡는다.
  *
- * **코드는 지우지 않고 화면에서만 감춘다.** 맥이 꺼져 있을 때 급히 쓸 일이
- * 생기면 이 값을 true 로 되돌리면 그대로 살아난다.
+ * 중복·잡동사니 같은 무거운 판정은 맥의 Photo Desk가 맡지만, 이 앱에서도
+ * 기기 백업·검색 결과·폴더 이동으로 들어가는 최소 파일 관리 화면은 필요하다.
+ * 숨기면 검색 중에도 「사진」 탭이 켜지는 등 현재 위치가 거짓으로 표시되므로
+ * 폴더 정리 탭은 항상 노출한다.
  */
-export const SHOW_MANAGE = false;
+export const SHOW_MANAGE = true;
+
+/** NAS 웹앱에서 중복·잡동사니 판정 도구까지 노출할지. */
+export const SHOW_MANAGE_TOOLS = false;
 
 /**
  * 탭바에 불을 켤 영역.
  *
- * 「정리」를 감추면(SHOW_MANAGE=false) 그 항목이 탭 목록에서 빠지는데,
- * 검색·기기 백업·구성원 사진은 여전히 그 화면으로 들어간다. 그대로 두면
- * 활성 탭이 하나도 없어 "내가 어디 있는지" 알 수 없다. 들어온 길이 감상이므로
- * 「사진」에 불을 남긴다.
+ * 과거 빌드에서 정리 탭을 감추던 설정과 호환하기 위한 안전망. 현재는 정리
+ * 탭을 표시하므로 실제 섹션을 그대로 반환한다.
  */
 export function activeSection(section: Section): Section {
   return !SHOW_MANAGE && section === "manage" ? "viewer" : section;

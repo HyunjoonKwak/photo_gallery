@@ -50,6 +50,7 @@
 - [x] 월/일 버킷 **count-first** 방식: 개수 메타데이터만 먼저 받아 섹션 높이 사전 할당 → 스크롤바가 전체 아카이브를 대표 ([Building the Google Photos Web UI](https://medium.com/google-design/building-the-google-photos-web-ui-45b714dfbed1), [Immich Timeline](https://deepwiki.com/immich-app/immich/3.5-timeline-and-asset-display)) — `GET /api/photos/buckets` + `lib/rowModel.ts` 플레이스홀더 행
 - [x] 우측 **날짜 스크러버**(드래그 시 연/월 라벨)로 임의 시점 점프 — `Scrubber.tsx`
 - [x] **스크러버 ↔ 플로팅 버튼 겹침 해소** (2026-08-02, 사용자 제보: 모바일에서 연도 라벨·홈·화살표 버튼 겹침) — Scrubber가 실제 표시될 때 store `scrubberCount`에 보고하고, NavControls(↑/‹/🏠 스택)가 이를 구독해 레일 폭만큼 왼쪽으로 이동(`right-3`→`right-12`, transition). 스크러버 z를 30으로 올려 드래그 월 버블이 버튼 위에 그려지게 함(버튼은 레일 밖이라 포인터 충돌 없음). MOCK+Playwright 모바일 뷰포트(390px) 연/월 줌에서 검증
+- [x] **스크러버 하위 기간 가시성 개선** (2026-09-02, 사용자 제보: 연도만 보이고 그 이하 기간은 없음) — 원인 ① 연 줌이 연도 헤더만 마커로 변환해 월 정보 자체가 사라짐 ② 연도 우선 26px 충돌 제거가 장기 보관함에서 모든 월 텍스트를 밀어냄(19년/700px 모의 계산: 월 0~1개). 연 줌도 실제 보유 월을 연 영역 안에 배치하고, 텍스트 충돌 여부와 무관하게 **모든 월 눈금**(분기·연 경계 강조)을 항상 렌더한다. 텍스트 간격은 연 22px/월 12px로 분리하고 현재 스크롤 위치의 월을 작은 배지로 상시 표시한다. 손잡이는 `scrollTop/(totalHeight-viewportHeight)`와 실제 이동 거리(`railH-thumbH`)로 보정해 맨 아래 위치와 드래그 좌표를 일치시켰다.
 - [x] **justified layout**(행 높이 균등, 원본 비율 유지·크롭 없음) — square grid 비권고(가족 사진은 세로/가로 혼재)
 - [x] ⚠️ 큰 버킷의 geometry **동기 일괄 계산 금지** — **일 단위 버킷 + 버킷별 지연 계산·메모이제이션**으로 구조적으로 회피 ([Immich #28861](https://github.com/immich-app/immich/issues/28861) 프리즈 사례)
 - [x] 공용 공간도 **모든 구성원에게 타임라인 제공** — 공용/개인 동일한 타임라인 UI(권한은 DSM이 enforce)

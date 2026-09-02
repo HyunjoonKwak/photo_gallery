@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type AreaScope } from "../api/client";
 import { useToastStore } from "../store/toast";
+import { useDialogFocus } from "../hooks/useDialogFocus";
 
 /** 폴더 이름 정리 — root(현재 폴더) 하위를 재귀 스캔해 이름 규칙(날짜부 밑줄→
  * 하이픈)에 어긋난 폴더를 찾아 `현재 → 교정안` 목록으로 보여주고, 체크한 것만
@@ -19,6 +20,7 @@ export function FolderNameAuditDialog({
   onDone: () => void;
 }) {
   const qc = useQueryClient();
+  const dialogRef = useDialogFocus<HTMLDivElement>(onClose);
   const pushToast = useToastStore((s) => s.push);
   const q = useQuery({
     queryKey: ["folder-name-audit", rootId, area?.zone ?? "", area?.targetUser ?? ""],
@@ -72,12 +74,20 @@ export function FolderNameAuditDialog({
       onClick={onClose}
     >
       <div
+        ref={dialogRef}
+        data-modal-root="true"
+        role="dialog"
+        aria-modal="true"
+        aria-label="폴더 이름 정리"
+        tabIndex={-1}
         className="flex max-h-[85vh] w-full max-w-lg flex-col rounded-2xl bg-white shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
           <h3 className="text-sm font-semibold text-slate-800">폴더 이름 정리</h3>
           <button
+            data-autofocus="true"
+            aria-label="닫기"
             onClick={onClose}
             className="rounded-full px-2 py-0.5 text-slate-400 hover:bg-slate-100"
           >

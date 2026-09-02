@@ -8,6 +8,7 @@ import { GroupedPhotoGrid } from "./timeline/GroupedPhotoGrid";
 import { FolderViewerGrid } from "./FolderViewerGrid";
 import { TagLensBody } from "./TagLenses";
 import { PhotoLayoutToggle } from "./timeline/PhotoLayoutToggle";
+import { QueryErrorState } from "./QueryErrorState";
 
 /** 사진 뷰어 (감상 전용) — 모든 감상 렌즈의 집. 렌즈: 타임라인(연/월/일 줌)·
  * 폴더·사람·장소·비디오. 사람/장소/비디오는 Synology 내장 AI 그룹으로, "앨범"이
@@ -44,6 +45,13 @@ function TimelineLens() {
       <div className="flex h-full items-center justify-center text-slate-400">
         불러오는 중…
       </div>
+    );
+  if (bucketsQuery.isError && buckets.length === 0)
+    return (
+      <QueryErrorState
+        message="사진 타임라인을 불러오지 못했습니다."
+        onRetry={() => void bucketsQuery.refetch()}
+      />
     );
   // 빈 상태에 다음 행동 안내(IA 4단계) — 앱이 스스로 개념을 설명한다.
   if (buckets.length === 0)
@@ -116,12 +124,17 @@ export function ViewerScreen() {
   );
 }
 
-const LENSES: { lens: ViewerLens; label: string; icon: string }[] = [
-  { lens: "timeline", label: "타임라인", icon: "🕑" },
-  { lens: "folder", label: "폴더별 보기", icon: "📂" },
-  { lens: "people", label: "사람", icon: "👤" },
-  { lens: "places", label: "장소", icon: "📍" },
-  { lens: "videos", label: "비디오", icon: "🎬" },
+const LENSES: {
+  lens: ViewerLens;
+  label: string;
+  shortLabel: string;
+  icon: string;
+}[] = [
+  { lens: "timeline", label: "타임라인", shortLabel: "시간", icon: "🕑" },
+  { lens: "folder", label: "폴더별 보기", shortLabel: "폴더", icon: "📂" },
+  { lens: "people", label: "사람", shortLabel: "사람", icon: "👤" },
+  { lens: "places", label: "장소", shortLabel: "장소", icon: "📍" },
+  { lens: "videos", label: "비디오", shortLabel: "영상", icon: "🎬" },
 ];
 
 const ZOOMS: { z: ViewerZoom; label: string }[] = [
@@ -148,24 +161,37 @@ function LensBar() {
     zoom === "month"
       ? (visibleGroupLabel ?? (focusMonth ? monthLabel(focusMonth) : null))
       : null;
+  const showLayout =
+    viewerLens === "timeline" ||
+    viewerLens === "videos" ||
+    (viewerLens === "people" && groupId != null);
 
   return (
     <div
       data-no-boxselect
       className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-3 py-1.5 sm:px-4"
     >
-      <nav className="flex flex-wrap gap-0.5 rounded-lg bg-slate-100 p-0.5">
+      <nav
+        aria-label="사진 보기 방식"
+        className="flex flex-wrap gap-0.5 rounded-lg bg-slate-100 p-0.5"
+      >
         {LENSES.map((v) => (
           <button
+            type="button"
             key={v.lens}
             onClick={() => setViewerLens(v.lens)}
-            className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+            aria-label={v.label}
+            aria-pressed={viewerLens === v.lens}
+            className={`flex min-h-10 items-center gap-0.5 rounded-md px-2 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 sm:min-h-0 sm:flex-row sm:gap-1 sm:px-2.5 ${
               viewerLens === v.lens
                 ? "bg-white text-slate-800 shadow-sm"
                 : "text-slate-500 hover:text-slate-700"
             }`}
           >
-            <span>{v.icon}</span>
+            <span aria-hidden>{v.icon}</span>
+            <span className="text-[10px] leading-none sm:hidden">
+              {v.shortLabel}
+            </span>
             <span className="hidden sm:inline">{v.label}</span>
           </button>
         ))}
@@ -174,12 +200,17 @@ function LensBar() {
       {/* 타임라인 렌즈: 연/월/일 줌 + 월 브레드크럼 */}
       {viewerLens === "timeline" && (
         <>
-          <nav className="flex gap-0.5 rounded-lg bg-slate-100 p-0.5">
+          <nav
+            aria-label="타임라인 확대 단계"
+            className="flex gap-0.5 rounded-lg bg-slate-100 p-0.5"
+          >
             {ZOOMS.map((v) => (
               <button
+                type="button"
                 key={v.z}
                 onClick={() => setZoom(v.z)}
-                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                aria-pressed={zoom === v.z}
+                className={`min-h-10 rounded-md px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 sm:min-h-0 ${
                   zoom === v.z
                     ? "bg-white text-slate-800 shadow-sm"
                     : "text-slate-500 hover:text-slate-700"
@@ -210,10 +241,8 @@ function LensBar() {
         </>
       )}
 
-      {/* 배치 전환은 늘 오른쪽 끝 — 렌즈를 옮겨도, 줌을 바꿔도 자리가
-       * 변하지 않는다. 사진 격자가 없는 화면(장소 지도·인물 목록)에서도
-       * 그대로 둔다: 사라지는 컨트롤은 고장으로 읽힌다(IA 3단계 결정). */}
-      <PhotoLayoutToggle className="ml-auto" />
+      {/* 실제 사진 격자가 있는 화면에서만 배치 전환을 노출한다. */}
+      {showLayout && <PhotoLayoutToggle className="ml-auto" />}
     </div>
   );
 }

@@ -6,6 +6,8 @@ import { useToastStore } from "../store/toast";
 import { useTimelineStore } from "../store/timeline";
 import { useFileOps } from "../hooks/useFileOps";
 import type { OperationEntry } from "../api/types";
+import { useDialogFocus } from "../hooks/useDialogFocus";
+import { QueryErrorState } from "./QueryErrorState";
 
 const TYPE_ICON: Record<OperationEntry["type"], string> = {
   move: "📦",
@@ -42,9 +44,18 @@ function EmptyTrashConfirm({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  const dialogRef = useDialogFocus<HTMLDivElement>(onCancel);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="w-80 rounded-2xl bg-white p-5 shadow-xl">
+      <div
+        ref={dialogRef}
+        data-modal-root="true"
+        role="alertdialog"
+        aria-modal="true"
+        aria-label="휴지통 비우기"
+        tabIndex={-1}
+        className="w-80 rounded-2xl bg-white p-5 shadow-xl"
+      >
         <h4 className="text-sm font-bold text-slate-800">휴지통 비우기</h4>
         <p className="mt-2 text-sm leading-relaxed text-slate-600">
           휴지통의 사진 <b className="text-red-600">{items.toLocaleString()}장을
@@ -53,6 +64,7 @@ function EmptyTrashConfirm({
         </p>
         <div className="mt-5 flex items-center justify-between">
           <button
+            data-autofocus="true"
             onClick={onCancel}
             className="rounded-lg border border-slate-300 px-4 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
           >
@@ -85,6 +97,7 @@ export function OperationsPanel({
   initialTrashOpen?: boolean;
 }) {
   const ops = useFileOps();
+  const panelRef = useDialogFocus<HTMLDivElement>(onClose);
   const user = useAuthStore((s) => s.user);
   const queryClient = useQueryClient();
   const [confirming, setConfirming] = useState(false);
@@ -112,12 +125,19 @@ export function OperationsPanel({
 
   return (
     <div
+      ref={panelRef}
       data-no-boxselect
+      data-modal-root="true"
+      role="dialog"
+      aria-modal="true"
+      aria-label="작업 기록"
+      tabIndex={-1}
       className="fixed inset-y-0 right-0 z-40 flex w-80 flex-col border-l border-slate-200 bg-white shadow-xl"
     >
       <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
         <h3 className="text-sm font-bold text-slate-800">작업 기록</h3>
         <button
+          data-autofocus="true"
           onClick={onClose}
           aria-label="닫기"
           className="rounded p-1 text-slate-400 hover:text-slate-600"
@@ -166,7 +186,14 @@ export function OperationsPanel({
         {query.isPending && (
           <p className="px-1 py-4 text-sm text-slate-400">불러오는 중…</p>
         )}
-        {entries.length === 0 && !query.isPending && (
+        {query.isError && entries.length === 0 && (
+          <QueryErrorState
+            compact
+            message="작업 기록을 불러오지 못했습니다."
+            onRetry={() => void query.refetch()}
+          />
+        )}
+        {entries.length === 0 && !query.isPending && !query.isError && (
           <p className="px-1 py-4 text-sm text-slate-400">
             아직 작업 기록이 없습니다.
           </p>
@@ -262,7 +289,14 @@ function TrashBrowser({ onDone }: { onDone: () => void }) {
       {q.isPending && (
         <p className="px-4 py-3 text-xs text-slate-400">불러오는 중…</p>
       )}
-      {!q.isPending && items.length === 0 && (
+      {q.isError && items.length === 0 && (
+        <QueryErrorState
+          compact
+          message="휴지통 내용을 불러오지 못했습니다."
+          onRetry={() => void q.refetch()}
+        />
+      )}
+      {!q.isPending && !q.isError && items.length === 0 && (
         <p className="px-4 py-3 text-xs text-slate-400">
           개별 복원 가능한 사진이 없습니다. (폴더째 삭제는 작업 목록에서 통째로
           되돌리세요.)

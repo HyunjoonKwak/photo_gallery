@@ -9,6 +9,7 @@ import { canPickSaveLocation, saveLocal } from "../lib/saveFile";
 import { FolderPickerDialog } from "./timeline/FolderPickerDialog";
 import { AlbumPickerDialog } from "./timeline/AlbumPickerDialog";
 import { LightboxFilmstrip } from "./timeline/LightboxFilmstrip";
+import { useDialogFocus } from "../hooks/useDialogFocus";
 
 /** EXIF field order + Korean labels for the info panel. */
 const EXIF_LABELS: [string, string][] = [
@@ -44,6 +45,8 @@ export function Lightbox() {
   // 정리는 폴더 분류(manage)에서만.
   const readonly = useTimelineStore((s) => s.section !== "manage");
   const ops = useFileOps();
+  const close = () => useTimelineStore.getState().closeLightbox();
+  const dialogRef = useDialogFocus<HTMLDivElement>(close, item != null);
   const [showInfo, setShowInfo] = useState(false);
   // 필름스트립은 폰에서도 편다. 처음엔 넓은 화면에만 뒀는데 — 폰에서는 사진이
   // 차지할 자리를 스트립이 뺏는다고 봤다 — 정작 주로 쓰는 기기가 폰이라 기능
@@ -272,14 +275,19 @@ export function Lightbox() {
 
   if (!item) return null;
 
-  const close = () => useTimelineStore.getState().closeLightbox();
   // 모바일은 스와이프로 넘기므로 화살표 버튼은 sm 이상에서만.
   const navBtn =
     "absolute top-1/2 hidden -translate-y-1/2 rounded-full bg-black/50 p-3 text-2xl text-white/80 hover:text-white hover:bg-black/70 sm:block";
 
   return (
     <div
+      ref={dialogRef}
       data-no-boxselect
+      data-modal-root="true"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`사진 미리보기${item.filename ? `: ${item.filename}` : ""}`}
+      tabIndex={-1}
       className="fixed inset-0 z-50 flex bg-black/95"
       onClick={close}
       onTouchStart={onTouchStart}
@@ -431,6 +439,7 @@ export function Lightbox() {
           <button
             onClick={() => setShowStrip((v) => !v)}
             title="필름스트립 (f)"
+            aria-label="필름스트립 열기 또는 닫기"
             aria-pressed={showStrip}
             className={`rounded-full px-3 py-2 text-sm ${
               showStrip
@@ -443,6 +452,7 @@ export function Lightbox() {
           <button
             onClick={() => setShowInfo((v) => !v)}
             title="정보 (i)"
+            aria-pressed={showInfo}
             className={`rounded-full px-3 py-2 text-sm ${
               showInfo
                 ? "bg-white/90 text-slate-800"
@@ -452,6 +462,7 @@ export function Lightbox() {
             정보
           </button>
           <button
+            data-autofocus="true"
             aria-label="닫기"
             className="rounded-full bg-black/50 px-3 py-2 text-sm text-white/80 hover:text-white"
             onClick={close}
@@ -466,7 +477,12 @@ export function Lightbox() {
         >
           <div className="flex justify-center gap-4 bg-gradient-to-t from-black/80 to-transparent px-4 py-3 text-xs text-slate-300">
             <span className="font-medium text-white">{item.filename}</span>
-            <span className="text-slate-400">f 필름스트립 · Shift+? 단축키</span>
+            <span className="hidden text-slate-400 sm:inline">
+              f 필름스트립 · Shift+? 단축키
+            </span>
+            <span className="text-slate-400 sm:hidden">
+              좌우로 넘기기 · 아래로 닫기
+            </span>
           </div>
           {showStrip && <LightboxFilmstrip />}
         </div>

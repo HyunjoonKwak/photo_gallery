@@ -7,6 +7,8 @@ import { Thumb } from "./timeline/Thumb";
 import { PhotoGrid } from "./timeline/PhotoGrid";
 import { PlacesMapView } from "./PlacesMapView";
 import { useNearViewport } from "../hooks/useNearViewport";
+import { QueryErrorState } from "./QueryErrorState";
+import { PhotoLayoutToggle } from "./timeline/PhotoLayoutToggle";
 
 /** 장소(지역별) 뷰어 — Synology Photos의 GPS 지오코딩 그룹(`places`)을 국가별
  * 섹션으로 한 화면에 펼치고, 각 국가 아래에 지역(first_level=도시) 카드를
@@ -128,6 +130,13 @@ export function PlacesRegionView({ space }: { space: Space }) {
 
   if (q.isPending)
     return <p className="p-6 text-sm text-slate-400">불러오는 중…</p>;
+  if (q.isError && places.length === 0)
+    return (
+      <QueryErrorState
+        message="장소 목록을 불러오지 못했습니다."
+        onRetry={() => void q.refetch()}
+      />
+    );
   if (places.length === 0)
     return (
       <p className="p-6 text-sm text-slate-400">
@@ -176,6 +185,7 @@ export function PlacesRegionView({ space }: { space: Space }) {
             ))}
           </nav>
         )}
+        {region && <PhotoLayoutToggle className="ml-auto" />}
       </div>
 
       <div className="min-h-0 flex-1">
@@ -290,6 +300,7 @@ function RegionPhotos({ space, region }: { space: Space; region: RegionGroup }) 
     })),
   });
   const pending = queries.some((r) => r.isPending);
+  const failed = queries.some((r) => r.isError);
   const items = useMemo(() => {
     const byId = new Map<string, PhotoItem>();
     for (const r of queries) {
@@ -305,6 +316,15 @@ function RegionPhotos({ space, region }: { space: Space; region: RegionGroup }) 
 
   if (pending && items.length === 0)
     return <p className="p-6 text-sm text-slate-400">불러오는 중…</p>;
+  if (failed && items.length === 0)
+    return (
+      <QueryErrorState
+        message="지역 사진을 불러오지 못했습니다."
+        onRetry={() => {
+          void Promise.all(queries.map((r) => r.refetch()));
+        }}
+      />
+    );
   if (items.length === 0)
     return <p className="p-6 text-sm text-slate-400">사진이 없습니다.</p>;
   return <PhotoGrid items={items} space={space} />;

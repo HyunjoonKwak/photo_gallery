@@ -7,6 +7,7 @@ import { useToastStore } from "../store/toast";
 import { PhotoGrid } from "./timeline/PhotoGrid";
 import { DateGroupedGrid } from "./timeline/DateGroupedGrid";
 import { PlacesRegionView } from "./PlacesRegionView";
+import { QueryErrorState } from "./QueryErrorState";
 
 /** 태그 렌즈(감상) — 사람/장소/비디오. Synology Photos 내장 AI 그룹(얼굴·GPS)과
  * 라이브러리 전체 비디오를 순수 뷰어로 브라우즈. "앨범"이 아니라 사진 뷰어의
@@ -88,6 +89,13 @@ function PeopleGrid({
 
   if (q.isPending)
     return <p className="p-6 text-sm text-slate-400">불러오는 중…</p>;
+  if (q.isError && persons.length === 0)
+    return (
+      <QueryErrorState
+        message="인물 목록을 불러오지 못했습니다."
+        onRetry={() => void q.refetch()}
+      />
+    );
   if (persons.length === 0)
     return (
       <p className="p-6 text-sm text-slate-400">
@@ -165,7 +173,11 @@ function PersonCard({
 
   return (
     <div className="flex w-24 flex-col items-center gap-1.5 rounded-xl p-2 hover:bg-slate-100">
-      <button onClick={onOpen} title={label} className="outline-none">
+      <button
+        onClick={onOpen}
+        title={label}
+        className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+      >
         {person.cover_item_id ? (
           <img
             src={thumbnailUrl(
@@ -235,7 +247,7 @@ function PersonCard({
             setEditing(true);
           }}
           title="이름 지정/변경"
-          className="flex w-full items-center justify-center gap-0.5 outline-none"
+          className="flex w-full items-center justify-center gap-0.5 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
         >
           <span
             className={`truncate text-xs ${
@@ -275,6 +287,13 @@ function GroupGrid({
   );
   if (q.isPending)
     return <p className="p-6 text-sm text-slate-400">불러오는 중…</p>;
+  if (q.isError && items.length === 0)
+    return (
+      <QueryErrorState
+        message="인물 사진을 불러오지 못했습니다."
+        onRetry={() => void q.refetch()}
+      />
+    );
   if (items.length === 0)
     return <p className="p-6 text-sm text-slate-400">사진이 없습니다.</p>;
   return <PhotoGrid items={items} space={space} />;
@@ -292,6 +311,13 @@ function VideosGrid({ space }: { space: Space }) {
   );
   if (q.isPending)
     return <p className="p-6 text-sm text-slate-400">불러오는 중…</p>;
+  if (q.isError && items.length === 0)
+    return (
+      <QueryErrorState
+        message="비디오를 불러오지 못했습니다."
+        onRetry={() => void q.refetch()}
+      />
+    );
   if (items.length === 0)
     return <p className="p-6 text-sm text-slate-400">비디오가 없습니다.</p>;
   // 일자별 헤더 + 우측 날짜 스크러버(사진 뷰어 일 뷰와 동일 감상 형태).

@@ -80,7 +80,7 @@ export function LightboxFilmstrip() {
                 height: H,
                 transform: `translateX(${v.start}px)`,
               }}
-              className={`overflow-hidden rounded outline-none transition-opacity ${
+              className={`overflow-hidden rounded transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${
                 active
                   ? "opacity-100 ring-2 ring-white"
                   : "opacity-55 hover:opacity-90"

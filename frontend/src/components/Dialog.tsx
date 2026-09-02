@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 import { create } from "zustand";
+import { useDialogFocus } from "../hooks/useDialogFocus";
 
 /** 공용 모달 셸 — window.prompt/confirm 대체(안드로이드 PWA에서 네이티브
  * 다이얼로그는 이질적 + 메인 스레드 정지). Esc/배경 클릭 닫기, role=dialog,
@@ -13,23 +14,8 @@ export function Modal({
   children: ReactNode;
   onClose: () => void;
 }) {
-  const boxRef = useRef<HTMLDivElement | null>(null);
-  // onClose는 렌더마다 새 함수 — deps에 넣으면 키 입력(재렌더)마다 effect가
-  // 재실행돼 box.focus()가 입력창의 포커스를 강탈했다(2026-07-12 보고: 새 폴더
-  // 이름이 한 글자마다 끊김). 마운트 1회만 실행하고 최신 onClose는 ref로.
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onCloseRef.current();
-    };
-    window.addEventListener("keydown", onKey);
-    // 내부(입력창 autoFocus)가 이미 포커스를 가졌으면 뺏지 않는다.
-    if (!boxRef.current?.contains(document.activeElement)) {
-      boxRef.current?.focus();
-    }
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  const boxRef = useDialogFocus<HTMLDivElement>(onClose);
+  const titleId = useId();
   return (
     <div
       data-no-boxselect
@@ -38,14 +24,17 @@ export function Modal({
     >
       <div
         ref={boxRef}
+        data-modal-root="true"
         role="dialog"
         aria-modal="true"
-        aria-label={title}
+        aria-labelledby={titleId}
         tabIndex={-1}
         className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl outline-none"
         onClick={(e) => e.stopPropagation()}
       >
-        <h4 className="text-sm font-bold text-slate-800">{title}</h4>
+        <h4 id={titleId} className="text-sm font-bold text-slate-800">
+          {title}
+        </h4>
         {children}
       </div>
     </div>

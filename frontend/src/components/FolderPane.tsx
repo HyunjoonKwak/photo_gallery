@@ -15,6 +15,7 @@ import { SPRING_MS, folderBasename } from "./FolderTree";
 import { FolderNameAuditDialog } from "./FolderNameAuditDialog";
 import { CaptureDateDialog, type CaptureTarget } from "./CaptureDateDialog";
 import { useToastStore } from "../store/toast";
+import { QueryErrorState } from "./QueryErrorState";
 
 /** Order sub-folders by the user's chosen key/direction. Name uses a Korean,
  * numeric-aware compare (so 2·10 sort naturally); date uses mtime with folders
@@ -595,6 +596,13 @@ export function FolderPane({
         {subQuery.isPending && (
           <p className="py-6 text-center text-sm text-slate-400">폴더 불러오는 중…</p>
         )}
+        {subQuery.isError && subFolders.length === 0 && (
+          <QueryErrorState
+            compact
+            message="폴더 목록을 불러오지 못했습니다."
+            onRetry={() => void subQuery.refetch()}
+          />
+        )}
         {subFolders.length > 0 && (
           <section className="py-3">
             <div className="mb-1 flex items-center justify-between gap-2">
@@ -746,12 +754,19 @@ export function FolderPane({
             {itemsQuery.isPending && (
               <p className="py-6 text-center text-sm text-slate-400">불러오는 중…</p>
             )}
-            {!itemsQuery.isPending && items.length === 0 && subFolders.length === 0 && (
+            {itemsQuery.isError && items.length === 0 && (
+              <QueryErrorState
+                compact
+                message="폴더 사진을 불러오지 못했습니다."
+                onRetry={() => void itemsQuery.refetch()}
+              />
+            )}
+            {!itemsQuery.isPending && !itemsQuery.isError && items.length === 0 && subFolders.length === 0 && (
               <p className="py-6 text-center text-sm text-slate-400">
                 이 폴더는 비어 있습니다.
               </p>
             )}
-            {!itemsQuery.isPending && items.length === 0 && subFolders.length > 0 && (
+            {!itemsQuery.isPending && !itemsQuery.isError && items.length === 0 && subFolders.length > 0 && (
               <p className="py-4 text-center text-sm text-slate-400">
                 이 폴더에 직접 담긴 사진은 없습니다. 위 하위 폴더를 열어 보세요.
               </p>
@@ -778,7 +793,7 @@ export function FolderPane({
           </section>
         )}
 
-        {!current && subFolders.length === 0 && !subQuery.isPending && (
+        {!current && subFolders.length === 0 && !subQuery.isPending && !subQuery.isError && (
           <p className="py-10 text-center text-sm text-slate-400">폴더가 없습니다.</p>
         )}
         </div>

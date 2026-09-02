@@ -6,6 +6,7 @@ import { layoutBucket } from "../lib/rowModel";
 import { useTimelineStore } from "../store/timeline";
 import { PhotoCell } from "./timeline/PhotoCell";
 import { VirtualRows } from "./VirtualRows";
+import { QueryErrorState } from "./QueryErrorState";
 
 /** Search results view: DSM's own index (filename/folder/tag — 실 NAS 검증).
  * Results feed the shared selection model, so the existing action bar / DnD /
@@ -16,7 +17,6 @@ export function SearchView() {
   const query = useTimelineStore((s) => s.searchQuery);
   const setOrdered = useTimelineStore((s) => s.setOrdered);
   const replaceSelection = useTimelineStore((s) => s.replaceSelection);
-  const setManageTab = useTimelineStore((s) => s.setManageTab);
 
   const resultQuery = useQuery({
     queryKey: ["search", space, query],
@@ -79,7 +79,7 @@ export function SearchView() {
           파일명·폴더명·태그 기준 · 선택 후 액션바/드래그로 정리
         </span>
         <button
-          onClick={() => setManageTab("folders")}
+          onClick={() => history.back()}
           className="ml-auto rounded-lg px-2 py-1 text-xs text-slate-500 hover:bg-slate-100"
         >
           ✕ 닫기
@@ -91,10 +91,12 @@ export function SearchView() {
           {resultQuery.isPending && query && (
             <p className="py-10 text-center text-sm text-slate-400">검색 중…</p>
           )}
-          {resultQuery.isError && (
-            <p className="py-10 text-center text-sm text-red-500">
-              검색에 실패했습니다.
-            </p>
+          {resultQuery.isError && items.length === 0 && (
+            <QueryErrorState
+              compact
+              message="검색 결과를 불러오지 못했습니다."
+              onRetry={() => void resultQuery.refetch()}
+            />
           )}
           {!resultQuery.isPending && !resultQuery.isError && items.length === 0 && (
             <p className="py-10 text-center text-sm text-slate-400">

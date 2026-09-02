@@ -170,7 +170,7 @@ export function DateGroupedGrid({
                           data-photo-id={it.id}
                           onClick={() => openLightbox(it.id)}
                           style={{ width: tile, height: tile }}
-                          className="overflow-hidden rounded-sm outline-none"
+                          className="overflow-hidden rounded-sm focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-blue-400"
                         >
                           <Thumb item={it} space={space} />
                         </button>

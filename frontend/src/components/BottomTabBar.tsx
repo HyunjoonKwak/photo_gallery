@@ -13,13 +13,14 @@ const ALL_TABS: { section: Section; label: string; icon: string }[] = [
 ];
 const TABS = ALL_TABS.filter((t) => SHOW_MANAGE || t.section !== "manage");
 
-/** Mobile-only bottom tab bar (사진앱 표준): 3영역 전환을 엄지가 닿는 하단에.
+/** Mobile-only bottom tab bar (사진앱 표준): 4영역 전환을 엄지가 닿는 하단에.
  * 데스크톱은 헤더의 SectionToggle을 그대로 사용한다. safe-area 패딩으로
  * iPhone 홈 인디케이터와 겹치지 않는다.
  */
 export function BottomTabBar() {
   const section = useTimelineStore((s) => s.section);
   const setSection = useTimelineStore((s) => s.setSection);
+  const goHome = useTimelineStore((s) => s.goHome);
   // 목록에 없는 영역(감춘 「정리」)에 들어가 있어도 불은 남긴다.
   const current = activeSection(section);
   return (
@@ -31,8 +32,12 @@ export function BottomTabBar() {
       {TABS.map((t) => (
         <button
           key={t.section}
-          onClick={() => setSection(t.section)}
-          className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] font-medium ${
+          aria-current={current === t.section ? "page" : undefined}
+          onClick={() => {
+            if (t.section === "viewer" && section === "viewer") goHome();
+            else setSection(t.section);
+          }}
+          className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 ${
             current === t.section ? "text-blue-600" : "text-slate-400"
           }`}
         >

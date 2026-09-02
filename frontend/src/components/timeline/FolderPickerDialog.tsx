@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import type { PhotoFolder } from "../../api/types";
 import { recentFolders, rememberFolder } from "../../lib/recentFolders";
 import { FolderTree, folderBasename } from "../FolderTree";
+import { useDialogFocus } from "../../hooks/useDialogFocus";
 
 export type PickerMode = "move" | "copy" | "toTeam" | "toPersonal";
 
@@ -23,6 +24,7 @@ export function FolderPickerDialog({
   onClose: () => void;
 }) {
   const copyable = mode === "toTeam" || mode === "toPersonal";
+  const dialogRef = useDialogFocus<HTMLDivElement>(onClose);
   const [copyMode, setCopyMode] = useState(mode === "copy" || mode === "toTeam");
   const [selected, setSelected] = useState<PhotoFolder | null>(null);
   const isDest = mode === "toPersonal"; // 스코프 미부착 목적지 트리
@@ -49,6 +51,12 @@ export function FolderPickerDialog({
       onClick={onClose}
     >
       <div
+        ref={dialogRef}
+        data-modal-root="true"
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        tabIndex={-1}
         className="w-80 rounded-2xl bg-white p-4 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
@@ -124,6 +132,7 @@ export function FolderPickerDialog({
 
         <div className="mt-4 flex justify-end gap-2">
           <button
+            data-autofocus="true"
             onClick={onClose}
             className="rounded-lg px-3 py-1.5 text-sm text-slate-500 hover:bg-slate-100"
           >
