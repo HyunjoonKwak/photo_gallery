@@ -10,7 +10,7 @@ This module extracts it so we can bake it back into the file (EXIF + mtime).
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone
+from datetime import datetime
 
 # Accept only plausible capture dates — rejects random digit runs that happen to
 # parse (e.g. an unrelated 8-digit id). 1990 predates digital photos we'd see;
@@ -115,12 +115,10 @@ def read_exif_datetime(disk_path: str) -> datetime | None:
             naive = datetime.strptime(str(raw).strip(), "%Y:%m:%d %H:%M:%S")
         except ValueError:
             continue
-        # 이 라이브러리(삼성/한국폰) EXIF DateTime은 UTC로 저장돼 있고 Synology도
-        # 시스템 TZ를 더해 로컬로 표시한다(실 NAS 확인: 파일명 로컬시각 == DTO+9h).
-        # 그래서 UTC로 간주해 컨테이너 로컬(TZ=Asia/Seoul)로 변환해야 파일명·
-        # Synology와 일치한다(안 하면 9시간·자정 근처 하루 어긋남).
-        local = naive.replace(tzinfo=timezone.utc).astimezone().replace(tzinfo=None)
-        return _valid(local)
+        # EXIF DateTimeOriginal에는 timezone이 없으므로 촬영 당시의 지역
+        # wall-clock을 그대로 보존한다. UTC로 간주해 KST를 다시 더하면 Desk와
+        # Synology 원본보다 9시간 늦고 자정 부근에는 날짜까지 바뀐다.
+        return _valid(naive)
     return None
 
 

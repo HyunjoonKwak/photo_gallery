@@ -141,9 +141,9 @@ async def test_items_exclude_trashed_items(monkeypatch):
         return frozenset({"901"})
 
     monkeypatch.setattr(src, "_trash_item_ids", fake_trash)
-    from datetime import date
+    from app.photos.dsm_time import date_from_epoch
 
-    items = await src.items("team", date.fromtimestamp(ts).isoformat())
+    items = await src.items("team", date_from_epoch(ts).isoformat())
     assert [i.id for i in items] == ["900"]
 
 

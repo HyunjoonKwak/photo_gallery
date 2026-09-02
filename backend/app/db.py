@@ -106,7 +106,7 @@ CREATE TABLE IF NOT EXISTS organize_copied (
   PRIMARY KEY (user, file_id)
 );
 
--- 타임라인 일자 버킷 L2 캐시 (scope = "team" | "personal:<account>").
+-- 타임라인 일자 버킷 L2 캐시 (scope 문자열은 시간 해석 변경 시 버전됨).
 -- 전량 스캔(69k 기준 수십 초)을 재시작·세션마다 반복하지 않기 위한 영속층.
 -- updated_at=0 은 "stale" 표식(쓰기 후) — 조회는 즉시 서빙 + 백그라운드 재스캔.
 -- 정리 마법사 세션(이어하기): 사용자당 1행, step과 단계별 처리 통계.

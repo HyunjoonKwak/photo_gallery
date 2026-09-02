@@ -4,7 +4,8 @@ from datetime import datetime
 
 import pytest
 
-from app.photos.capture_date import parse_from_filename
+from app.photos.capture_date import parse_from_filename, read_exif_datetime
+from app.photos.capture_fix import _write_exif_jpeg
 
 
 @pytest.mark.parametrize(
@@ -75,3 +76,14 @@ def test_rejects_too_long_or_short_digit_runs():
     assert parse_from_filename("12345678901234567890.jpg") is None
     # 12-digit run: shorter than a ms epoch and not a date → reject
     assert parse_from_filename("123456789012.jpg") is None
+
+
+def test_exif_datetime_stays_as_the_recorded_wall_clock(tmp_path):
+    from PIL import Image
+
+    path = tmp_path / "samsung.jpg"
+    Image.new("RGB", (2, 2), "white").save(path)
+    expected = datetime(2020, 2, 25, 12, 20, 49)
+    _write_exif_jpeg(str(path), expected)
+
+    assert read_exif_datetime(str(path)) == expected

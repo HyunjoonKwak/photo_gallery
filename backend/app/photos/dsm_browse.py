@@ -12,7 +12,7 @@ import json
 import logging
 import time as _time
 from collections import Counter
-from datetime import date, datetime, timedelta
+from datetime import date
 from typing import Callable
 
 from ..dsm.client import DsmClient
@@ -29,6 +29,7 @@ from ..schemas import (
     PlaceInfo,
     PlacedItem,
 )
+from .dsm_time import date_from_epoch, day_range, decode_wall_clock
 from .hashing import compute_hashes
 from .source import Affected, DeleteOutcome, MoveOutcome
 
@@ -137,7 +138,7 @@ class _DsmBrowseOps:
                     ts = it.get("time")
                     iid = str(it.get("id"))
                     if ts and iid not in trash_ids and iid not in tomb:
-                        counter[date.fromtimestamp(ts).isoformat()] += 1
+                        counter[date_from_epoch(ts).isoformat()] += 1
             out = [
                 PhotoBucket(day=day, count=count)
                 for day, count in sorted(counter.items(), reverse=True)
@@ -194,8 +195,7 @@ class _DsmBrowseOps:
 
     async def items(self, space: str, day: str) -> list[PhotoItem]:
         d = date.fromisoformat(day)
-        start = int(datetime(d.year, d.month, d.day).timestamp())
-        end = int((datetime(d.year, d.month, d.day) + timedelta(days=1)).timestamp())
+        start, end = day_range(d)
         trash_ids = await self._trash_item_ids(space)
         tomb = _tombstoned_items(self._sid)
         # Page through the whole day — a single mobile-backup/import day can
@@ -323,7 +323,7 @@ class _DsmBrowseOps:
         return PhotoItem(
             id=str(it.get("id")),
             filename=it.get("filename", ""),
-            taken_at=datetime.fromtimestamp(it.get("time", 0)).isoformat(),
+            taken_at=decode_wall_clock(it.get("time", 0)).isoformat(),
             width=int(resolution.get("width", 4)) or 4,
             height=int(resolution.get("height", 3)) or 3,
             size=it.get("filesize"),

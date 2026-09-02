@@ -43,6 +43,7 @@ from .. import progress
 from ..photos import capture_fix
 from ..photos.capture_date import parse_from_filename
 from ..photos.dsm_source import invalidate_bucket_cache
+from ..photos.dsm_time import encode_wall_clock
 from ..schemas import (
     AddToAlbumRequest,
     AlbumMutationResponse,
@@ -1034,7 +1035,7 @@ async def capture_fix_foto(
             counter["bad-date"] += 1
         else:
             try:
-                await source.set_item_time(req.space, it.path, int(dt.timestamp()))
+                await source.set_item_time(req.space, it.path, encode_wall_clock(dt))
                 counter["ok"] += 1
             except Exception as exc:  # noqa: BLE001
                 counter[f"failed:{type(exc).__name__}"] += 1

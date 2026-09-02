@@ -10,7 +10,6 @@ import json
 import logging
 import time as _time
 from collections import Counter
-from datetime import date, datetime, timedelta
 from typing import Callable
 
 from ..dsm.client import DsmClient
@@ -27,6 +26,7 @@ from ..schemas import (
     PlaceInfo,
     PlacedItem,
 )
+from .dsm_time import date_from_epoch
 from .hashing import compute_hashes
 from .source import Affected, DeleteOutcome, MoveOutcome
 
@@ -273,7 +273,7 @@ class _DsmFileOps:
             folder = it.get("additional", {}).get("folder") or {}
             folder_name = folder.get("name") if isinstance(folder, dict) else folder
             filename = it.get("filename", "")
-            day = date.fromtimestamp(it.get("time", 0)).isoformat()
+            day = date_from_epoch(it.get("time", 0)).isoformat()
             fid = str(it.get("folder_id", ""))
             # Remember the source folder's (space, path) so a later 정리 제안 can
             # resolve it by id without the tree having been browsed first — the

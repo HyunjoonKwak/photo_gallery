@@ -14,8 +14,9 @@ from ..schemas import PersonInfo, PhotoBucket, PhotoFolder, PhotoItem, PlaceInfo
 
 logger = logging.getLogger(__name__)
 
-# Bucket cache: scope -> (monotonic_ts, buckets). scope = "team"(공유 라이브러리는
-# 전 계정 공통 — 사용자마다 따로 풀스캔하지 않는다) 또는 "personal:<account>".
+# Bucket cache: scope -> (monotonic_ts, buckets). v2는 DSM의 epoch-shaped
+# wall-clock을 UTC 숫자로만 해석한다. 접두 버전은 예전 KST 이중 적용 결과를 새
+# 배포가 L2에서 다시 읽지 않게 한다. 공유는 계정 공통, 개인만 계정별이다.
 # L1(메모리) 뒤에 L2(SQLite bucket_cache)가 있어 재시작·타 세션에도 즉시 서빙되고,
 # 쓰기 후에는 stale 데이터를 먼저 내주고 백그라운드로 재스캔한다(SWR).
 _BUCKET_CACHE: dict[str, tuple[float, list[PhotoBucket]]] = {}
@@ -26,7 +27,11 @@ _BUCKET_SCANNING: set[str] = set()
 
 
 def _bucket_scope(account: str, space: str) -> str:
-    return "team" if space == "team" else f"personal:{account}"
+    if space == "team":
+        return "foto-time-v2:team"
+    return f"foto-time-v2:personal:{account}"
+
+
 # Folder metadata cache: sid -> {folder_id: (space, name)}. The folder tree is
 # huge (1500+) and hierarchical, so we load it lazily (one level per request)
 # and remember id→(space,path) as levels are browsed. File-op helpers resolve a
